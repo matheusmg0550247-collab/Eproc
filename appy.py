@@ -173,6 +173,151 @@ def send_chat_notification_internal(consultor, status):
 
 def play_sound_html(): return f'<audio autoplay="true"><source src="{SOUND_URL}" type="audio/mpeg"></audio>'
 
+# --- Função Geradora do HTML Personalizado ---
+def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
+    """Gera o código HTML do checklist com os dados preenchidos."""
+    
+    # URL do Webhook para onde o HTML vai enviar os dados (O mesmo da sessão)
+    webhook_destino = GOOGLE_CHAT_WEBHOOK_SESSAO
+    
+    html_template = f"""
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Acompanhamento de Sessão - {camara_nome}</title>
+<style>
+    body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px; color: #333; }}
+    .container {{ max-width: 800px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
+    h1 {{ color: #003366; font-size: 24px; border-bottom: 2px solid #003366; padding-bottom: 10px; margin-bottom: 20px; }}
+    .intro-box {{ background-color: #eef4fa; border-left: 5px solid #003366; padding: 15px; margin-bottom: 25px; font-size: 14px; line-height: 1.5; }}
+    .field-group {{ margin-bottom: 20px; }}
+    .field-label {{ font-weight: bold; display: block; margin-bottom: 5px; color: #444; }}
+    .static-value {{ background-color: #f9f9f9; padding: 10px; border: 1px solid #ddd; border-radius: 4px; color: #555; font-weight: 500; }}
+    select {{ width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }}
+    .section-title {{ background-color: #003366; color: white; padding: 10px; border-radius: 4px; margin-top: 30px; margin-bottom: 15px; font-size: 16px; font-weight: bold; }}
+    .checkbox-item {{ margin-bottom: 12px; display: flex; align-items: center; }}
+    .checkbox-item input {{ margin-right: 10px; width: 18px; height: 18px; accent-color: #003366; }}
+    .checkbox-item label {{ cursor: pointer; }}
+    .btn-submit {{ background-color: #d9534f; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 4px; cursor: pointer; display: block; width: 100%; margin-top: 30px; transition: background 0.3s; }}
+    .btn-submit:hover {{ background-color: #c9302c; }}
+</style>
+<script>
+  function enviarWebhook() {{
+    const webhookUrl = '{webhook_destino}';
+    
+    // Coleta dados
+    const setor = document.getElementById('setor').value;
+    const checks = document.querySelectorAll('input[type="checkbox"]:checked');
+    let itensMarcados = [];
+    checks.forEach((chk) => {{ itensMarcados.push("- " + chk.value); }});
+    
+    if (itensMarcados.length === 0 && confirm("Nenhuma dúvida foi marcada. Deseja enviar mesmo assim como 'Sem dúvidas'?") === false) {{
+        return;
+    }}
+    
+    const msgTexto = 
+        "*📝 Retorno de Checklist de Sessão*\\n" +
+        "*Câmara:* {camara_nome}\\n" +
+        "*Data:* {data_sessao_formatada}\\n" +
+        "*Setor:* " + setor + "\\n\\n" +
+        "*Dúvidas/Pontos de Atenção:*" + (itensMarcados.length > 0 ? "\\n" + itensMarcados.join("\\n") : " Nenhuma dúvida reportada.");
+
+    const payload = {{ text: msgTexto }};
+
+    fetch(webhookUrl, {{
+      method: 'POST',
+      headers: {{ 'Content-Type': 'application/json' }},
+      body: JSON.stringify(payload)
+    }})
+    .then(response => {{
+      if (response.ok) {{
+        alert('Formulário enviado com sucesso! O consultor já recebeu suas informações.');
+      }} else {{
+        alert('Falha ao enviar. Tente novamente.');
+      }}
+    }})
+    .catch(error => {{
+      console.error('Erro:', error);
+      alert('Erro ao enviar (Verifique sua conexão).');
+    }});
+  }}
+</script>
+</head>
+<body>
+
+<div class="container">
+    <h1>Acompanhamento de Sessão</h1>
+    
+    <div class="intro-box">
+        <strong>Olá!</strong> Sou o Consultor <strong>{consultor_nome}</strong> responsável pelo acompanhamento técnico da sua sessão.<br><br>
+        Meu objetivo é garantir que todos os trâmites ocorram com fluidez na data agendada <strong>({data_sessao_formatada})</strong>. Abaixo, apresento um check-list dos procedimentos essenciais.<br><br>
+        <strong>Caso tenha dúvida ou insegurança em alguma etapa, marque a caixa correspondente e envie o formulário.</strong> Isso me permitirá atuar preventivamente.
+    </div>
+
+    <div class="field-group">
+        <label class="field-label">Câmara (Seu Nome/Local):</label>
+        <div class="static-value">{camara_nome}</div>
+    </div>
+
+    <div class="field-group">
+        <label class="field-label">Data da Sessão:</label>
+        <div class="static-value">{data_sessao_formatada}</div>
+    </div>
+
+    <div class="field-group">
+        <label class="field-label">A dúvida é referente a um procedimento do cartório ou gabinete?</label>
+        <select id="setor">
+            <option value="Cartório">Cartório</option>
+            <option value="Gabinete">Gabinete</option>
+        </select>
+    </div>
+
+    <div class="section-title">Check-list: Cartório</div>
+    <div style="font-size: 13px; color: #666; margin-bottom: 10px;">Responsável pela gestão administrativa, prazos e publicações.</div>
+    
+    <div class="checkbox-item">
+        <input type="checkbox" id="chk1" value="Cartório: Criar a Sessão (Cronograma/Datas)">
+        <label for="chk1"><strong>Criar a Sessão:</strong> Gerar cronograma (ordinária, extraordinária, virtual) definindo datas.</label>
+    </div>
+    <div class="checkbox-item">
+        <input type="checkbox" id="chk2" value="Cartório: Abrir Pauta (Status para inclusão)">
+        <label for="chk2"><strong>Abrir Pauta:</strong> Alterar status para permitir inclusão de processos pelos Gabinetes.</label>
+    </div>
+    <div class="checkbox-item">
+        <input type="checkbox" id="chk3" value="Cartório: Intimação/Publicação de Pauta">
+        <label for="chk3"><strong>Publicação:</strong> Gerar e publicar a pauta no DJE.</label>
+    </div>
+    <div class="checkbox-item">
+        <input type="checkbox" id="chk4" value="Cartório: Verificação de Quórum/Sustentação">
+        <label for="chk4"><strong>Sustentação Oral:</strong> Verificar inscrições e links de acesso.</label>
+    </div>
+
+    <div class="section-title">Check-list: Gabinete</div>
+    <div style="font-size: 13px; color: #666; margin-bottom: 10px;">Responsável pela inclusão de votos e relatórios.</div>
+    
+    <div class="checkbox-item">
+        <input type="checkbox" id="chk_gab1" value="Gabinete: Inclusão em Pauta">
+        <label for="chk_gab1"><strong>Incluir Processo:</strong> Inserir processos na pauta aberta pelo cartório.</label>
+    </div>
+    <div class="checkbox-item">
+        <input type="checkbox" id="chk_gab2" value="Gabinete: Liberação de Votos">
+        <label for="chk_gab2"><strong>Liberar Votos:</strong> Disponibilizar votos para os demais pares antes da sessão.</label>
+    </div>
+    <div class="checkbox-item">
+        <input type="checkbox" id="chk_gab3" value="Gabinete: Pedidos de Vista/Adiamento">
+        <label for="chk_gab3"><strong>Gerenciar Pendências:</strong> Tratar processos com vista ou pedidos de adiamento.</label>
+    </div>
+
+    <button class="btn-submit" onclick="enviarWebhook()">Enviar Dúvidas ao Consultor</button>
+</div>
+
+</body>
+</html>
+    """
+    return html_template
+
 # --- Funções de Envio de Registro ---
 
 def send_atividade_to_chat(consultor, tipo_atendimento, form_data): 
@@ -431,11 +576,13 @@ def init_session_state():
         'lunch_warning_info': None,
         'last_reg_status': None, # Flag para status de registro
         'chamado_guide_step': 0, # Etapa do guia de chamados
-        'sessao_msg_preview': "" # Inicializa o estado da preview de sessão
+        'sessao_msg_preview': "", # Inicializa o estado da preview de sessão
+        'html_download_ready': False, # Flag para o botão de download
+        'html_content_cache': "" # Conteúdo do HTML
     }
 
     for key, default in defaults.items():
-        if key in ['play_sound', 'gif_warning', 'last_reg_status', 'chamado_guide_step', 'sessao_msg_preview']: 
+        if key in ['play_sound', 'gif_warning', 'last_reg_status', 'chamado_guide_step', 'sessao_msg_preview', 'html_download_ready', 'html_content_cache']: 
             st.session_state.setdefault(key, default)
         else: 
             st.session_state[key] = persisted_state.get(key, default)
@@ -847,14 +994,26 @@ def handle_sessao_submission():
     # Pega o texto final editado pelo usuário no text_area
     texto_final = st.session_state.get("sessao_msg_preview", "")
     
+    # Dados para gerar o HTML
+    camara = st.session_state.get('sessao_camara_select', 'Não informada')
+    data_obj = st.session_state.get('sessao_data_input')
+    data_formatada = data_obj.strftime("%d/%m/%Y") if data_obj else 'Não informada'
+    
     success = send_sessao_to_chat(consultor, texto_final)
     
     if success:
         st.session_state.last_reg_status = "success_sessao"
         st.session_state.sessao_msg_preview = "" # Limpa a prévia após envio
+        
+        # GERA O HTML E ARMAZENA NO SESSION STATE PARA DOWNLOAD
+        html_content = gerar_html_checklist(consultor, camara, data_formatada)
+        st.session_state.html_content_cache = html_content
+        st.session_state.html_download_ready = True
+        
         st.session_state.registro_tipo_selecao = None # Fecha o formulário
     else:
         st.session_state.last_reg_status = "error_sessao"
+        st.session_state.html_download_ready = False
 
 # Callbacks para o guia de chamados
 def set_chamado_step(step_num):
@@ -1044,7 +1203,16 @@ with col_principal:
         st.session_state.last_reg_status = None
     elif st.session_state.last_reg_status == "success_sessao":
         st.success("Registro de Sessão enviado com sucesso!")
-        st.session_state.last_reg_status = None
+        
+        # MOSTRA O BOTÃO DE DOWNLOAD SE O HTML ESTIVER PRONTO
+        if st.session_state.get('html_download_ready') and st.session_state.get('html_content_cache'):
+            st.download_button(
+                label="⬇️ Baixar Formulário HTML",
+                data=st.session_state.html_content_cache,
+                file_name="Checklist_Sessao.html",
+                mime="text/html"
+            )
+        
     elif st.session_state.last_reg_status == "error":
         st.error("Erro ao enviar registro. Verifique se seu nome está selecionado no menu 'Consultor' acima.")
         st.session_state.last_reg_status = None
