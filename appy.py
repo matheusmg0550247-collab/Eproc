@@ -14,7 +14,6 @@ CONSULTORES = sorted([
    "Bárbara", "Bruno", "Cláudia", "Douglas", "Fábio", "Glayce", "Isac",
     "Isabela", "Ivana", "Leonardo", "Michael", "Morôni",  "Pablo", "Ranyer",
     "Victoria"
-
 ])
 
 # --- FUNÇÃO DE CACHE GLOBAL ---
@@ -46,6 +45,35 @@ GOOGLE_CHAT_WEBHOOK_REGISTRO = "https://chat.googleapis.com/v1/spaces/AAQAVvsU4L
 # Webhook para Rascunho de Chamados
 GOOGLE_CHAT_WEBHOOK_CHAMADO = "https://chat.googleapis.com/v1/spaces/AAQAPPWlpW8/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=jMg2PkqtpIe3JbG_SZG_ZhcfuQQII9RXM0rZQienUZk"
 
+# Webhook para Registro de Sessão
+GOOGLE_CHAT_WEBHOOK_SESSAO = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU"
+
+# Dados das Câmaras (Nome: Email)
+CAMARAS_DICT = {
+    "1ª Camara Civel": "caciv1@tjmg.jus.br",
+    "Cartorio 2ª Câmara Cível": "caciv2@tjmg.jus.br",
+    "Cartorio 3ª Camara Cível": "caciv3@tjmg.jus.br",
+    "caciv4": "caciv4@tjmg.jus.br",
+    "Cartorio 5ª Câmara Cível": "caciv5@tjmg.jus.br",
+    "Cartorio 6ª Câmara Cível": "caciv6@tjmg.jus.br",
+    "Cartorio 7ª Câmara Cível": "caciv7@tjmg.jus.br",
+    "Cartorio 8ª Câmara Cível": "caciv8@tjmg.jus.br",
+    "Cartorio 9ª Camara Civel": "caciv9@tjmg.jus.br",
+    "Cartorio 10ª Câmara Cível": "caciv10@tjmg.jus.br",
+    "Cartorio 11ª Câmara Cível": "caciv11@tjmg.jus.br",
+    "Cartorio 12ª Câmara Cível": "caciv12@tjmg.jus.br",
+    "Cartorio 13ª Câmara Cível": "caciv13@tjmg.jus.br",
+    "Cartorio 14ª Câmara Cível": "caciv14@tjmg.jus.br",
+    "Cartorio 15ª Câmara Cível": "caciv15@tjmg.jus.br",
+    "Cartorio 16ª Câmara Cível": "caciv16@tjmg.jus.br",
+    "Cartorio 17ª Câmara Cível": "caciv17@tjmg.jus.br",
+    "Cartorio 18ª Camara Civel": "caciv18@tjmg.jus.br",
+    "Cartorio 19ª Camara Civel": "caciv19@tjmg.jus.br",
+    "Cartório 20ª Camara Civel": "caciv20@tjmg.jus.br",
+    "Cartorio 21ª Camara Civel": "caciv21@tjmg.jus.br"
+}
+CAMARAS_OPCOES = sorted(list(CAMARAS_DICT.keys()))
+
 # Formulário "Atividade"
 REG_USUARIO_OPCOES = ["Cartório", "Externo", "Gabinete", "Interno"]
 REG_SISTEMA_OPCOES = ["Conveniados/Outros", "Eproc", "Themis", "JIPE", "SIAP"]
@@ -57,7 +85,7 @@ REG_PRESENCIAL_ATIVIDADE_OPCOES = ["Sessão", "Homologação", "Treinamento", "C
 BASTAO_EMOJI = "💙" 
 APP_URL_CLOUD = 'https://controle-bastao-cesupe.streamlit.app'
 STATUS_SAIDA_PRIORIDADE = ['Saída Temporária']
-STATUSES_DE_SAIDA = ['Atendimento', 'Almoço', 'Saída Temporária', 'Ausente', 'Sessão'] # MODIFICADO: 'Atividade' para 'Atendimento'
+STATUSES_DE_SAIDA = ['Atendimento', 'Almoço', 'Saída Temporária', 'Ausente', 'Sessão'] 
 GIF_URL_WARNING = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExY2pjMDN0NGlvdXp1aHZ1ejJqMnY5MG1yZmN0d3NqcDl1bTU1dDJrciZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/fXnRObM8Q0RkOmR5nf/giphy.gif'
 GIF_URL_ROTATION = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExdmx4azVxbGt4Mnk1cjMzZm5sMmp1YThteGJsMzcyYmhsdmFoczV0aSZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/JpkZEKWY0s9QI4DGvF/giphy.gif'
 GIF_URL_LUNCH_WARNING = 'https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExMGZlbHN1azB3b2drdTI1eG10cDEzeWpmcmtwenZxNTV0bnc2OWgzZSYlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/bNlqpmBJRDMpxulfFB/giphy.gif'
@@ -103,7 +131,7 @@ def load_state():
     
     loaded_logs = global_data.get('daily_logs', [])
     if loaded_logs and isinstance(loaded_logs[0], dict):
-         deserialized_logs = loaded_logs
+          deserialized_logs = loaded_logs
     else:
         try: 
              deserialized_logs = json.loads(loaded_logs)
@@ -147,7 +175,7 @@ def play_sound_html(): return f'<audio autoplay="true"><source src="{SOUND_URL}"
 
 # --- Funções de Envio de Registro ---
 
-def send_atividade_to_chat(consultor, tipo_atendimento, form_data): # MODIFICADO: Nome da função de Atividade para Atendimento
+def send_atividade_to_chat(consultor, tipo_atendimento, form_data): 
     """Envia o registro de 'Atendimento' para o webhook do Google Chat."""
     if not GOOGLE_CHAT_WEBHOOK_REGISTRO:
         print("Webhook de registro não configurado.")
@@ -179,7 +207,7 @@ def send_atividade_to_chat(consultor, tipo_atendimento, form_data): # MODIFICADO
         print(f"Erro ao enviar registro de 'Atendimento': {e}")
         return False
 
-def send_presencial_to_chat(consultor, form_data): # MODIFICADO: Nome da função de Presencial para Atividade
+def send_presencial_to_chat(consultor, form_data): 
     """Envia o registro de 'Atividade' para o webhook do Google Chat."""
     if not GOOGLE_CHAT_WEBHOOK_REGISTRO:
         print("Webhook de registro não configurado.")
@@ -195,7 +223,7 @@ def send_presencial_to_chat(consultor, form_data): # MODIFICADO: Nome da funçã
     fim_str = form_data['fim'].strftime("%H:%M")
 
     message_text = (
-        f"**📅 Novo Registro de Atividade**\n\n" # MODIFICADO: 'Presencial' para 'Atividade'
+        f"**📅 Novo Registro de Atividade**\n\n"
         f"**Consultor:** {consultor}\n"
         f"**Atividade:** {form_data['atividade']}\n"
         f"**Data:** {data_str}\n"
@@ -210,10 +238,10 @@ def send_presencial_to_chat(consultor, form_data): # MODIFICADO: Nome da funçã
     try:
         response = requests.post(GOOGLE_CHAT_WEBHOOK_REGISTRO, json=chat_message)
         response.raise_for_status()
-        print("Registro de 'Atividade' enviado com sucesso.") # MODIFICADO: 'Presencial' para 'Atividade'
+        print("Registro de 'Atividade' enviado com sucesso.") 
         return True
     except requests.exceptions.RequestException as e:
-        print(f"Erro ao enviar registro de 'Atividade': {e}") # MODIFICADO: 'Presencial' para 'Atividade'
+        print(f"Erro ao enviar registro de 'Atividade': {e}") 
         return False
 
 def send_chamado_to_chat(consultor, texto_chamado):
@@ -228,7 +256,7 @@ def send_chamado_to_chat(consultor, texto_chamado):
         
     if not texto_chamado:
         print("Erro de registro de chamado: Texto do chamado está vazio.")
-        return False # Não envia rascunho vazio
+        return False 
 
     message_text = (
         f"**🔔 Novo Rascunho de Chamado/Jira**\n\n"
@@ -248,6 +276,31 @@ def send_chamado_to_chat(consultor, texto_chamado):
         print(f"Erro ao enviar rascunho de chamado: {e}")
         return False
 
+def send_sessao_to_chat(consultor, texto_mensagem):
+    """Envia a mensagem de Registro de Sessão para o webhook específico."""
+    if not GOOGLE_CHAT_WEBHOOK_SESSAO:
+        print("Webhook de Sessão não configurado.")
+        return False
+
+    if not consultor or consultor == 'Selecione um nome':
+        print("Erro: Consultor não selecionado.")
+        return False
+        
+    if not texto_mensagem:
+        print("Erro: Texto da mensagem vazio.")
+        return False 
+
+    # A mensagem é enviada com o texto completo que o usuário editou
+    chat_message = {'text': texto_mensagem}
+    
+    try:
+        response = requests.post(GOOGLE_CHAT_WEBHOOK_SESSAO, json=chat_message)
+        response.raise_for_status()
+        print("Mensagem de Sessão enviada com sucesso.")
+        return True
+    except requests.exceptions.RequestException as e:
+        print(f"Erro ao enviar mensagem de Sessão: {e}")
+        return False
 
 def load_logs(): 
     """Carrega logs do st.session_state local."""
@@ -626,7 +679,7 @@ def toggle_skip():
     save_state() 
 
 def update_status(status_text, change_to_available): 
-    """Callback: Botões de Ação (Atendimento, Almoço, etc.).""" # MODIFICADO: 'Atividade' para 'Atendimento'
+    """Callback: Botões de Ação (Atendimento, Almoço, etc.)."""
     print(f'CALLBACK UPDATE STATUS: {status_text}')
     selected = st.session_state.consultor_selectbox
     st.session_state.gif_warning = False; st.session_state.rotation_gif_start_time = None
@@ -647,7 +700,7 @@ def update_status(status_text, change_to_available):
     if status_text == 'Almoço' and not is_second_try:
         all_statuses = st.session_state.status_texto
         num_na_fila = sum(1 for s in all_statuses.values() if s == '' or s == 'Bastão')
-        num_atividade = sum(1 for s in all_statuses.values() if s == 'Atendimento') # MODIFICADO: 'Atividade' para 'Atendimento'
+        num_atividade = sum(1 for s in all_statuses.values() if s == 'Atendimento') 
         total_ativos = num_na_fila + num_atividade
         num_almoco = sum(1 for s in all_statuses.values() if s == 'Almoço')
         limite_almoco = total_ativos / 2.0
@@ -698,7 +751,7 @@ def manual_rerun():
 
 # --- Callbacks de Formulário de Registro ---
 
-def handle_atividade_submission(): # MODIFICADO: Nome da função de Atividade para Atendimento
+def handle_atividade_submission(): 
     """Callback: Envio do formulário 'Atendimento'."""
     print("CALLBACK: handle_atividade_submission")
     
@@ -714,7 +767,7 @@ def handle_atividade_submission(): # MODIFICADO: Nome da função de Atividade p
         "desfecho": st.session_state.get('reg_desfecho') or "N/A"
     }
     
-    success = send_atividade_to_chat(consultor_selecionado, tipo_atendimento, form_data) # MODIFICADO: Nome da função
+    success = send_atividade_to_chat(consultor_selecionado, tipo_atendimento, form_data) 
     
     if success:
         st.session_state.last_reg_status = "success"
@@ -729,7 +782,7 @@ def handle_atividade_submission(): # MODIFICADO: Nome da função de Atividade p
     else:
         st.session_state.last_reg_status = "error"
 
-def handle_presencial_submission(): # MODIFICADO: Nome da função de Presencial para Atividade
+def handle_presencial_submission(): 
     """Callback: Envio do formulário 'Atividade'."""
     print("CALLBACK: handle_presencial_submission")
     
@@ -766,7 +819,7 @@ def handle_presencial_submission(): # MODIFICADO: Nome da função de Presencial
         "fim": fim_time        # Passa o objeto time
     }
     
-    success = send_presencial_to_chat(consultor_selecionado, form_data) # MODIFICADO: Nome da função
+    success = send_presencial_to_chat(consultor_selecionado, form_data) 
     
     if success:
         st.session_state.last_reg_status = "success"
@@ -784,6 +837,23 @@ def handle_presencial_submission(): # MODIFICADO: Nome da função de Presencial
         st.session_state.reg_pres_fim_m = 0
     else:
         st.session_state.last_reg_status = "error"
+
+def handle_sessao_submission():
+    """Callback: Envio do Registro de Sessão."""
+    print("CALLBACK: handle_sessao_submission")
+    
+    consultor = st.session_state.consultor_selectbox
+    # Pega o texto final editado pelo usuário no text_area
+    texto_final = st.session_state.get("sessao_msg_preview", "")
+    
+    success = send_sessao_to_chat(consultor, texto_final)
+    
+    if success:
+        st.session_state.last_reg_status = "success_sessao"
+        # st.session_state.sessao_msg_preview = "" # Opcional: limpar ou manter
+        st.session_state.registro_tipo_selecao = None # Fecha o formulário
+    else:
+        st.session_state.last_reg_status = "error_sessao"
 
 # Callbacks para o guia de chamados
 def set_chamado_step(step_num):
@@ -818,7 +888,6 @@ init_session_state()
 
 st.components.v1.html("<script>window.scrollTo(0, 0);</script>", height=0)
 
-# <-- MODIFICADO: Título com Imagem (width ajustado para 120px) -->
 st.markdown(
     f"""
     <div style="display: flex; align-items: center; gap: 10px;">
@@ -828,7 +897,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-# <-- FIM DA MODIFICAÇÃO -->
 
 st.markdown("<hr style='border: 1px solid #4A90E2;'>", unsafe_allow_html=True) 
 
@@ -955,7 +1023,7 @@ with col_principal:
     
     c1.button('🎯 Passar', on_click=rotate_bastao, use_container_width=True, help='Passa o bastão para o próximo elegível. Apenas o responsável atual.')
     c2.button('⏭️ Pular', on_click=toggle_skip, use_container_width=True, help='Marca/Desmarca o consultor selecionado para ser pulado na próxima rotação.')
-    c3.button('✏️ Atendimento', on_click=update_status, args=('Atendimento', False,), use_container_width=True) # MODIFICADO: 'Atividade' para 'Atendimento'
+    c3.button('✏️ Atendimento', on_click=update_status, args=('Atendimento', False,), use_container_width=True) 
     c4.button('🍽️ Almoço', on_click=update_status, args=('Almoço', False,), use_container_width=True)
     c5.button('👤 Ausente', on_click=update_status, args=('Ausente', False,), use_container_width=True)
     c6.button('🎙️ Sessão', on_click=update_status, args=('Sessão', False,), use_container_width=True)
@@ -973,30 +1041,36 @@ with col_principal:
     elif st.session_state.last_reg_status == "success_chamado":
         st.success("Chamado enviado! A resposta será enviada no seu email institucional.")
         st.session_state.last_reg_status = None
+    elif st.session_state.last_reg_status == "success_sessao":
+        st.success("Registro de Sessão enviado com sucesso!")
+        st.session_state.last_reg_status = None
     elif st.session_state.last_reg_status == "error":
         st.error("Erro ao enviar registro. Verifique se seu nome está selecionado no menu 'Consultor' acima.")
         st.session_state.last_reg_status = None
     elif st.session_state.last_reg_status == "error_chamado":
         st.error("Erro ao enviar chamado. Verifique se seu nome está selecionado e se o campo de rascunho não está vazio.")
         st.session_state.last_reg_status = None
+    elif st.session_state.last_reg_status == "error_sessao":
+        st.error("Erro ao enviar registro de sessão. Verifique se preencheu a câmara e a data.")
+        st.session_state.last_reg_status = None
     elif st.session_state.last_reg_status == "error_time":
         st.error("Erro ao enviar registro. Hora ou minuto inválido.")
         st.session_state.last_reg_status = None
     
-    st.header("Registrar Atendimento") # MODIFICADO: 'Atividade' para 'Atendimento'
+    st.header("Registros")
 
     st.radio(
-        "Tipo de Atendimento:",
-        ["Atendimento", "Atividade"], # MODIFICADO: 'Atividade' para 'Atendimento' e 'Presencial' para 'Atividade'
+        "Tipo de Registro:",
+        ["Atendimento", "Atividade", "Registro de Sessão"], 
         index=None,
         key='registro_tipo_selecao', 
         horizontal=True
     )
 
-    # --- Formulário "Atendimento" --- # MODIFICADO: 'Atividade' para 'Atendimento'
-    if st.session_state.registro_tipo_selecao == "Atendimento": # MODIFICADO: 'Atividade' para 'Atendimento'
+    # --- Formulário "Atendimento" --- 
+    if st.session_state.registro_tipo_selecao == "Atendimento": 
         with st.form(key="form_atividade"):
-            st.subheader(f"Registro de: **Atendimento**") # MODIFICADO: 'Atividade' para 'Atendimento'
+            st.subheader(f"Registro de: **Atendimento**") 
             
             st.selectbox("Usuário:", REG_USUARIO_OPCOES, index=None, placeholder="Selecione o tipo de usuário", key='reg_usuario')
             st.text_input("Nome-usuário - Setor:", key='reg_nome_setor')
@@ -1007,11 +1081,11 @@ with col_principal:
             
             st.form_submit_button(
                 "Enviar Registro",
-                on_click=handle_atividade_submission # MODIFICADO: Nome da função
+                on_click=handle_atividade_submission 
             )
             
-    # --- Formulário "Atividade" --- # MODIFICADO: 'Presencial' para 'Atividade'
-    elif st.session_state.registro_tipo_selecao == "Atividade": # MODIFICADO: 'Presencial' para 'Atividade'
+    # --- Formulário "Atividade" --- 
+    elif st.session_state.registro_tipo_selecao == "Atividade": 
         
         st.selectbox(
             "Atividade:", 
@@ -1023,7 +1097,7 @@ with col_principal:
 
         if st.session_state.get('reg_pres_atividade'):
             with st.form(key="form_presencial"):
-                st.subheader(f"Registro de: **Atividade** ({st.session_state.get('reg_pres_atividade')})") # MODIFICADO: 'Presencial' para 'Atividade'
+                st.subheader(f"Registro de: **Atividade** ({st.session_state.get('reg_pres_atividade')})") 
                 
                 if st.session_state.get('reg_pres_atividade') == "Outros":
                     st.text_input("Especifique a atividade:", key='reg_pres_atividade_outro')
@@ -1054,9 +1128,51 @@ with col_principal:
 
                 st.form_submit_button(
                     "Enviar Registro",
-                    on_click=handle_presencial_submission # MODIFICADO: Nome da função
+                    on_click=handle_presencial_submission 
                 )
-                
+    
+    # --- Formulário "Registro de Sessão" ---
+    elif st.session_state.registro_tipo_selecao == "Registro de Sessão":
+        st.subheader("Registro de Sessão")
+        
+        col_sessao_1, col_sessao_2 = st.columns(2)
+        with col_sessao_1:
+            sessao_data = st.date_input("Data da Sessão:", format="DD/MM/YYYY", key='sessao_data_input')
+        with col_sessao_2:
+            sessao_camara = st.selectbox("Selecione a Câmara:", CAMARAS_OPCOES, index=None, key='sessao_camara_select')
+            
+        consultor_atual = st.session_state.consultor_selectbox
+        
+        # Gera o texto padrão somente se tiver os dados necessários
+        texto_padrao = ""
+        if sessao_camara and sessao_data:
+            nome_consultor_txt = consultor_atual if consultor_atual and consultor_atual != "Selecione um nome" else "[NOME DO CONSULTOR]"
+            data_formatada = sessao_data.strftime("%d/%m/%Y")
+            
+            texto_padrao = (
+                f"Ola {sessao_camara} , sou o consultor {nome_consultor_txt} e serei o responsável pelo acompanhamento técnico da sua sessão na data de {data_formatada}. "
+                "Para agilizar o atendimento e verificação da demanda, caso necessário, encaminharei um arquivo em Html onde poderá preencher algumas informações prévias, "
+                "essa mensagem chegará diretamente para mim, onde poderei verificar com atencedência a situação e já chegar com a orientação/solução. "
+                "Isso não impede o contato com nosso ramal: 2660, mas lembre-se que poderei estar em outras demandas no horário da ligação. "
+                "Após a data da sessão, o responsável técnico pela ajuda se torna nosso setor, então você poderá continuar respondendo o html ou ligar em nosso setor que será muito bem atendido."
+            )
+        
+        st.markdown("**Prévia da Mensagem (Editável):**")
+        st.text_area(
+            "Mensagem:", 
+            value=texto_padrao, 
+            height=250, 
+            key="sessao_msg_preview",
+            label_visibility="collapsed"
+        )
+        
+        st.button(
+            "Enviar Mensagem de Sessão",
+            type="primary",
+            use_container_width=True,
+            on_click=handle_sessao_submission
+        )
+
     # --- Bloco Padrão Abertura de Chamados ---
     st.markdown("---")
     st.header("Padrão abertura de chamados / jiras")
@@ -1168,7 +1284,7 @@ with col_principal:
 with col_disponibilidade:
     st.header('Status dos Consultores')
     st.markdown('Marque/Desmarque para entrar/sair.')
-    ui_lists = {'fila': [], 'atendimento': [], 'almoco': [], 'saida': [], 'ausente': [], 'sessao': [], 'indisponivel': []} # MODIFICADO: 'atividade' para 'atendimento'
+    ui_lists = {'fila': [], 'atendimento': [], 'almoco': [], 'saida': [], 'ausente': [], 'sessao': [], 'indisponivel': []} 
     
     for nome in CONSULTORES:
         is_checked = st.session_state.get(f'check_{nome}', False)
@@ -1178,8 +1294,8 @@ with col_disponibilidade:
             ui_lists['fila'].insert(0, nome)
         elif status == '': 
             ui_lists['fila'].append(nome) 
-        elif status == 'Atendimento': # MODIFICADO: 'Atividade' para 'Atendimento'
-            ui_lists['atendimento'].append(nome) # MODIFICADO: 'atividade' para 'atendimento'
+        elif status == 'Atendimento': 
+            ui_lists['atendimento'].append(nome) 
         elif status == 'Almoço': 
             ui_lists['almoco'].append(nome)
         elif status == 'Ausente':
@@ -1224,7 +1340,7 @@ with col_disponibilidade:
                 col_nome.markdown(f'**{nome}** :{tag_color}-background[{title}]', unsafe_allow_html=True)
         st.markdown('---')
 
-    render_section('Atendimento', '✏️', ui_lists['atendimento'], 'yellow') # MODIFICADO: 'Atividade' para 'Atendimento' e ui_lists
+    render_section('Atendimento', '✏️', ui_lists['atendimento'], 'yellow') 
     render_section('Almoço', '🍽️', ui_lists['almoco'], 'blue')
     render_section('Ausente', '👤', ui_lists['ausente'], 'violet') 
     render_section('Sessão', '🎙️', ui_lists['sessao'], 'green')
