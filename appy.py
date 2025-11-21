@@ -48,29 +48,29 @@ GOOGLE_CHAT_WEBHOOK_CHAMADO = "https://chat.googleapis.com/v1/spaces/AAQAPPWlpW8
 # Webhook para Registro de Sessão
 GOOGLE_CHAT_WEBHOOK_SESSAO = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU"
 
-# Dados das Câmaras (Nome: Email)
+# Dados das Câmaras (Nome: Email) - NOMES CORRIGIDOS
 CAMARAS_DICT = {
-    "1ª Camara Civel": "caciv1@tjmg.jus.br",
-    "Cartorio 2ª Câmara Cível": "caciv2@tjmg.jus.br",
-    "Cartorio 3ª Camara Cível": "caciv3@tjmg.jus.br",
-    "caciv4": "caciv4@tjmg.jus.br",
-    "Cartorio 5ª Câmara Cível": "caciv5@tjmg.jus.br",
-    "Cartorio 6ª Câmara Cível": "caciv6@tjmg.jus.br",
-    "Cartorio 7ª Câmara Cível": "caciv7@tjmg.jus.br",
-    "Cartorio 8ª Câmara Cível": "caciv8@tjmg.jus.br",
-    "Cartorio 9ª Camara Civel": "caciv9@tjmg.jus.br",
-    "Cartorio 10ª Câmara Cível": "caciv10@tjmg.jus.br",
-    "Cartorio 11ª Câmara Cível": "caciv11@tjmg.jus.br",
-    "Cartorio 12ª Câmara Cível": "caciv12@tjmg.jus.br",
-    "Cartorio 13ª Câmara Cível": "caciv13@tjmg.jus.br",
-    "Cartorio 14ª Câmara Cível": "caciv14@tjmg.jus.br",
-    "Cartorio 15ª Câmara Cível": "caciv15@tjmg.jus.br",
-    "Cartorio 16ª Câmara Cível": "caciv16@tjmg.jus.br",
-    "Cartorio 17ª Câmara Cível": "caciv17@tjmg.jus.br",
-    "Cartorio 18ª Camara Civel": "caciv18@tjmg.jus.br",
-    "Cartorio 19ª Camara Civel": "caciv19@tjmg.jus.br",
-    "Cartório 20ª Camara Civel": "caciv20@tjmg.jus.br",
-    "Cartorio 21ª Camara Civel": "caciv21@tjmg.jus.br"
+    "Cartório da 1ª Câmara Cível": "caciv1@tjmg.jus.br",
+    "Cartório da 2ª Câmara Cível": "caciv2@tjmg.jus.br",
+    "Cartório da 3ª Câmara Cível": "caciv3@tjmg.jus.br",
+    "Cartório da 4ª Câmara Cível": "caciv4@tjmg.jus.br",
+    "Cartório da 5ª Câmara Cível": "caciv5@tjmg.jus.br",
+    "Cartório da 6ª Câmara Cível": "caciv6@tjmg.jus.br",
+    "Cartório da 7ª Câmara Cível": "caciv7@tjmg.jus.br",
+    "Cartório da 8ª Câmara Cível": "caciv8@tjmg.jus.br",
+    "Cartório da 9ª Câmara Cível": "caciv9@tjmg.jus.br",
+    "Cartório da 10ª Câmara Cível": "caciv10@tjmg.jus.br",
+    "Cartório da 11ª Câmara Cível": "caciv11@tjmg.jus.br",
+    "Cartório da 12ª Câmara Cível": "caciv12@tjmg.jus.br",
+    "Cartório da 13ª Câmara Cível": "caciv13@tjmg.jus.br",
+    "Cartório da 14ª Câmara Cível": "caciv14@tjmg.jus.br",
+    "Cartório da 15ª Câmara Cível": "caciv15@tjmg.jus.br",
+    "Cartório da 16ª Câmara Cível": "caciv16@tjmg.jus.br",
+    "Cartório da 17ª Câmara Cível": "caciv17@tjmg.jus.br",
+    "Cartório da 18ª Câmara Cível": "caciv18@tjmg.jus.br",
+    "Cartório da 19ª Câmara Cível": "caciv19@tjmg.jus.br",
+    "Cartório da 20ª Câmara Cível": "caciv20@tjmg.jus.br",
+    "Cartório da 21ª Câmara Cível": "caciv21@tjmg.jus.br"
 }
 CAMARAS_OPCOES = sorted(list(CAMARAS_DICT.keys()))
 
@@ -430,11 +430,12 @@ def init_session_state():
         'gif_warning': False,
         'lunch_warning_info': None,
         'last_reg_status': None, # Flag para status de registro
-        'chamado_guide_step': 0 # Etapa do guia de chamados
+        'chamado_guide_step': 0, # Etapa do guia de chamados
+        'sessao_msg_preview': "" # Inicializa o estado da preview de sessão
     }
 
     for key, default in defaults.items():
-        if key in ['play_sound', 'gif_warning', 'last_reg_status', 'chamado_guide_step']: 
+        if key in ['play_sound', 'gif_warning', 'last_reg_status', 'chamado_guide_step', 'sessao_msg_preview']: 
             st.session_state.setdefault(key, default)
         else: 
             st.session_state[key] = persisted_state.get(key, default)
@@ -850,7 +851,7 @@ def handle_sessao_submission():
     
     if success:
         st.session_state.last_reg_status = "success_sessao"
-        # st.session_state.sessao_msg_preview = "" # Opcional: limpar ou manter
+        st.session_state.sessao_msg_preview = "" # Limpa a prévia após envio
         st.session_state.registro_tipo_selecao = None # Fecha o formulário
     else:
         st.session_state.last_reg_status = "error_sessao"
@@ -1135,34 +1136,41 @@ with col_principal:
     elif st.session_state.registro_tipo_selecao == "Registro de Sessão":
         st.subheader("Registro de Sessão")
         
+        # Função para atualizar o texto da sessão automaticamente (Reatividade)
+        def atualizar_texto_sessao():
+            data_input = st.session_state.get('sessao_data_input')
+            camara_input = st.session_state.get('sessao_camara_select')
+            consultor_atual = st.session_state.consultor_selectbox
+            
+            if data_input and camara_input:
+                nome_consultor_txt = consultor_atual if consultor_atual and consultor_atual != "Selecione um nome" else "[NOME DO CONSULTOR]"
+                data_formatada = data_input.strftime("%d/%m/%Y")
+                
+                texto_gerado = (
+                    f"Olá {camara_input}, sou o consultor {nome_consultor_txt} e serei o responsável pelo acompanhamento técnico da sua sessão na data de {data_formatada}. "
+                    "Para agilizar o atendimento e verificação da demanda, caso necessário, encaminharei um arquivo em Html onde poderá preencher algumas informações prévias, "
+                    "essa mensagem chegará diretamente para mim, onde poderei verificar com antecedência a situação e já chegar com a orientação/solução. "
+                    "Isso não impede o contato com nosso ramal: 2660, mas lembre-se que poderei estar em outras demandas no horário da ligação. "
+                    "Após a data da sessão, o responsável técnico pela ajuda se torna nosso setor, então você poderá continuar respondendo o html ou ligar em nosso setor que será muito bem atendido."
+                )
+                st.session_state['sessao_msg_preview'] = texto_gerado
+            else:
+                st.session_state['sessao_msg_preview'] = ""
+
         col_sessao_1, col_sessao_2 = st.columns(2)
         with col_sessao_1:
-            sessao_data = st.date_input("Data da Sessão:", format="DD/MM/YYYY", key='sessao_data_input')
+            # Adicionado on_change para disparar atualização imediata
+            st.date_input("Data da Sessão:", format="DD/MM/YYYY", key='sessao_data_input', on_change=atualizar_texto_sessao)
         with col_sessao_2:
-            sessao_camara = st.selectbox("Selecione a Câmara:", CAMARAS_OPCOES, index=None, key='sessao_camara_select')
+            # Adicionado on_change para disparar atualização imediata
+            st.selectbox("Selecione a Câmara:", CAMARAS_OPCOES, index=None, key='sessao_camara_select', on_change=atualizar_texto_sessao)
             
-        consultor_atual = st.session_state.consultor_selectbox
-        
-        # Gera o texto padrão somente se tiver os dados necessários
-        texto_padrao = ""
-        if sessao_camara and sessao_data:
-            nome_consultor_txt = consultor_atual if consultor_atual and consultor_atual != "Selecione um nome" else "[NOME DO CONSULTOR]"
-            data_formatada = sessao_data.strftime("%d/%m/%Y")
-            
-            texto_padrao = (
-                f"Ola {sessao_camara} , sou o consultor {nome_consultor_txt} e serei o responsável pelo acompanhamento técnico da sua sessão na data de {data_formatada}. "
-                "Para agilizar o atendimento e verificação da demanda, caso necessário, encaminharei um arquivo em Html onde poderá preencher algumas informações prévias, "
-                "essa mensagem chegará diretamente para mim, onde poderei verificar com atencedência a situação e já chegar com a orientação/solução. "
-                "Isso não impede o contato com nosso ramal: 2660, mas lembre-se que poderei estar em outras demandas no horário da ligação. "
-                "Após a data da sessão, o responsável técnico pela ajuda se torna nosso setor, então você poderá continuar respondendo o html ou ligar em nosso setor que será muito bem atendido."
-            )
-        
         st.markdown("**Prévia da Mensagem (Editável):**")
+        # O valor agora é lido diretamente do estado 'sessao_msg_preview'
         st.text_area(
             "Mensagem:", 
-            value=texto_padrao, 
-            height=250, 
             key="sessao_msg_preview",
+            height=250, 
             label_visibility="collapsed"
         )
         
