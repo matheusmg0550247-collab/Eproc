@@ -177,9 +177,10 @@ def play_sound_html(): return f'<audio autoplay="true"><source src="{SOUND_URL}"
 def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
     """Gera o código HTML do checklist com os dados preenchidos."""
     
-    # URL do Webhook para onde o HTML vai enviar os dados (O mesmo da sessão)
+    # URL do Webhook para onde o HTML vai enviar os dados
     webhook_destino = GOOGLE_CHAT_WEBHOOK_SESSAO
     
+    # Cria o HTML injetando as variáveis do Python
     html_template = f"""
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -217,6 +218,7 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
         return;
     }}
     
+    // Monta a mensagem para o Google Chat
     const msgTexto = 
         "*📝 Retorno de Checklist de Sessão*\\n" +
         "*Câmara:* {camara_nome}\\n" +
@@ -1212,6 +1214,11 @@ with col_principal:
                 file_name="Checklist_Sessao.html",
                 mime="text/html"
             )
+        
+        # Botão opcional para limpar o estado de sucesso manualmente
+        if st.button("Limpar Mensagem"):
+            st.session_state.last_reg_status = None
+            st.rerun()
         
     elif st.session_state.last_reg_status == "error":
         st.error("Erro ao enviar registro. Verifique se seu nome está selecionado no menu 'Consultor' acima.")
