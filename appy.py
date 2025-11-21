@@ -48,7 +48,7 @@ GOOGLE_CHAT_WEBHOOK_CHAMADO = "https://chat.googleapis.com/v1/spaces/AAQAPPWlpW8
 # Webhook para Registro de Sessão
 GOOGLE_CHAT_WEBHOOK_SESSAO = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU"
 
-# Dados das Câmaras (Nome: Email) - NOMES CORRIGIDOS
+# Dados das Câmaras (Nome: Email) - NOMES CORRIGIDOS COM ACENTOS
 CAMARAS_DICT = {
     "Cartório da 1ª Câmara Cível": "caciv1@tjmg.jus.br",
     "Cartório da 2ª Câmara Cível": "caciv2@tjmg.jus.br",
@@ -1147,11 +1147,16 @@ with col_principal:
                 data_formatada = data_input.strftime("%d/%m/%Y")
                 
                 texto_gerado = (
-                    f"Olá {camara_input}, sou o consultor {nome_consultor_txt} e serei o responsável pelo acompanhamento técnico da sua sessão na data de {data_formatada}. "
-                    "Para agilizar o atendimento e verificação da demanda, caso necessário, encaminharei um arquivo em Html onde poderá preencher algumas informações prévias, "
-                    "essa mensagem chegará diretamente para mim, onde poderei verificar com antecedência a situação e já chegar com a orientação/solução. "
-                    "Isso não impede o contato com nosso ramal: 2660, mas lembre-se que poderei estar em outras demandas no horário da ligação. "
-                    "Após a data da sessão, o responsável técnico pela ajuda se torna nosso setor, então você poderá continuar respondendo o html ou ligar em nosso setor que será muito bem atendido."
+                    f"Prezada equipe do {camara_input},\n\n"
+                    f"Meu nome é {nome_consultor_txt}, sou assistente de processos judiciais da CESUPE/TJMG e serei o responsável pelo acompanhamento técnico da sessão de julgamento agendada para o dia {data_formatada}.\n\n"
+                    "Para agilizar o atendimento e a verificação de eventuais demandas, encaminharei um formulário em HTML para preenchimento de algumas informações prévias. As respostas retornarão diretamente para mim, permitindo a análise antecipada da situação e, sempre que possível, a definição prévia da orientação ou solução a ser adotada. O preenchimento não é obrigatório, mas ajuda bastante a tornar o suporte mais rápido e objetivo no dia da sessão.\n\n"
+                    "Ressalto que isso não impede o contato pelo nosso ramal 2660. No entanto, no momento da ligação, posso estar atendendo outras demandas, o que pode gerar alguma demora na resposta.\n\n"
+                    "Após a realização da sessão, o suporte técnico volta a ser prestado de forma rotineira pelo nosso setor. Assim, em caso de novas dúvidas ou necessidades, vocês poderão:\n"
+                    "entrar em contato diretamente com o nosso setor pelo ramal 2660.\n\n"
+                    "Permaneço à disposição e agradeço a colaboração.\n\n"
+                    "Atenciosamente,\n"
+                    f"{nome_consultor_txt}\n"
+                    "Assistente de Processos Judiciais – CESUPE/TJMG"
                 )
                 st.session_state['sessao_msg_preview'] = texto_gerado
             else:
@@ -1170,7 +1175,7 @@ with col_principal:
         st.text_area(
             "Mensagem:", 
             key="sessao_msg_preview",
-            height=250, 
+            height=450, 
             label_visibility="collapsed"
         )
         
