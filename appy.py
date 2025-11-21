@@ -48,7 +48,7 @@ GOOGLE_CHAT_WEBHOOK_CHAMADO = "https://chat.googleapis.com/v1/spaces/AAQAPPWlpW8
 # Webhook para Registro de Sessão
 GOOGLE_CHAT_WEBHOOK_SESSAO = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU"
 
-# Dados das Câmaras (Nome: Email) - NOMES CORRIGIDOS COM ACENTOS
+# Dados das Câmaras (Nome: Email)
 CAMARAS_DICT = {
     "Cartório da 1ª Câmara Cível": "caciv1@tjmg.jus.br",
     "Cartório da 2ª Câmara Cível": "caciv2@tjmg.jus.br",
@@ -1146,6 +1146,9 @@ with col_principal:
                 nome_consultor_txt = consultor_atual if consultor_atual and consultor_atual != "Selecione um nome" else "[NOME DO CONSULTOR]"
                 data_formatada = data_input.strftime("%d/%m/%Y")
                 
+                # Pega o e-mail correspondente do dicionário
+                email_setor = CAMARAS_DICT.get(camara_input, "")
+                
                 texto_gerado = (
                     f"Prezada equipe do {camara_input},\n\n"
                     f"Meu nome é {nome_consultor_txt}, sou assistente de processos judiciais da CESUPE/TJMG e serei o responsável pelo acompanhamento técnico da sessão de julgamento agendada para o dia {data_formatada}.\n\n"
@@ -1156,7 +1159,8 @@ with col_principal:
                     "Permaneço à disposição e agradeço a colaboração.\n\n"
                     "Atenciosamente,\n"
                     f"{nome_consultor_txt}\n"
-                    "Assistente de Processos Judiciais – CESUPE/TJMG"
+                    "Assistente de Processos Judiciais – CESUPE/TJMG\n\n"
+                    f"Email do setor: {email_setor}"
                 )
                 st.session_state['sessao_msg_preview'] = texto_gerado
             else:
