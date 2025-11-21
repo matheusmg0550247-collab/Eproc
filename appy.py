@@ -175,7 +175,7 @@ def play_sound_html(): return f'<audio autoplay="true"><source src="{SOUND_URL}"
 
 # --- Função Geradora do HTML Personalizado ---
 def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
-    """Gera o código HTML do checklist com lógica de abas (Cartório/Gabinete) exata das imagens."""
+    """Gera o código HTML do checklist com lógica de abas, data de corte e outros."""
     
     webhook_destino = GOOGLE_CHAT_WEBHOOK_SESSAO
     
@@ -191,12 +191,18 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
     .container {{ max-width: 800px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
     h1 {{ color: #003366; font-size: 24px; border-bottom: 2px solid #003366; padding-bottom: 10px; margin-bottom: 20px; }}
     .intro-box {{ background-color: #eef4fa; border-left: 5px solid #003366; padding: 15px; margin-bottom: 25px; font-size: 14px; line-height: 1.5; }}
-    .field-group {{ margin-bottom: 20px; }}
+    
+    /* Layout lado a lado para Câmara e Responsável */
+    .row-flex {{ display: flex; gap: 20px; margin-bottom: 20px; align-items: flex-end; }}
+    .col-flex {{ flex: 1; }}
+    
     .field-label {{ font-weight: bold; display: block; margin-bottom: 5px; color: #444; }}
-    .static-value {{ background-color: #f9f9f9; padding: 10px; border: 1px solid #ddd; border-radius: 4px; color: #555; font-weight: 500; }}
+    .static-value {{ background-color: #f9f9f9; padding: 10px; border: 1px solid #ddd; border-radius: 4px; color: #555; font-weight: 500; min-height: 20px; display: flex; align-items: center; }}
     select, input[type="text"] {{ width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box; }}
     
-    /* Estilo dos Cabeçalhos de Seção (I. Pré-Sessão, II. Pós-Sessão) - Fundo Azul Escuro */
+    .field-group {{ margin-bottom: 20px; }}
+
+    /* Estilo dos Cabeçalhos de Seção (I. Pré-Sessão, II. Pós-Sessão) */
     .section-header {{ background-color: #003366; color: white; padding: 10px 15px; border-radius: 4px; margin-top: 25px; margin-bottom: 15px; font-size: 15px; font-weight: bold; }}
     
     .checklist-title {{ font-size: 22px; font-weight: bold; color: #333; margin-top: 30px; margin-bottom: 5px; }}
@@ -204,11 +210,13 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
     
     .checkbox-item {{ margin-bottom: 15px; display: flex; align-items: flex-start; border-bottom: 1px solid #eee; padding-bottom: 10px; }}
     .checkbox-item:last-child {{ border-bottom: none; }}
-    .checkbox-item input {{ margin-right: 10px; margin-top: 3px; width: 18px; height: 18px; accent-color: #003366; cursor: pointer; }}
+    .checkbox-item input[type="checkbox"] {{ margin-right: 10px; margin-top: 3px; width: 18px; height: 18px; accent-color: #003366; cursor: pointer; flex-shrink: 0; }}
     .checkbox-item label {{ cursor: pointer; line-height: 1.4; font-size: 14px; color: #444; }}
     .checkbox-item label strong {{ color: #000; }}
     
-    /* Botão Verde conforme imagem */
+    /* Estilo para input de Outros */
+    .other-input {{ margin-top: 5px; width: 100%; display: none; margin-left: 28px; }}
+    
     .btn-submit {{ background-color: #28a745; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 4px; cursor: pointer; display: block; width: 100%; margin-top: 30px; transition: background 0.3s; font-weight: bold; }}
     .btn-submit:hover {{ background-color: #218838; }}
     
@@ -216,7 +224,6 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
     .hidden {{ display: none; }}
 </style>
 <script>
-  // Função para alternar entre os checklists
   function toggleSetor() {{
       const setor = document.getElementById("setor").value;
       const divCartorio = document.getElementById("checklist-cartorio-container");
@@ -231,18 +238,30 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
       }}
   }}
 
+  // Função para mostrar/ocultar caixa de texto de Outros
+  function toggleOther(inputId) {{
+      const inputEl = document.getElementById(inputId);
+      if (inputEl.style.display === "none" || inputEl.style.display === "") {{
+          inputEl.style.display = "block";
+          inputEl.focus();
+      }} else {{
+          inputEl.style.display = "none";
+          inputEl.value = ""; // Limpa se ocultar
+      }}
+  }}
+
   function enviarWebhook() {{
     const webhookUrl = '{webhook_destino}';
     
     const nomeUsuario = document.getElementById('nome_usuario').value;
     if (!nomeUsuario) {{
-        alert("Por favor, preencha seu nome antes de enviar.");
+        alert("Por favor, preencha o nome do Responsável antes de enviar.");
         return;
     }}
 
     const setor = document.getElementById('setor').value;
     
-    // Pega apenas os checkboxes visíveis (do setor selecionado)
+    // Determina qual container está ativo
     let containerAtivo;
     if (setor === "Cartório") {{
         containerAtivo = document.getElementById("checklist-cartorio-container");
@@ -250,16 +269,53 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
         containerAtivo = document.getElementById("checklist-gabinete-container");
     }}
     
+    // Coleta os checkboxes marcados dentro do container ativo
     const checks = containerAtivo.querySelectorAll('input[type="checkbox"]:checked');
     let itensMarcados = [];
-    checks.forEach((chk) => {{ itensMarcados.push("- " + chk.value); }});
     
-    // Payload do alerta
+    checks.forEach((chk) => {{
+        let val = "- " + chk.value;
+        // Verifica se é o checkbox de Outros e pega o texto
+        if (chk.id === "c_chk_outros") {{
+            const textoOutros = document.getElementById("c_input_outros").value;
+            if (textoOutros) val += ": " + textoOutros;
+        }}
+        if (chk.id === "g_chk_outros") {{
+            const textoOutros = document.getElementById("g_input_outros").value;
+            if (textoOutros) val += ": " + textoOutros;
+        }}
+        itensMarcados.push(val);
+    }});
+    
+    if (itensMarcados.length === 0 && confirm("Nenhuma dúvida foi marcada. Deseja enviar mesmo assim como 'Sem dúvidas'?") === false) {{
+        return;
+    }}
+    
+    // --- LÓGICA DE DATA PARA O NOME DO CONSULTOR (WebHook) ---
+    // Data da sessão vem como DD/MM/AAAA do Python
+    const dataSessaoStr = "{data_sessao_formatada}";
+    const parts = dataSessaoStr.split('/');
+    // Cria objeto Date (ano, mes-1, dia). Assume formato PT-BR.
+    // Atenção: new Date(ano, mes, dia) -> mes começa em 0 (janeiro)
+    const dataSessaoObj = new Date(parts[2], parts[1] - 1, parts[0]);
+    
+    // Data de hoje (Zera horas para comparar apenas datas)
+    const hoje = new Date();
+    hoje.setHours(0,0,0,0);
+    
+    let consultorResponsavel = "{consultor_nome}";
+    
+    // Se hoje for maior (depois) que a data da sessão, muda para Cesupe
+    if (hoje > dataSessaoObj) {{
+        consultorResponsavel = "Cesupe";
+    }}
+    
     const msgTexto = 
         "*📝 Retorno de Checklist de Sessão*\\n" +
         "*Câmara:* {camara_nome}\\n" +
         "*Data:* {data_sessao_formatada}\\n" +
-        "*Responsável:* " + nomeUsuario + "\\n" +
+        "*Responsável (Local):* " + nomeUsuario + "\\n" +
+        "*Consultor Técnico:* " + consultorResponsavel + "\\n" +
         "*Setor:* " + setor + "\\n\\n" +
         "*Dúvidas/Pontos de Atenção:*" + (itensMarcados.length > 0 ? "\\n" + itensMarcados.join("\\n") : "\\nNenhuma dúvida reportada (Checklist OK).");
 
@@ -272,7 +328,7 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
     }})
     .then(response => {{
       if (response.ok) {{
-        alert('Formulário enviado com sucesso! O consultor já recebeu suas informações.');
+        alert('Formulário enviado com sucesso! O suporte já recebeu suas informações.');
       }} else {{
         alert('Falha ao enviar. Tente novamente.');
       }}
@@ -283,7 +339,6 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
     }});
   }}
   
-  // Garante que o estado correto carregue ao abrir a página
   window.onload = function() {{
       toggleSetor();
   }};
@@ -300,9 +355,15 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
         <strong>Caso tenha dúvida ou insegurança em alguma etapa, marque a caixa correspondente e envie o formulário.</strong> Isso me permitirá atuar preventivamente.
     </div>
 
-    <div class="field-group">
-        <label class="field-label">Seu Nome:</label>
-        <input type="text" id="nome_usuario" placeholder="Digite seu nome">
+    <div class="row-flex">
+        <div class="col-flex">
+            <label class="field-label">Câmara:</label>
+            <div class="static-value">{camara_nome}</div>
+        </div>
+        <div class="col-flex">
+            <label class="field-label">Responsável (Seu Nome):</label>
+            <input type="text" id="nome_usuario" placeholder="Digite seu nome">
+        </div>
     </div>
 
     <div class="field-group">
@@ -313,51 +374,12 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
     <div class="field-group">
         <label class="field-label">Qual é o seu Setor?</label>
         <select id="setor" onchange="toggleSetor()">
-            <option value="Gabinete">Gabinete</option>
             <option value="Cartório">Cartório (Secretaria)</option>
+            <option value="Gabinete">Gabinete</option>
         </select>
     </div>
 
-    <div id="checklist-gabinete-container">
-        <div class="checklist-title">Check-list: Gabinete</div>
-        <div class="checklist-desc">Foco na análise processual, votos e disponibilização de documentos.</div>
-        
-        <div class="section-header">I. Pré-Sessão (Análise e Inclusão)</div>
-        
-        <div class="checkbox-item">
-            <input type="checkbox" id="g_chk1" value="Gabinete: Inclusão">
-            <label for="g_chk1"><strong>Inclusão:</strong> Selecionar processos e incluir na sessão desejada.</label>
-        </div>
-        <div class="checkbox-item">
-            <input type="checkbox" id="g_chk2" value="Gabinete: Minutas">
-            <label for="g_chk2"><strong>Minutas:</strong> Criar Relatório/Voto e liberar visualização para o colegiado (Revisores/Vogais).</label>
-        </div>
-        <div class="checkbox-item">
-            <input type="checkbox" id="g_chk3" value="Gabinete: Destaques">
-            <label for="g_chk3"><strong>Destaques:</strong> Analisar divergências/vistas e inserir destaques próprios (ex: Não concordância Virtual).</label>
-        </div>
-        <div class="checkbox-item">
-            <input type="checkbox" id="g_chk4" value="Gabinete: Votação (Virtual)">
-            <label for="g_chk4"><strong>Votação (Virtual):</strong> Verificar placar e previsão em tempo real.</label>
-        </div>
-
-        <div class="section-header">II. Pós-Sessão (Formalização)</div>
-
-        <div class="checkbox-item">
-            <input type="checkbox" id="g_chk5" value="Gabinete: Ajustar Votos">
-            <label for="g_chk5"><strong>Ajustar Votos:</strong> Ajustar minutas caso o resultado mude o relator do acórdão.</label>
-        </div>
-        <div class="checkbox-item">
-            <input type="checkbox" id="g_chk6" value="Gabinete: Assinar">
-            <label for="g_chk6"><strong>Assinar:</strong> Assinar Relatório, Voto e Acórdão (Ementa) no status "Para Assinar".</label>
-        </div>
-        <div class="checkbox-item">
-            <input type="checkbox" id="g_chk7" value="Gabinete: Movimentação Final">
-            <label for="g_chk7"><strong>Movimentação Final:</strong> Anexar aos autos e realizar remessa (ex: DRI ou Arquivamento).</label>
-        </div>
-    </div>
-
-    <div id="checklist-cartorio-container" class="hidden">
+    <div id="checklist-cartorio-container">
         <div class="checklist-title">Check-list: Cartório (Secretaria)</div>
         <div class="checklist-desc">Responsável pela gestão administrativa, prazos e publicações.</div>
         
@@ -406,9 +428,60 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
             <input type="checkbox" id="c_chk10" value="Cartório: Publicar Ata no DJEN">
             <label for="c_chk10"><strong>Publicar Ata no DJEN:</strong> Agendar publicação (Atenção: ação irreversível para alterações).</label>
         </div>
+        
+        <div class="checkbox-item" style="flex-wrap: wrap;">
+            <input type="checkbox" id="c_chk_outros" value="Cartório: Outros" onclick="toggleOther('c_input_outros')">
+            <label for="c_chk_outros"><strong>Outros:</strong> (Descreva abaixo)</label>
+            <input type="text" id="c_input_outros" class="other-input" placeholder="Digite sua dúvida...">
+        </div>
     </div>
 
-    <button class="btn-submit" onclick="enviarWebhook()">Enviar Dúvidas</button>
+    <div id="checklist-gabinete-container" class="hidden">
+        <div class="checklist-title">Check-list: Gabinete</div>
+        <div class="checklist-desc">Foco na análise processual, votos e disponibilização de documentos.</div>
+        
+        <div class="section-header">I. Pré-Sessão (Análise e Inclusão)</div>
+        
+        <div class="checkbox-item">
+            <input type="checkbox" id="g_chk1" value="Gabinete: Inclusão">
+            <label for="g_chk1"><strong>Inclusão:</strong> Selecionar processos e incluir na sessão desejada.</label>
+        </div>
+        <div class="checkbox-item">
+            <input type="checkbox" id="g_chk2" value="Gabinete: Minutas">
+            <label for="g_chk2"><strong>Minutas:</strong> Criar Relatório/Voto e liberar visualização para o colegiado (Revisores/Vogais).</label>
+        </div>
+        <div class="checkbox-item">
+            <input type="checkbox" id="g_chk3" value="Gabinete: Destaques">
+            <label for="g_chk3"><strong>Destaques:</strong> Analisar divergências/vistas e inserir destaques próprios (ex: Não concordância Virtual).</label>
+        </div>
+        <div class="checkbox-item">
+            <input type="checkbox" id="g_chk4" value="Gabinete: Votação (Virtual)">
+            <label for="g_chk4"><strong>Votação (Virtual):</strong> Verificar placar e previsão em tempo real.</label>
+        </div>
+
+        <div class="section-header">II. Pós-Sessão (Formalização)</div>
+
+        <div class="checkbox-item">
+            <input type="checkbox" id="g_chk5" value="Gabinete: Ajustar Votos">
+            <label for="g_chk5"><strong>Ajustar Votos:</strong> Ajustar minutas caso o resultado mude o relator do acórdão.</label>
+        </div>
+        <div class="checkbox-item">
+            <input type="checkbox" id="g_chk6" value="Gabinete: Assinar">
+            <label for="g_chk6"><strong>Assinar:</strong> Assinar Relatório, Voto e Acórdão (Ementa) no status "Para Assinar".</label>
+        </div>
+        <div class="checkbox-item">
+            <input type="checkbox" id="g_chk7" value="Gabinete: Movimentação Final">
+            <label for="g_chk7"><strong>Movimentação Final:</strong> Anexar aos autos e realizar remessa (ex: DRI ou Arquivamento).</label>
+        </div>
+        
+        <div class="checkbox-item" style="flex-wrap: wrap;">
+            <input type="checkbox" id="g_chk_outros" value="Gabinete: Outros" onclick="toggleOther('g_input_outros')">
+            <label for="g_chk_outros"><strong>Outros:</strong> (Descreva abaixo)</label>
+            <input type="text" id="g_input_outros" class="other-input" placeholder="Digite sua dúvida...">
+        </div>
+    </div>
+
+    <button class="btn-submit" onclick="enviarWebhook()">Enviar Dúvidas ao Consultor</button>
 </div>
 
 </body>
@@ -1096,6 +1169,7 @@ def handle_sessao_submission():
     camara = st.session_state.get('sessao_camara_select', 'Não informada')
     data_obj = st.session_state.get('sessao_data_input')
     data_formatada = data_obj.strftime("%d/%m/%Y") if data_obj else 'Não informada'
+    data_nome_arquivo = data_obj.strftime("%d-%m-%Y") if data_obj else 'SemData'
     
     success = send_sessao_to_chat(consultor, texto_final)
     
@@ -1107,6 +1181,7 @@ def handle_sessao_submission():
         html_content = gerar_html_checklist(consultor, camara, data_formatada)
         st.session_state.html_content_cache = html_content
         st.session_state.html_download_ready = True
+        st.session_state.html_filename = f"Sessao_{data_nome_arquivo}.html" # Nome do arquivo com data
         
         st.session_state.registro_tipo_selecao = None # Fecha o formulário
     else:
@@ -1304,10 +1379,11 @@ with col_principal:
         
         # MOSTRA O BOTÃO DE DOWNLOAD SE O HTML ESTIVER PRONTO
         if st.session_state.get('html_download_ready') and st.session_state.get('html_content_cache'):
+            filename = st.session_state.get('html_filename', 'Checklist_Sessao.html')
             st.download_button(
-                label="⬇️ Baixar Formulário HTML",
+                label=f"⬇️ Baixar Formulário HTML ({filename})",
                 data=st.session_state.html_content_cache,
-                file_name="Checklist_Sessao.html",
+                file_name=filename,
                 mime="text/html"
             )
         
