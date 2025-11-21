@@ -157,7 +157,7 @@ def load_state():
 def send_chat_notification_internal(consultor, status):
     """Envia notificação de giro do bastão (não o relatório)."""
     if CHAT_WEBHOOK_BASTAO and status == 'Bastão':
-        message_template = "🎉 **BASTÃO GIRADO!** 🎉 \n\n- **Novo Responsável:** {consultor}\n- **Acesse o Painel:** {app_url}"
+        message_template = "🎉 **BASTÃO GIRADO!** 🎉 \n\n- **Novo(a) Responsável:** {consultor}\n- **Acesse o Painel:** {app_url}"
         message_text = message_template.format(consultor=consultor, app_url=APP_URL_CLOUD) 
         chat_message = {"text": message_text}
         try:
@@ -175,7 +175,7 @@ def play_sound_html(): return f'<audio autoplay="true"><source src="{SOUND_URL}"
 
 # --- Função Geradora do HTML Personalizado ---
 def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
-    """Gera o código HTML do checklist com lógica de abas, data de corte e outros."""
+    """Gera o código HTML do checklist com lógica de abas, data de corte e linguagem inclusiva."""
     
     webhook_destino = GOOGLE_CHAT_WEBHOOK_SESSAO
     
@@ -296,7 +296,6 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
     const dataSessaoStr = "{data_sessao_formatada}";
     const parts = dataSessaoStr.split('/');
     // Cria objeto Date (ano, mes-1, dia). Assume formato PT-BR.
-    // Atenção: new Date(ano, mes, dia) -> mes começa em 0 (janeiro)
     const dataSessaoObj = new Date(parts[2], parts[1] - 1, parts[0]);
     
     // Data de hoje (Zera horas para comparar apenas datas)
@@ -315,7 +314,7 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
         "*Câmara:* {camara_nome}\\n" +
         "*Data:* {data_sessao_formatada}\\n" +
         "*Responsável (Local):* " + nomeUsuario + "\\n" +
-        "*Consultor Técnico:* " + consultorResponsavel + "\\n" +
+        "*Consultor(a) Técnico(a):* " + consultorResponsavel + "\\n" +
         "*Setor:* " + setor + "\\n\\n" +
         "*Dúvidas/Pontos de Atenção:*" + (itensMarcados.length > 0 ? "\\n" + itensMarcados.join("\\n") : "\\nNenhuma dúvida reportada (Checklist OK).");
 
@@ -328,7 +327,7 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
     }})
     .then(response => {{
       if (response.ok) {{
-        alert('Formulário enviado com sucesso! O suporte já recebeu suas informações.');
+        alert('Formulário enviado com sucesso! O(A) consultor(a) já recebeu suas informações.');
       }} else {{
         alert('Falha ao enviar. Tente novamente.');
       }}
@@ -481,7 +480,7 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
         </div>
     </div>
 
-    <button class="btn-submit" onclick="enviarWebhook()">Enviar Dúvidas ao Consultor</button>
+    <button class="btn-submit" onclick="enviarWebhook()">Enviar Dúvidas ao(à) Consultor(a)</button>
 </div>
 
 </body>
@@ -498,12 +497,12 @@ def send_atividade_to_chat(consultor, tipo_atendimento, form_data):
         return False
 
     if not consultor or consultor == 'Selecione um nome':
-        print("Erro de registro: Consultor não selecionado.")
+        print("Erro de registro: Consultor(a) não selecionado(a).")
         return False
 
     message_text = (
         f"**📋 Novo Registro de Atendimento**\n\n"
-        f"**Consultor:** {consultor}\n"
+        f"**Consultor(a):** {consultor}\n"
         f"**Tipo:** {tipo_atendimento}\n"
         f"**Usuário:** {form_data['usuario']}\n"
         f"**Nome/Setor:** {form_data['nome_setor']}\n"
@@ -530,7 +529,7 @@ def send_presencial_to_chat(consultor, form_data):
         return False
 
     if not consultor or consultor == 'Selecione um nome':
-        print("Erro de registro: Consultor não selecionado.")
+        print("Erro de registro: Consultor(a) não selecionado(a).")
         return False
 
     # Formata a data e horas
@@ -540,7 +539,7 @@ def send_presencial_to_chat(consultor, form_data):
 
     message_text = (
         f"**📅 Novo Registro de Atividade**\n\n"
-        f"**Consultor:** {consultor}\n"
+        f"**Consultor(a):** {consultor}\n"
         f"**Atividade:** {form_data['atividade']}\n"
         f"**Data:** {data_str}\n"
         f"**Início:** {inicio_str}\n"
@@ -567,7 +566,7 @@ def send_chamado_to_chat(consultor, texto_chamado):
         return False
 
     if not consultor or consultor == 'Selecione um nome':
-        print("Erro de registro de chamado: Consultor não selecionado.")
+        print("Erro de registro de chamado: Consultor(a) não selecionado(a).")
         return False
         
     if not texto_chamado:
@@ -576,7 +575,7 @@ def send_chamado_to_chat(consultor, texto_chamado):
 
     message_text = (
         f"**🔔 Novo Rascunho de Chamado/Jira**\n\n"
-        f"**Consultor:** {consultor}\n"
+        f"**Consultor(a):** {consultor}\n"
         f"--- (Início do Rascunho) ---\n"
         f"{texto_chamado}\n"
         f"--- (Fim do Rascunho) ---"
@@ -599,7 +598,7 @@ def send_sessao_to_chat(consultor, texto_mensagem):
         return False
 
     if not consultor or consultor == 'Selecione um nome':
-        print("Erro: Consultor não selecionado.")
+        print("Erro: Consultor(a) não selecionado(a).")
         return False
         
     if not texto_mensagem:
@@ -913,7 +912,7 @@ def rotate_bastao():
     st.session_state.gif_warning = False; st.session_state.rotation_gif_start_time = None
     st.session_state.lunch_warning_info = None 
 
-    if not selected or selected == 'Selecione um nome': st.warning('Selecione um consultor.'); return
+    if not selected or selected == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
     queue = st.session_state.bastao_queue
     skips = st.session_state.skip_flags
     current_holder = next((c for c, s in st.session_state.status_texto.items() if s == 'Bastão'), None)
@@ -970,7 +969,7 @@ def rotate_bastao():
         save_state()
     else:
         print('Ninguém elegível. Forçando re-check e mantendo estado atual.')
-        st.warning('Não há próximo consultor elegível na fila no momento.')
+        st.warning('Não há próximo(a) consultor(a) elegível na fila no momento.')
         check_and_assume_baton() 
 
 def toggle_skip(): 
@@ -980,7 +979,7 @@ def toggle_skip():
     st.session_state.gif_warning = False; st.session_state.rotation_gif_start_time = None
     st.session_state.lunch_warning_info = None 
 
-    if not selected or selected == 'Selecione um nome': st.warning('Selecione um consultor.'); return
+    if not selected or selected == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
     if not st.session_state.get(f'check_{selected}'): st.warning(f'{selected} não está disponível para marcar/desmarcar.'); return
 
     current_skip_status = st.session_state.skip_flags.get(selected, False)
@@ -1003,7 +1002,7 @@ def update_status(status_text, change_to_available):
     selected = st.session_state.consultor_selectbox
     st.session_state.gif_warning = False; st.session_state.rotation_gif_start_time = None
     if not selected or selected == 'Selecione um nome': 
-        st.warning('Selecione um consultor.')
+        st.warning('Selecione um(a) consultor(a).')
         return
 
     if status_text != 'Almoço':
@@ -1031,7 +1030,7 @@ def update_status(status_text, change_to_available):
             st.session_state.lunch_warning_info = {
                 'consultor': selected,
                 'start_time': datetime.now(),
-                'message': f'Consultor {selected} verificar horário. Metade dos consultores ativos já em almoço. Clique novamente em "Almoço" para confirmar.'
+                'message': f'Consultor(a) {selected} verificar horário. Metade dos consultores ativos já em almoço. Clique novamente em "Almoço" para confirmar.'
             }
             save_state() 
             return 
@@ -1336,7 +1335,7 @@ with col_principal:
     if skipped_consultants:
         skipped_text = ', '.join(sorted(skipped_consultants))
         num_skipped = len(skipped_consultants)
-        titulo = '**Consultor Pulou:**' if num_skipped == 1 else '**Consultores Pularam:**'
+        titulo = '**Consultor(a) Pulou:**' if num_skipped == 1 else '**Consultores(as) Pularam:**'
         verbo_pular = 'pulou' if num_skipped == 1 else 'pularam'
         verbo_retornar = 'Irá retornar' if num_skipped == 1 else 'Irão retornar'
         st.markdown(f'''
@@ -1348,7 +1347,7 @@ with col_principal:
         ''', unsafe_allow_html=True)
 
     st.markdown("###")
-    st.header("**Consultor**")
+    st.header("**Consultor(a)**")
     st.selectbox('Selecione:', options=['Selecione um nome'] + CONSULTORES, key='consultor_selectbox', label_visibility='collapsed')
     st.markdown("#### "); st.markdown("**Ações:**")
     
@@ -1554,7 +1553,7 @@ with col_principal:
                 
                 **PASSO 1: Testes Iniciais**
                 
-                Antes de abrir o chamado, o consultor deve primeiro realizar os procedimentos de suporte e testes necessários para **verificar e confirmar o problema** que foi relatado pelo usuário.
+                Antes de abrir o chamado, o consultor(a) deve primeiro realizar os procedimentos de suporte e testes necessários para **verificar e confirmar o problema** que foi relatado pelo usuário.
                 """)
                 st.button("Próximo (Passo 2) ➡️", on_click=set_chamado_step, args=(2,))
             
@@ -1588,8 +1587,8 @@ with col_principal:
                 **6. Soluções de Contorno (Se houver)**
                 * Descrever qual solução de contorno foi utilizada para resolver o problema temporariamente.
                 
-                **7. Identificação do Consultor**
-                * Inserir a assinatura e identificação do consultor.
+                **7. Identificação do(a) Consultor(a)**
+                * Inserir a assinatura e identificação do(a) consultor(a).
                 
                 > **Observação para a Abertura:**
                 > Ao abrir chamados na aba específica "CONSULTORES CESUPE - ERRO", deve-se verificar se o campo "Título Extra" está preenchido com o nome do setor responsável pela abertura (CESUPE).
@@ -1599,12 +1598,12 @@ with col_principal:
             elif guide_step == 3:
                 st.subheader("PASSO 3: Registrar e Informar o Usuário por E-mail")
                 st.markdown("""
-                Após a abertura do chamado, o consultor deve enviar um e-mail ao usuário (serventuário) informando que:
+                Após a abertura do chamado, o consultor(a) deve enviar um e-mail ao usuário (serventuário) informando que:
                 
                 * A questão é de competência do setor de Informática do TJMG.
                 * Um chamado ($n^{\circ}$ CH) foi aberto junto ao referido departamento.
                 * O departamento de informática realizará as verificações e tomará as providências necessárias.
-                * O usuário deve aguardar, e o consultor entrará em contato assim que receber um feedback do departamento com as orientações.
+                * O usuário deve aguardar, e o consultor(a) entrará em contato assim que receber um feedback do departamento com as orientações.
                 """)
                 st.button("Próximo (Observações) ➡️", on_click=set_chamado_step, args=(4,))
                 
@@ -1613,7 +1612,7 @@ with col_principal:
                 st.markdown("""
                 * **Comunicação:** O envio de qualquer informação ou documento para setores ou usuários deve ser feito apenas para o **e-mail institucional oficial**.
                 * **Atualização:** A atualização das informações sobre o andamento deve ser feita no **IN**.
-                * **Controle:** Cada consultor é **responsável por ter seu próprio controle** dos chamados que abriu, atualizá-los quando necessário e orientar o usuário.
+                * **Controle:** Cada consultor(a) é **responsável por ter seu próprio controle** dos chamados que abriu, atualizá-los quando necessário e orientar o usuário.
                 """)
                 st.button("Entendi! Abrir campo de digitação ➡️", on_click=set_chamado_step, args=(5,))
                 
@@ -1646,7 +1645,7 @@ with col_principal:
 
 # --- Coluna Disponibilidade ---
 with col_disponibilidade:
-    st.header('Status dos Consultores')
+    st.header('Status dos(as) Consultores(as)')
     st.markdown('Marque/Desmarque para entrar/sair.')
     ui_lists = {'fila': [], 'atendimento': [], 'almoco': [], 'saida': [], 'ausente': [], 'sessao': [], 'indisponivel': []} 
     
