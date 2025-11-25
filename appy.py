@@ -13,7 +13,7 @@ import json
 CONSULTORES = sorted([
     "Bárbara", "Bruno", "Cláudia", "Douglas", "Fábio", "Glayce", "Isac",
     "Isabela", "Ivana", "Leonardo", "Michael", "Morôni",  "Pablo", "Ranyer",
-    "Victoria"
+    "Victoria", "Sarah Leal"
 ])
 
 # --- FUNÇÃO DE CACHE GLOBAL ---
