@@ -164,7 +164,7 @@ def play_sound_html(): return f'<audio autoplay="true"><source src="{SOUND_URL}"
 
 # --- Função Geradora do HTML Personalizado (CONTEÚDO ATUALIZADO) ---
 def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
-    """Gera o código HTML do checklist com base nos procedimentos do anexo."""
+    [cite_start]"""Gera o código HTML do checklist com base nos procedimentos do anexo[cite: 1]."""
     
     # Webhook para o retorno do formulário HTML
     webhook_destino = GOOGLE_CHAT_WEBHOOK_CHECKLIST_HTML
@@ -421,7 +421,7 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
 
         <div class="checkbox-item">
             <input type="checkbox" id="c_chk_olhinho" value="Cartório Pós: Conferência da Sessão (Olhinho)">
-            [cite_start]<label for="c_chk_olhinho"><strong>Conferência da Sessão:</strong> Após o lançamento dos resultados e encerramento, utilizar o ícone "Conferência da sessão de julgamento" (ícone do olhinho) para verificar o relatório de inconsistências/erros e realizar a correção[cite: 2, 6, 7].</label>
+            [cite_start]<label for="c_chk_olhinho"><strong>Conferência da Sessão:</strong> Após o lançamento dos resultados e encerramento, utilizar o ícone "Conferência da sessão de julgamento" (ícone do olhinho) para verificar o relatório de inconsistências/erros e realizar a correção[cite: 1, 2, 3, 5, 6, 7].</label>
         </div>
 
         <div class="checkbox-item">
@@ -1068,12 +1068,8 @@ def manual_rerun():
     st.session_state.lunch_warning_info = None 
     st.rerun() 
     
-def toggle_auxilio():
-    """Callback: Botão 'Auxílio email/whatsapp'."""
-    # Atualiza o estado da sessão local, que será salvo em seguida
-    current = st.session_state.get('auxilio_ativo', False)
-    st.session_state.auxilio_ativo = not current
-    print(f'CALLBACK TOGGLE AUXILIO: {st.session_state.auxilio_ativo}')
+def on_auxilio_change():
+    """Callback: Salva estado do auxílio imediatamente ao alternar."""
     save_state()
 
 # --- Callbacks de Formulário de Registro ---
@@ -1641,17 +1637,17 @@ with col_principal:
 with col_disponibilidade:
     # --- NOVO BLOCO: AUXÍLIO EMAIL/WHATSAPP ---
     st.markdown("###")
-    auxilio_ativo = st.session_state.get('auxilio_ativo', False)
+    
+    # Use a chave 'auxilio_ativo' diretamente para que o estado do widget controle a variável
     st.toggle(
         "Auxílio HP/Emails/Whatsapp", 
-        value=auxilio_ativo, 
-        key='auxilio_toggle', 
-        on_change=toggle_auxilio
+        key='auxilio_ativo', 
+        on_change=on_auxilio_change
     )
     
-    if st.session_state.get('auxilio_ativo', False):
+    if st.session_state.get('auxilio_ativo'):
         st.warning("HP/Emails/Whatsapp irão para bastão")
-        st.image(GIF_URL_NEDRY, width=150)
+        st.image(GIF_URL_NEDRY, width=300)
     
     st.markdown("---")
     # ------------------------------------------
