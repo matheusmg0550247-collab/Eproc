@@ -162,9 +162,9 @@ def send_chat_notification_internal(consultor, status):
 
 def play_sound_html(): return f'<audio autoplay="true"><source src="{SOUND_URL}" type="audio/mpeg"></audio>'
 
-# --- Função Geradora do HTML Personalizado (CONTEÚDO ATUALIZADO) ---
+# --- Função Geradora do HTML Personalizado ---
 def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
-    [cite_start]"""Gera o código HTML do checklist com base nos procedimentos do anexo[cite: 1]."""
+    """Gera o código HTML do checklist com base nos procedimentos do anexo."""
     
     # Webhook para o retorno do formulário HTML
     webhook_destino = GOOGLE_CHAT_WEBHOOK_CHECKLIST_HTML
@@ -421,7 +421,7 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
 
         <div class="checkbox-item">
             <input type="checkbox" id="c_chk_olhinho" value="Cartório Pós: Conferência da Sessão (Olhinho)">
-            [cite_start]<label for="c_chk_olhinho"><strong>Conferência da Sessão:</strong> Após o lançamento dos resultados e encerramento, utilizar o ícone "Conferência da sessão de julgamento" (ícone do olhinho) para verificar o relatório de inconsistências/erros e realizar a correção[cite: 1, 2, 3, 5, 6, 7].</label>
+            <label for="c_chk_olhinho"><strong>Conferência da Sessão:</strong> Após o lançamento dos resultados e encerramento, utilizar o ícone "Conferência da sessão de julgamento" (ícone do olhinho) para verificar o relatório de inconsistências/erros e realizar a correção.</label>
         </div>
 
         <div class="checkbox-item">
