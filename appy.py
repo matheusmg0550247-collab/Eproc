@@ -32,6 +32,7 @@ def get_global_state_cache():
         'priority_return_queue': [],
         'rotation_gif_start_time': None,
         'lunch_warning_info': None, # Aviso de almoço Global
+        'auxilio_ativo': False, # NOVO: Estado do botão de auxílio
         'daily_logs': [] # Log persistente para o relatório
     }
 
@@ -75,6 +76,9 @@ STATUSES_DE_SAIDA = ['Atendimento', 'Almoço', 'Saída Temporária', 'Ausente', 
 GIF_URL_WARNING = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExY2pjMDN0NGlvdXp1aHZ1ejJqMnY5MG1yZmN0d3NqcDl1bTU1dDJrciZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/fXnRObM8Q0RkOmR5nf/giphy.gif'
 GIF_URL_ROTATION = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExdmx4azVxbGt4Mnk1cjMzZm5sMmp1YThteGJsMzcyYmhsdmFoczV0aSZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/JpkZEKWY0s9QI4DGvF/giphy.gif'
 GIF_URL_LUNCH_WARNING = 'https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExMGZlbHN1azB3b2drdTI1eG10cDEzeWpmcmtwenZxNTV0bnc2OWgzZSYlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/bNlqpmBJRDMpxulfFB/giphy.gif'
+# NOVO GIF SOLICITADO
+GIF_URL_NEDRY = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExMGNkMGx3YnNkcXQ2bHJmNTZtZThraHhuNmVoOTNmbG0wcDloOXAybiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/7kyWoqTue3po4/giphy.gif'
+
 SOUND_URL = "https://github.com/matheusmg0550247-collab/controle-bastao-eproc2/raw/main/doorbell-223669.mp3"
 NOVEMBRO_AZUL_URL = "https://github.com/matheusmg0550247-collab/controle-bastao-eproc2/raw/main/novembro-azul.png"
 
@@ -103,6 +107,7 @@ def save_state():
         global_data['report_last_run_date'] = st.session_state.report_last_run_date
         global_data['rotation_gif_start_time'] = st.session_state.get('rotation_gif_start_time')
         global_data['lunch_warning_info'] = st.session_state.get('lunch_warning_info')
+        global_data['auxilio_ativo'] = st.session_state.get('auxilio_ativo', False) # Salva estado do auxílio
         
         global_data['daily_logs'] = json.loads(json.dumps(st.session_state.daily_logs, default=date_serializer))
         
@@ -369,25 +374,25 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
     
     <div id="checklist-cartorio-container">
         <div class="checklist-title">Check-list: Cartório (Secretaria)</div>
-        <div class="checklist-desc">Fase Pré-Sessão: Inicia a partir do fechamento da pauta até a abertura da sessão[cite: 6].</div>
+        <div class="checklist-desc">Fase Pré-Sessão: Inicia a partir do fechamento da pauta até a abertura da sessão.</div>
         
         <div class="section-header">I. Pré-Sessão</div>
         
         <div class="checkbox-item">
             <input type="checkbox" id="c_chk1" value="Cartório Pré: Verificar Manifestações Desembargadores">
-            <label for="c_chk1"><strong>Verificar Manifestações:</strong> Certificar-se de que todos os desembargadores manifestaram [cite: 8]: Pedidos de vista, Retirados de pauta, Acompanhamento de voto, Votos de declaração, Votos divergentes[cite: 9, 10, 11, 12, 13].</label>
+            <label for="c_chk1"><strong>Verificar Manifestações:</strong> Certificar-se de que todos os desembargadores manifestaram: Pedidos de vista, Retirados de pauta, Acompanhamento de voto, Votos de declaração, Votos divergentes.</label>
         </div>
         <div class="checkbox-item">
             <input type="checkbox" id="c_chk2" value="Cartório Pré: Marcar Destaques Visualizados">
-            <label for="c_chk2"><strong>Marcar Destaques Visualizados:</strong> Marcar os destaques dos votos como visualizados (garante que alterações posteriores sejam sinalizadas pelo sistema)[cite: 14].</label>
+            <label for="c_chk2"><strong>Marcar Destaques Visualizados:</strong> Marcar os destaques dos votos como visualizados (garante que alterações posteriores sejam sinalizadas pelo sistema).</label>
         </div>
         <div class="checkbox-item">
             <input type="checkbox" id="c_chk3" value="Cartório Pré: Lançar Previsão de Resultado">
-            <label for="c_chk3"><strong>Lançar Previsão de Resultado:</strong> Sinalizar a importância de “Lançar a previsão do resultado do julgamento”[cite: 15].</label>
+            <label for="c_chk3"><strong>Lançar Previsão de Resultado:</strong> Sinalizar a importância de “Lançar a previsão do resultado do julgamento”.</label>
         </div>
         <div class="checkbox-item">
             <input type="checkbox" id="c_chk4" value="Cartório Pré: Verificar Manter Voto (Retirados)">
-            <label for="c_chk4"><strong>Verificar Manter Voto:</strong> Conferir se o gabinete marcou a opção de manter o voto para próxima sessão, em processos retirados de pauta[cite: 16].</label>
+            <label for="c_chk4"><strong>Verificar Manter Voto:</strong> Conferir se o gabinete marcou a opção de manter o voto para próxima sessão, em processos retirados de pauta.</label>
         </div>
         
         <div class="checkbox-item" style="flex-wrap: wrap;">
@@ -400,27 +405,33 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
 
         <div class="checkbox-item">
             <input type="checkbox" id="c_chk5" value="Cartório Pós: Abrir a Sessão">
-            <label for="c_chk5"><strong>Início da Sessão:</strong> Acompanhar o Cartório ao "Abrir a sessão"[cite: 19].</label>
+            <label for="c_chk5"><strong>Início da Sessão:</strong> Acompanhar o Cartório ao "Abrir a sessão".</label>
         </div>
         <div class="checkbox-item">
             <input type="checkbox" id="c_chk6" value="Cartório Pós: Julgamento dos Processos">
-            <label for="c_chk6"><strong>Julgamento:</strong> Acompanhar os passos: Marcar item como em julgamento, Salvar resultado de julgamento, Desmarcar item em julgamento[cite: 22, 23, 24].</label>
+            <label for="c_chk6"><strong>Julgamento:</strong> Acompanhar os passos: Marcar item como em julgamento, Salvar resultado de julgamento, Desmarcar item em julgamento.</label>
         </div>
         <div class="checkbox-item">
             <input type="checkbox" id="c_chk7" value="Cartório Pós: Atualizar Resultados e Eventos">
-            <label for="c_chk7"><strong>Atualizar Resultados:</strong> Rodar "Atualizar Resultados da Sessão de Julgamento" e Lançar os eventos de resultado[cite: 26].</label>
+            <label for="c_chk7"><strong>Atualizar Resultados:</strong> Rodar "Atualizar Resultados da Sessão de Julgamento" e Lançar os eventos de resultado.</label>
         </div>
         <div class="checkbox-item">
             <input type="checkbox" id="c_chk8" value="Cartório Pós: Encerrar e Gerar Ata">
-            <label for="c_chk8"><strong>Finalização:</strong> "Encerrar da sessão" [cite: 27] e "Gerar ata"[cite: 28].</label>
+            <label for="c_chk8"><strong>Finalização:</strong> "Encerrar da sessão" e "Gerar ata".</label>
         </div>
+
+        <div class="checkbox-item">
+            <input type="checkbox" id="c_chk_olhinho" value="Cartório Pós: Conferência da Sessão (Olhinho)">
+            <label for="c_chk_olhinho"><strong>Conferência da Sessão:</strong> Após o lançamento dos resultados e encerramento, utilizar o ícone "Conferência da sessão de julgamento" (ícone do olhinho) para verificar o relatório de inconsistências/erros e realizar a correção.</label>
+        </div>
+
         <div class="checkbox-item">
             <input type="checkbox" id="c_chk9" value="Cartório Pós: Minutas não Assinadas (Filtro)">
-            <label for="c_chk9"><strong>Pós-Sessão:</strong> Orientar sobre a Aplicação do filtro – Minutas não assinadas [cite: 34] e necessidade de contato com gabinetes para assinatura[cite: 35].</label>
+            <label for="c_chk9"><strong>Pós-Sessão:</strong> Orientar sobre a Aplicação do filtro – Minutas não assinadas e necessidade de contato com gabinetes para assinatura.</label>
         </div>
         <div class="checkbox-item">
             <input type="checkbox" id="c_chk10" value="Cartório Pós: Conferir Manter Voto (Retirados Pós)">
-            <label for="c_chk10"><strong>Pós-Sessão:</strong> Verificar se há processos retirados de pauta e conferir a marcação do gabinete para manter o processo para próxima sessão[cite: 36].</label>
+            <label for="c_chk10"><strong>Pós-Sessão:</strong> Verificar se há processos retirados de pauta e conferir a marcação do gabinete para manter o processo para próxima sessão.</label>
         </div>
         
         <div class="checkbox-item" style="flex-wrap: wrap;">
@@ -455,11 +466,11 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
 
         <div class="checkbox-item">
             <input type="checkbox" id="g_chk5" value="Gabinete Pós: Filtro minutas para assinar">
-            <label for="g_chk5"><strong>Assinatura:</strong> Aplicar o "Filtro minutas para assinar" [cite: 39] e realizar a assinatura do Relatório/Voto/Acórdão no status "Para Assinar".</label>
+            <label for="g_chk5"><strong>Assinatura:</strong> Aplicar o "Filtro minutas para assinar" e realizar a assinatura do Relatório/Voto/Acórdão no status "Para Assinar".</label>
         </div>
         <div class="checkbox-item">
             <input type="checkbox" id="g_chk6" value="Gabinete Pós: Juntada e Evento Final">
-            <label for="g_chk6"><strong>Movimentação Final:</strong> Juntada de relatório/voto/acórdão [cite: 40] e Lançamento do Evento “Remetidos os votos com acórdão”[cite: 41].</label>
+            <label for="g_chk6"><strong>Movimentação Final:</strong> Juntada de relatório/voto/acórdão e Lançamento do Evento “Remetidos os votos com acórdão”.</label>
         </div>
         
         <div class="checkbox-item" style="flex-wrap: wrap;">
@@ -735,7 +746,8 @@ def init_session_state():
         'chamado_guide_step': 0, # Etapa do guia de chamados
         'sessao_msg_preview': "", # Inicializa o estado da preview de sessão
         'html_download_ready': False, # Flag para o botão de download
-        'html_content_cache': "" # Conteúdo do HTML
+        'html_content_cache': "", # Conteúdo do HTML
+        'auxilio_ativo': False # Default do auxílio
     }
 
     for key, default in defaults.items():
@@ -751,6 +763,9 @@ def init_session_state():
     st.session_state['status_texto'] = persisted_state.get('status_texto', {}).copy()
     st.session_state['current_status_starts'] = persisted_state.get('current_status_starts', {}).copy()
     st.session_state['daily_logs'] = persisted_state.get('daily_logs', []).copy() 
+    
+    # Garantir sincronia do auxilio
+    st.session_state['auxilio_ativo'] = persisted_state.get('auxilio_ativo', False)
 
     for nome in CONSULTORES:
         st.session_state.bastao_counts.setdefault(nome, 0)
@@ -1053,6 +1068,14 @@ def manual_rerun():
     st.session_state.gif_warning = False; st.session_state.rotation_gif_start_time = None
     st.session_state.lunch_warning_info = None 
     st.rerun() 
+    
+def toggle_auxilio():
+    """Callback: Botão 'Auxílio email/whatsapp'."""
+    # Atualiza o estado da sessão local, que será salvo em seguida
+    current = st.session_state.get('auxilio_ativo', False)
+    st.session_state.auxilio_ativo = not current
+    print(f'CALLBACK TOGGLE AUXILIO: {st.session_state.auxilio_ativo}')
+    save_state()
 
 # --- Callbacks de Formulário de Registro ---
 
@@ -1118,7 +1141,7 @@ def handle_presencial_submission():
         "particip_externos": st.session_state.get('reg_pres_particip_externos') or "N/A",
         "data": st.session_state.get('reg_pres_data') or date.today(),
         "inicio": inicio_time, 
-        "fim": fim_time         
+        "fim": fim_time          
     }
     
     success = send_presencial_to_chat(consultor_selecionado, form_data) 
@@ -1617,6 +1640,23 @@ with col_principal:
 
 # --- Coluna Disponibilidade (Mantida) ---
 with col_disponibilidade:
+    # --- NOVO BLOCO: AUXÍLIO EMAIL/WHATSAPP ---
+    st.markdown("###")
+    auxilio_ativo = st.session_state.get('auxilio_ativo', False)
+    st.toggle(
+        "Auxílio email/whatsapp", 
+        value=auxilio_ativo, 
+        key='auxilio_toggle', 
+        on_change=toggle_auxilio
+    )
+    
+    if st.session_state.get('auxilio_ativo', False):
+        st.warning("Emails/Whatsapp irão para bastão")
+        st.image(GIF_URL_NEDRY, use_container_width=True)
+    
+    st.markdown("---")
+    # ------------------------------------------
+
     st.header('Status dos(as) Consultores(as)')
     st.markdown('Marque/Desmarque para entrar/sair.')
     ui_lists = {'fila': [], 'atendimento': [], 'almoco': [], 'saida': [], 'ausente': [], 'sessao': [], 'indisponivel': []} 
