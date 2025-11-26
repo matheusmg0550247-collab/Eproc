@@ -32,7 +32,7 @@ def get_global_state_cache():
         'priority_return_queue': [],
         'rotation_gif_start_time': None,
         'lunch_warning_info': None, # Aviso de almoço Global
-        'auxilio_ativo': False, # NOVO: Estado do botão de auxílio
+        'auxilio_ativo': False, # Estado do botão de auxílio
         'daily_logs': [] # Log persistente para o relatório
     }
 
@@ -76,7 +76,6 @@ STATUSES_DE_SAIDA = ['Atendimento', 'Almoço', 'Saída Temporária', 'Ausente', 
 GIF_URL_WARNING = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExY2pjMDN0NGlvdXp1aHZ1ejJqMnY5MG1yZmN0d3NqcDl1bTU1dDJrciZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/fXnRObM8Q0RkOmR5nf/giphy.gif'
 GIF_URL_ROTATION = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExdmx4azVxbGt4Mnk1cjMzZm5sMmp1YThteGJsMzcyYmhsdmFoczV0aSZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/JpkZEKWY0s9QI4DGvF/giphy.gif'
 GIF_URL_LUNCH_WARNING = 'https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExMGZlbHN1azB3b2drdTI1eG10cDEzeWpmcmtwenZxNTV0bnc2OWgzZSYlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/bNlqpmBJRDMpxulfFB/giphy.gif'
-# NOVO GIF SOLICITADO
 GIF_URL_NEDRY = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExMGNkMGx3YnNkcXQ2bHJmNTZtZThraHhuNmVoOTNmbG0wcDloOXAybiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/7kyWoqTue3po4/giphy.gif'
 
 SOUND_URL = "https://github.com/matheusmg0550247-collab/controle-bastao-eproc2/raw/main/doorbell-223669.mp3"
@@ -422,7 +421,7 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
 
         <div class="checkbox-item">
             <input type="checkbox" id="c_chk_olhinho" value="Cartório Pós: Conferência da Sessão (Olhinho)">
-            <label for="c_chk_olhinho"><strong>Conferência da Sessão:</strong> Após o lançamento dos resultados e encerramento, utilizar o ícone "Conferência da sessão de julgamento" (ícone do olhinho) para verificar o relatório de inconsistências/erros e realizar a correção.</label>
+            [cite_start]<label for="c_chk_olhinho"><strong>Conferência da Sessão:</strong> Após o lançamento dos resultados e encerramento, utilizar o ícone "Conferência da sessão de julgamento" (ícone do olhinho) para verificar o relatório de inconsistências/erros e realizar a correção[cite: 2, 6, 7].</label>
         </div>
 
         <div class="checkbox-item">
@@ -1644,15 +1643,15 @@ with col_disponibilidade:
     st.markdown("###")
     auxilio_ativo = st.session_state.get('auxilio_ativo', False)
     st.toggle(
-        "Auxílio email/whatsapp", 
+        "Auxílio HP/Emails/Whatsapp", 
         value=auxilio_ativo, 
         key='auxilio_toggle', 
         on_change=toggle_auxilio
     )
     
     if st.session_state.get('auxilio_ativo', False):
-        st.warning("Emails/Whatsapp irão para bastão")
-        st.image(GIF_URL_NEDRY, use_container_width=True)
+        st.warning("HP/Emails/Whatsapp irão para bastão")
+        st.image(GIF_URL_NEDRY, width=150)
     
     st.markdown("---")
     # ------------------------------------------
