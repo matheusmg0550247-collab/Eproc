@@ -858,26 +858,21 @@ def rotate_bastao():
         if check_and_assume_baton(): pass 
         return
 
-    reset_triggered = False
-    first_eligible_index_overall = find_next_holder_index(-1, queue, skips) 
-    potential_next_index = find_next_holder_index(current_index, queue, skips)
+    # Tenta achar o próximo com as regras atuais
+    next_idx = find_next_holder_index(current_index, queue, skips)
+    
+    should_reset_flags = False
 
-    if potential_next_index != -1 and first_eligible_index_overall != -1:
-        first_eligible_holder_overall = queue[first_eligible_index_overall]
-        potential_next_holder = queue[potential_next_index]
+    # --- LÓGICA DE CORREÇÃO PARA "TODOS PULANDO" ---
+    # Se o sistema retornou o PRÓPRIO usuário (ou -1), e existem outras pessoas na fila,
+    # significa que todos os outros pularam.
+    if (next_idx != -1 and queue[next_idx] == current_holder) and len(queue) > 1:
+        should_reset_flags = True
+        # Mantemos next_idx como o current_holder, para que ele receba o bastão novamente (resetando o tempo)
+        # e DEPOIS limpamos as flags para o próximo ciclo.
 
-        if potential_next_holder == first_eligible_holder_overall and current_holder != first_eligible_holder_overall:
-            st.session_state.skip_flags = {c: False for c in CONSULTORES if st.session_state.get(f'check_{c}')}
-            skips = st.session_state.skip_flags 
-            reset_triggered = True
-            next_index = first_eligible_index_overall 
-        else:
-            next_index = potential_next_index
-    else:
-        next_index = -1
-
-    if next_index != -1:
-        next_holder = queue[next_index]
+    if next_idx != -1:
+        next_holder = queue[next_idx]
         duration = datetime.now() - (st.session_state.bastao_start_time or datetime.now())
         
         log_status_change(current_holder, 'Bastão', '', duration)
@@ -893,6 +888,13 @@ def rotate_bastao():
         
         st.session_state.play_sound = True 
         st.session_state.rotation_gif_start_time = datetime.now()
+        
+        # --- APLICA O RESET SE NECESSÁRIO ---
+        if should_reset_flags:
+            print("Ciclo bloqueado por pulos. Resetando flags de todos.")
+            for c in queue:
+                st.session_state.skip_flags[c] = False
+            st.toast("Todos pularam! O bastão retornou para você e a fila foi reiniciada.", icon="🔄")
         
         save_state()
     else:
