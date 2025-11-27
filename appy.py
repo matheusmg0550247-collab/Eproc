@@ -77,8 +77,8 @@ GIF_BASTAO_HOLDER = "https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExa3Uwazd5c
 
 BASTAO_EMOJI = "💙" 
 APP_URL_CLOUD = 'https://controle-bastao-cesupe.streamlit.app'
-STATUS_SAIDA_PRIORIDADE = ['Saída Temporária']
-STATUSES_DE_SAIDA = ['Atendimento', 'Almoço', 'Saída Temporária', 'Ausente', 'Sessão'] 
+STATUS_SAIDA_PRIORIDADE = ['Saída rápida']
+STATUSES_DE_SAIDA = ['Atendimento', 'Almoço', 'Saída rápida', 'Ausente', 'Sessão'] 
 GIF_URL_WARNING = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExY2pjMDN0NGlvdXp1aHZ1ejJqMnY5MG1yZmN0d3NqcDl1bTU1dDJrciZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/fXnRObM8Q0RkOmR5nf/giphy.gif'
 GIF_URL_ROTATION = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExdmx4azVxbGt4Mnk1cjMzZm5sMmp1YThteGJsMzcyYmhsdmFoczV0aSZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/JpkZEKWY0s9QI4DGvF/giphy.gif'
 GIF_URL_LUNCH_WARNING = 'https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExMGZlbHN1azB3b2drdTI1eG10cDEzeWpmcmtwenZxNTV0bnc2OWgzZSYlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/bNlqpmBJRDMpxulfFB/giphy.gif'
@@ -963,7 +963,7 @@ def update_status(status_text, change_to_available):
     if selected in st.session_state.bastao_queue: st.session_state.bastao_queue.remove(selected)
     st.session_state.skip_flags.pop(selected, None)
 
-    if status_text == 'Saída Temporária':
+    if status_text == 'Saída rápida':
         if selected not in st.session_state.priority_return_queue: st.session_state.priority_return_queue.append(selected)
     elif selected in st.session_state.priority_return_queue: st.session_state.priority_return_queue.remove(selected)
 
@@ -1285,7 +1285,9 @@ with col_principal:
     
     c4.button('🍽️ Almoço', on_click=update_status, args=('Almoço', False,), use_container_width=True)
     c5.button('👤 Ausente', on_click=update_status, args=('Ausente', False,), use_container_width=True)
-    c6.button('🚶 Saída', on_click=update_status, args=('Saída Temporária', False,), use_container_width=True)
+    
+    # BOTÃO SAÍDA (ATUALIZADO)
+    c6.button('🚶 Saída rápida', on_click=update_status, args=('Saída rápida', False,), use_container_width=True)
     
     # --- CONTAINER DO MENU DE ATIVIDADES ---
     if st.session_state.show_activity_menu:
@@ -1621,7 +1623,7 @@ with col_disponibilidade:
         elif status == '': ui_lists['fila'].append(nome)
         elif status == 'Almoço': ui_lists['almoco'].append(nome)
         elif status == 'Ausente': ui_lists['ausente'].append(nome)
-        elif status == 'Saída Temporária': ui_lists['saida'].append(nome)
+        elif status == 'Saída rápida': ui_lists['saida'].append(nome)
         
         # Captura os novos status de Atividades OU legado "Atendimento"
         elif status.startswith('Atividade') or status == 'Atendimento': 
@@ -1677,11 +1679,9 @@ with col_disponibilidade:
             col_nome.markdown(f'**{nome}** :orange-background[{display_status}]', unsafe_allow_html=True)
     st.markdown('---')
 
-    # SEÇÃO "ATENDIMENTO" REMOVIDA DAQUI
-    
     render_section('Almoço', '🍽️', ui_lists['almoco'], 'blue')
     render_section('Ausente', '👤', ui_lists['ausente'], 'violet') 
-    render_section('Saída', '🚶', ui_lists['saida'], 'red')
+    render_section('Saída rápida', '🚶', ui_lists['saida'], 'red')
     render_section('Indisponível', '❌', ui_lists['indisponivel'], 'grey')
 
 # --- Lógica de Relatório Diário ---
