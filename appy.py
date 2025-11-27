@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, date, time
 from operator import itemgetter
 from streamlit_autorefresh import st_autorefresh
 import json 
+import re # Importado para ajudar na limpeza do HTML
 
 # --- Constantes de Consultores ---
 CONSULTORES = sorted([
@@ -111,7 +112,6 @@ def save_state():
         global_data['lunch_warning_info'] = st.session_state.get('lunch_warning_info')
         global_data['auxilio_ativo'] = st.session_state.get('auxilio_ativo', False)
         global_data['daily_logs'] = json.loads(json.dumps(st.session_state.daily_logs, default=date_serializer))
-        print(f'*** Estado GLOBAL Salvo (Cache de Recurso) ***')
     except Exception as e: 
         print(f'Erro ao salvar estado GLOBAL: {e}')
 
@@ -167,7 +167,6 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
     
     # Adiciona o @ se não tiver
     consultor_formatado = f"@{consultor_nome}" if not consultor_nome.startswith("@") else consultor_nome
-    
     webhook_destino = GOOGLE_CHAT_WEBHOOK_CHECKLIST_HTML
     
     html_template = f"""
@@ -291,7 +290,6 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
         const hoje = new Date();
         hoje.setHours(0,0,0,0);
         
-        // --- AQUI A MUDANÇA: Usa a variável com @ vinda do Python ---
         let consultorResponsavel = "{consultor_formatado}";
         
         if (hoje > dataSessaoObj) {{
@@ -1072,13 +1070,37 @@ def handle_sessao_submission():
     data_formatada = data_obj.strftime("%d/%m/%Y") if data_obj else 'Não informada'
     data_nome_arquivo = data_obj.strftime("%d-%m-%Y") if data_obj else 'SemData'
     
+    # Envia a mensagem de texto da sessão
     success = send_sessao_to_chat(consultor, texto_final)
     
     if success:
         st.session_state.last_reg_status = "success_sessao"
         st.session_state.sessao_msg_preview = ""
         
+        # Gera HTML
         html_content = gerar_html_checklist(consultor, camara, data_formatada)
+        
+        # --- LÓGICA DE ENVIO AUTOMÁTICO DO HTML ---
+        # "Minifica" o HTML removendo quebras de linha e espaços duplos para tentar caber no limite do Chat
+        html_minified = html_content.replace('\n', ' ').replace('  ', '')
+        
+        try:
+            # Tenta enviar o código
+            msg_html = f"**Arquivo HTML Gerado (Código)**\nCrie um arquivo .html e cole o código abaixo se necessário:\n\n```html\n{html_minified}\n```"
+            
+            # Limite seguro do Google Chat (~4096). Se passar, enviamos aviso.
+            if len(msg_html) > 4000:
+                # Tenta cortar ou enviar aviso
+                print("AVISO: HTML muito grande para Webhook automático. Enviando link de fallback.")
+                requests.post(GOOGLE_CHAT_WEBHOOK_SESSAO, json={'text': f"✅ **Checklist Gerado com Sucesso!**\n\nO arquivo HTML foi gerado, mas é muito extenso para ser exibido inteiramente aqui no chat.\n\n📂 *Por favor, baixe o arquivo diretamente no painel de controle.*"})
+            else:
+                requests.post(GOOGLE_CHAT_WEBHOOK_SESSAO, json={'text': msg_html})
+                print("HTML enviado automaticamente via Webhook.")
+                
+        except Exception as e:
+            print(f"Erro no envio automático do HTML: {e}")
+
+        # Prepara o botão de download (caso o usuário queira baixar)
         st.session_state.html_content_cache = html_content
         st.session_state.html_download_ready = True
         st.session_state.html_filename = f"Checklist_{data_nome_arquivo}.html"
@@ -1269,14 +1291,15 @@ with col_principal:
     st.selectbox('Selecione:', options=['Selecione um nome'] + CONSULTORES, key='consultor_selectbox', label_visibility='collapsed')
     st.markdown("#### "); st.markdown("**Ações:**")
     
-    # --- MENUS DE AÇÃO ---
+    # --- MENUS DE AÇÃO (COLUNAS CORRIGIDAS) ---
     if 'show_activity_menu' not in st.session_state:
         st.session_state.show_activity_menu = False
 
     def open_activity_menu():
         st.session_state.show_activity_menu = True
     
-    c1, c2, c3, c4, c5, c6, c7 = st.columns(7) 
+    # AQUI ESTAVA O PROBLEMA DO BURACO (c7 removido)
+    c1, c2, c3, c4, c5, c6 = st.columns(6) 
     
     c1.button('🎯 Passar', on_click=rotate_bastao, use_container_width=True, help='Passa o bastão.')
     c2.button('⏭️ Pular', on_click=toggle_skip, use_container_width=True, help='Pular vez.')
@@ -1286,8 +1309,7 @@ with col_principal:
     
     c4.button('🍽️ Almoço', on_click=update_status, args=('Almoço', False,), use_container_width=True)
     c5.button('👤 Ausente', on_click=update_status, args=('Ausente', False,), use_container_width=True)
-    # c6 vazio por realinhamento
-    c7.button('🚶 Saída', on_click=update_status, args=('Saída Temporária', False,), use_container_width=True)
+    c6.button('🚶 Saída', on_click=update_status, args=('Saída Temporária', False,), use_container_width=True)
     
     # --- CONTAINER DO MENU DE ATIVIDADES ---
     if st.session_state.show_activity_menu:
@@ -1331,23 +1353,12 @@ with col_principal:
         st.success("Chamado enviado! A resposta será enviada no seu email institucional.")
         st.session_state.last_reg_status = None
     elif st.session_state.last_reg_status == "success_sessao":
-        st.success("Registro de Sessão enviado com sucesso!")
+        st.success("Registro de Sessão enviado! O HTML foi encaminhado automaticamente para o Webhook.")
         
+        # Botão de download mantido como backup seguro
         if st.session_state.get('html_download_ready') and st.session_state.get('html_content_cache'):
             filename = st.session_state.get('html_filename', 'Checklist_Sessao.html')
             
-            # --- ENVIO DO CÓDIGO VIA WEBHOOK ---
-            if st.button("🚀 Enviar Arquivo HTML para o Chat (Via Webhook)"):
-                try:
-                    msg_html = f"**Arquivo HTML Gerado (Código)**\n\n```html\n{st.session_state.html_content_cache}\n```"
-                    if len(msg_html) > 4000:
-                        st.warning("O arquivo é muito grande para o chat. Use o download abaixo.")
-                    else:
-                        requests.post(GOOGLE_CHAT_WEBHOOK_SESSAO, json={'text': msg_html})
-                        st.success("Código HTML enviado para o chat!")
-                except Exception as e:
-                    st.error(f"Erro ao enviar: {e}")
-
             st.download_button(
                 label=f"⬇️ Baixar Formulário HTML ({filename})",
                 data=st.session_state.html_content_cache,
