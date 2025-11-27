@@ -864,12 +864,8 @@ def rotate_bastao():
     should_reset_flags = False
 
     # --- LÓGICA DE CORREÇÃO PARA "TODOS PULANDO" ---
-    # Se o sistema retornou o PRÓPRIO usuário (ou -1), e existem outras pessoas na fila,
-    # significa que todos os outros pularam.
     if (next_idx != -1 and queue[next_idx] == current_holder) and len(queue) > 1:
         should_reset_flags = True
-        # Mantemos next_idx como o current_holder, para que ele receba o bastão novamente (resetando o tempo)
-        # e DEPOIS limpamos as flags para o próximo ciclo.
 
     if next_idx != -1:
         next_holder = queue[next_idx]
@@ -1611,7 +1607,11 @@ with col_disponibilidade:
     st.header('Status dos(as) Consultores(as)')
     st.markdown('Marque/Desmarque para entrar/sair.')
     
-    ui_lists = {'fila': [], 'atendimento': [], 'almoco': [], 'saida': [], 'ausente': [], 'atividade_especifica': [], 'indisponivel': []} 
+    # ----------------------------------------------------
+    # CORREÇÃO: "Atendimento" removido da estrutura base
+    # e lógica de consolidação implementada
+    # ----------------------------------------------------
+    ui_lists = {'fila': [], 'almoco': [], 'saida': [], 'ausente': [], 'atividade_especifica': [], 'indisponivel': []} 
     
     for nome in CONSULTORES:
         is_checked = st.session_state.get(f'check_{nome}', False)
@@ -1619,13 +1619,18 @@ with col_disponibilidade:
         
         if status == 'Bastão': ui_lists['fila'].insert(0, nome)
         elif status == '': ui_lists['fila'].append(nome)
-        elif status == 'Atendimento': ui_lists['atendimento'].append(nome)
         elif status == 'Almoço': ui_lists['almoco'].append(nome)
         elif status == 'Ausente': ui_lists['ausente'].append(nome)
         elif status == 'Saída Temporária': ui_lists['saida'].append(nome)
-        # Captura os novos status de Atividades
-        elif status.startswith('Atividade'): 
-            ui_lists['atividade_especifica'].append((nome, status))
+        
+        # Captura os novos status de Atividades OU legado "Atendimento"
+        elif status.startswith('Atividade') or status == 'Atendimento': 
+            if status == 'Atendimento':
+                # Normaliza para a nova visualização
+                ui_lists['atividade_especifica'].append((nome, "Atividade: Atendimento"))
+            else:
+                ui_lists['atividade_especifica'].append((nome, status))
+                
         elif status == 'Indisponível': ui_lists['indisponivel'].append(nome)
         else: ui_lists['indisponivel'].append(nome)
 
@@ -1672,7 +1677,8 @@ with col_disponibilidade:
             col_nome.markdown(f'**{nome}** :orange-background[{display_status}]', unsafe_allow_html=True)
     st.markdown('---')
 
-    render_section('Atendimento', '✏️', ui_lists['atendimento'], 'yellow') 
+    # SEÇÃO "ATENDIMENTO" REMOVIDA DAQUI
+    
     render_section('Almoço', '🍽️', ui_lists['almoco'], 'blue')
     render_section('Ausente', '👤', ui_lists['ausente'], 'violet') 
     render_section('Saída', '🚶', ui_lists['saida'], 'red')
