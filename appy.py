@@ -36,17 +36,15 @@ def get_global_state_cache():
         'daily_logs': [] # Log persistente para o relatório
     }
 
-# --- Constantes (Webhooks verificados e mantidos) ---
+# --- Constantes (Webhooks) ---
 GOOGLE_CHAT_WEBHOOK_BACKUP = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU"
 CHAT_WEBHOOK_BASTAO = "" 
 GOOGLE_CHAT_WEBHOOK_REGISTRO = "https://chat.googleapis.com/v1/spaces/AAQAVvsU4Lg/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=hSghjEZq8-1EmlfHdSoPRq_nTSpYc0usCs23RJOD-yk"
 GOOGLE_CHAT_WEBHOOK_CHAMADO = "https://chat.googleapis.com/v1/spaces/AAQAPPWlpW8/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=jMg2PkqtpIe3JbG_SZG_ZhcfuQQII9RXM0rZQienUZk"
-# Webhook para Mensagem de Sessão (Mensagem inicial)
 GOOGLE_CHAT_WEBHOOK_SESSAO = "https://chat.googleapis.com/v1/spaces/AAQAWs1zqNM/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=hIxKd9f35kKdJqWUNjttzRBfCsxomK0OJ3AkH9DJmxY"
-# Webhook para o retorno do Formulário Checklist HTML
 GOOGLE_CHAT_WEBHOOK_CHECKLIST_HTML = "https://chat.googleapis.com/v1/spaces/AAQAXbwpQHY/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=7AQaoGHiWIfv3eczQzVZ-fbQdBqSBOh1CyQ854o1f7k"
 
-# Dados das Câmaras (Nome: Email)
+# Dados das Câmaras
 CAMARAS_DICT = {
     "Cartório da 1ª Câmara Cível": "caciv1@tjmg.jus.br", "Cartório da 2ª Câmara Cível": "caciv2@tjmg.jus.br",
     "Cartório da 3ª Câmara Cível": "caciv3@tjmg.jus.br", "Cartório da 4ª Câmara Cível": "caciv4@tjmg.jus.br",
@@ -62,12 +60,19 @@ CAMARAS_DICT = {
 }
 CAMARAS_OPCOES = sorted(list(CAMARAS_DICT.keys()))
 
-# Formulários (Mantidos)
+# Formulários e Listas
 REG_USUARIO_OPCOES = ["Cartório", "Externo", "Gabinete", "Interno"]
 REG_SISTEMA_OPCOES = ["Conveniados/Outros", "Eproc", "Themis", "JIPE", "SIAP"]
 REG_CANAL_OPCOES = ["Email", "Telefone", "Whatsapp"]
 REG_DESFECHO_OPCOES = ["Escalonado", "Resolvido - Cesupe"]
 REG_PRESENCIAL_ATIVIDADE_OPCOES = ["Sessão", "Homologação", "Treinamento", "Chamado/Jira", "Atendimento", "Outros"]
+
+# --- NOVAS CONSTANTES SOLICITADAS ---
+OPCOES_ATIVIDADES_STATUS = [
+    "HP", "E-mail", "Sessão", "WhatsApp Plantão", 
+    "Treinamento", "Homologação", "Redação Documentos", "Reunião", "Outros"
+]
+GIF_BASTAO_HOLDER = "https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExa3Uwazd5cnNra2oxdDkydjZkcHdqcWN2cng0Y2N0cmNmN21vYXVzMiZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/3rXs5J0hZkXwTZjuvM/giphy.gif"
 
 BASTAO_EMOJI = "💙" 
 APP_URL_CLOUD = 'https://controle-bastao-cesupe.streamlit.app'
@@ -77,7 +82,6 @@ GIF_URL_WARNING = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExY2pjMDN0NGl
 GIF_URL_ROTATION = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExdmx4azVxbGt4Mnk1cjMzZm5sMmp1YThteGJsMzcyYmhsdmFoczV0aSZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/JpkZEKWY0s9QI4DGvF/giphy.gif'
 GIF_URL_LUNCH_WARNING = 'https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExMGZlbHN1azB3b2drdTI1eG10cDEzeWpmcmtwenZxNTV0bnc2OWgzZSYlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/bNlqpmBJRDMpxulfFB/giphy.gif'
 GIF_URL_NEDRY = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExMGNkMGx3YnNkcXQ2bHJmNTZtZThraHhuNmVoOTNmbG0wcDloOXAybiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/7kyWoqTue3po4/giphy.gif'
-
 SOUND_URL = "https://github.com/matheusmg0550247-collab/controle-bastao-eproc2/raw/main/doorbell-223669.mp3"
 NOVEMBRO_AZUL_URL = "https://github.com/matheusmg0550247-collab/controle-bastao-eproc2/raw/main/novembro-azul.png"
 
@@ -86,7 +90,6 @@ NOVEMBRO_AZUL_URL = "https://github.com/matheusmg0550247-collab/controle-bastao-
 # ============================================
 
 def date_serializer(obj):
-    """Serializador para objetos datetime (usado em logs)."""
     if isinstance(obj, datetime): return obj.isoformat()
     if isinstance(obj, timedelta): return obj.total_seconds()
     if isinstance(obj, (date, time)): return obj.isoformat()
@@ -106,10 +109,8 @@ def save_state():
         global_data['report_last_run_date'] = st.session_state.report_last_run_date
         global_data['rotation_gif_start_time'] = st.session_state.get('rotation_gif_start_time')
         global_data['lunch_warning_info'] = st.session_state.get('lunch_warning_info')
-        global_data['auxilio_ativo'] = st.session_state.get('auxilio_ativo', False) # Salva estado do auxílio
-        
+        global_data['auxilio_ativo'] = st.session_state.get('auxilio_ativo', False)
         global_data['daily_logs'] = json.loads(json.dumps(st.session_state.daily_logs, default=date_serializer))
-        
         print(f'*** Estado GLOBAL Salvo (Cache de Recurso) ***')
     except Exception as e: 
         print(f'Erro ao salvar estado GLOBAL: {e}')
@@ -144,7 +145,6 @@ def load_state():
     return loaded_data
 
 def send_chat_notification_internal(consultor, status):
-    """Envia notificação de giro do bastão (não o relatório)."""
     if CHAT_WEBHOOK_BASTAO and status == 'Bastão':
         message_template = "🎉 **BASTÃO GIRADO!** 🎉 \n\n- **Novo(a) Responsável:** {consultor}\n- **Acesse o Painel:** {app_url}"
         message_text = message_template.format(consultor=consultor, app_url=APP_URL_CLOUD) 
@@ -159,14 +159,15 @@ def send_chat_notification_internal(consultor, status):
             return False
     return False
 
-
 def play_sound_html(): return f'<audio autoplay="true"><source src="{SOUND_URL}" type="audio/mpeg"></audio>'
 
 # --- Função Geradora do HTML Personalizado ---
 def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
-    """Gera o código HTML do checklist com base nos procedimentos do anexo."""
+    """Gera o código HTML do checklist."""
     
-    # Webhook para o retorno do formulário HTML
+    # Adiciona o @ se não tiver
+    consultor_formatado = f"@{consultor_nome}" if not consultor_nome.startswith("@") else consultor_nome
+    
     webhook_destino = GOOGLE_CHAT_WEBHOOK_CHECKLIST_HTML
     
     html_template = f"""
@@ -202,7 +203,6 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
     .checkbox-item label {{ cursor: pointer; line-height: 1.4; font-size: 14px; color: #444; }}
     .checkbox-item label strong {{ color: #000; }}
     
-    /* Estilo para input de Outros */
     .other-input {{ margin-top: 5px; width: 100%; display: none; margin-left: 28px; }}
     
     .btn-submit {{ background-color: #28a745; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 4px; cursor: pointer; display: block; width: 100%; margin-top: 30px; transition: background 0.3s; font-weight: bold; }}
@@ -225,7 +225,6 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
         }}
     }}
 
-    // Função para mostrar/ocultar caixa de texto de Outros
     function toggleOther(checkboxId, inputId) {{
         const checkboxEl = document.getElementById(checkboxId);
         const inputEl = document.getElementById(inputId);
@@ -235,7 +234,7 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
             inputEl.focus();
         }} else {{
             inputEl.style.display = "none";
-            inputEl.value = ""; // Limpa se desmarcar
+            inputEl.value = ""; 
         }}
     }}
 
@@ -250,7 +249,6 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
 
         const setor = document.getElementById('setor').value;
         
-        // Determina qual container está ativo
         let containerAtivo;
         if (setor === "Cartório") {{
             containerAtivo = document.getElementById("checklist-cartorio-container");
@@ -258,13 +256,11 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
             containerAtivo = document.getElementById("checklist-gabinete-container");
         }}
         
-        // Coleta os checkboxes marcados dentro do container ativo
         const checks = containerAtivo.querySelectorAll('input[type="checkbox"]:checked');
         let itensMarcados = [];
         
         checks.forEach((chk) => {{
             let val = "- " + chk.value;
-            // Verifica se é o checkbox de Outros e pega o texto (4 tipos de Outros agora)
             if (chk.id === "c_chk_outros_pre") {{
                 const textoOutros = document.getElementById("c_input_outros_pre").value;
                 if (textoOutros) val += ": " + textoOutros;
@@ -288,7 +284,6 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
             return;
         }}
         
-        // --- LÓGICA DE DATA PARA O NOME DO CONSULTOR (WebHook) ---
         const dataSessaoStr = "{data_sessao_formatada}";
         const parts = dataSessaoStr.split('/');
         const dataSessaoObj = new Date(parts[2], parts[1] - 1, parts[0]);
@@ -296,7 +291,8 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
         const hoje = new Date();
         hoje.setHours(0,0,0,0);
         
-        let consultorResponsavel = "{consultor_nome}";
+        // --- AQUI A MUDANÇA: Usa a variável com @ vinda do Python ---
+        let consultorResponsavel = "{consultor_formatado}";
         
         if (hoje > dataSessaoObj) {{
             consultorResponsavel = "Cesupe";
@@ -487,17 +483,11 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
     """
     return html_template
 
-# --- Funções de Envio de Registro (Mantidas) ---
+# --- Funções de Envio de Registro ---
 
 def send_atividade_to_chat(consultor, tipo_atendimento, form_data): 
-    """Envia o registro de 'Atendimento' para o webhook do Google Chat."""
-    if not GOOGLE_CHAT_WEBHOOK_REGISTRO:
-        print("Webhook de registro não configurado.")
-        return False
-
-    if not consultor or consultor == 'Selecione um nome':
-        print("Erro de registro: Consultor(a) não selecionado(a).")
-        return False
+    if not GOOGLE_CHAT_WEBHOOK_REGISTRO: return False
+    if not consultor or consultor == 'Selecione um nome': return False
 
     message_text = (
         f"**📋 Novo Registro de Atendimento**\n\n"
@@ -515,21 +505,14 @@ def send_atividade_to_chat(consultor, tipo_atendimento, form_data):
     try:
         response = requests.post(GOOGLE_CHAT_WEBHOOK_REGISTRO, json=chat_message)
         response.raise_for_status()
-        print("Registro de 'Atendimento' enviado com sucesso.")
         return True
     except requests.exceptions.RequestException as e:
         print(f"Erro ao enviar registro de 'Atendimento': {e}")
         return False
 
 def send_presencial_to_chat(consultor, form_data): 
-    """Envia o registro de 'Atividade' para o webhook do Google Chat."""
-    if not GOOGLE_CHAT_WEBHOOK_REGISTRO:
-        print("Webhook de registro não configurado.")
-        return False
-
-    if not consultor or consultor == 'Selecione um nome':
-        print("Erro de registro: Consultor(a) não selecionado(a).")
-        return False
+    if not GOOGLE_CHAT_WEBHOOK_REGISTRO: return False
+    if not consultor or consultor == 'Selecione um nome': return False
 
     data_str = form_data['data'].strftime("%d/%m/%Y")
     inicio_str = form_data['inicio'].strftime("%H:%M")
@@ -551,25 +534,15 @@ def send_presencial_to_chat(consultor, form_data):
     try:
         response = requests.post(GOOGLE_CHAT_WEBHOOK_REGISTRO, json=chat_message)
         response.raise_for_status()
-        print("Registro de 'Atividade' enviado com sucesso.") 
         return True
     except requests.exceptions.RequestException as e:
         print(f"Erro ao enviar registro de 'Atividade': {e}") 
         return False
 
 def send_chamado_to_chat(consultor, texto_chamado):
-    """Envia o rascunho do chamado para o webhook específico."""
-    if not GOOGLE_CHAT_WEBHOOK_CHAMADO:
-        print("Webhook de chamado não configurado.")
-        return False
-
-    if not consultor or consultor == 'Selecione um nome':
-        print("Erro de registro de chamado: Consultor(a) não selecionado(a).")
-        return False
-        
-    if not texto_chamado:
-        print("Erro de registro de chamado: Texto do chamado está vazio.")
-        return False 
+    if not GOOGLE_CHAT_WEBHOOK_CHAMADO: return False
+    if not consultor or consultor == 'Selecione um nome': return False
+    if not texto_chamado: return False 
 
     message_text = (
         f"**🔔 Novo Rascunho de Chamado/Jira**\n\n"
@@ -583,43 +556,29 @@ def send_chamado_to_chat(consultor, texto_chamado):
     try:
         response = requests.post(GOOGLE_CHAT_WEBHOOK_CHAMADO, json=chat_message)
         response.raise_for_status()
-        print("Rascunho de chamado enviado com sucesso.")
         return True
     except requests.exceptions.RequestException as e:
         print(f"Erro ao enviar rascunho de chamado: {e}")
         return False
 
 def send_sessao_to_chat(consultor, texto_mensagem):
-    """Envia a mensagem de Registro de Sessão para o webhook específico."""
-    if not GOOGLE_CHAT_WEBHOOK_SESSAO:
-        print("Webhook de Sessão não configurado.")
-        return False
-
-    if not consultor or consultor == 'Selecione um nome':
-        print("Erro: Consultor(a) não selecionado(a).")
-        return False
-        
-    if not texto_mensagem:
-        print("Erro: Texto da mensagem vazio.")
-        return False 
+    if not GOOGLE_CHAT_WEBHOOK_SESSAO: return False
+    if not consultor or consultor == 'Selecione um nome': return False
+    if not texto_mensagem: return False 
 
     chat_message = {'text': texto_mensagem}
-    
     try:
         response = requests.post(GOOGLE_CHAT_WEBHOOK_SESSAO, json=chat_message)
         response.raise_for_status()
-        print("Mensagem de Sessão enviada com sucesso.")
         return True
     except requests.exceptions.RequestException as e:
         print(f"Erro ao enviar mensagem de Sessão: {e}")
         return False
 
 def load_logs(): 
-    """Carrega logs do st.session_state local."""
     return st.session_state.get('daily_logs', []).copy()
 
 def save_logs(l): 
-    """Salva logs no st.session_state local."""
     st.session_state.daily_logs = l
 
 def log_status_change(consultor, old_status, new_status, duration):
@@ -702,33 +661,23 @@ def send_daily_report():
                 report_text += "\n"
 
     if not consultores_com_dados:
-        print("Relatório diário não enviado: Sem dados de atividade hoje.")
         report_text = f"📊 **Relatório Diário - {today_str}** 📊\n\nNenhuma atividade registrada hoje."
 
-    if not GOOGLE_CHAT_WEBHOOK_BACKUP:
-        print("Webhook de backup não configurado. Relatório não enviado.")
-        return 
+    if not GOOGLE_CHAT_WEBHOOK_BACKUP: return 
 
     chat_message = {'text': report_text}
-    print(f"Enviando relatório diário para o webhook...")
-    
     try:
         response = requests.post(GOOGLE_CHAT_WEBHOOK_BACKUP, json=chat_message)
         response.raise_for_status() 
-        
         print("Relatório diário enviado com sucesso.")
         
         st.session_state['report_last_run_date'] = datetime.now()
         st.session_state['daily_logs'] = []
         st.session_state['bastao_counts'] = {nome: 0 for nome in CONSULTORES}
-        
-        print("Logs diários e contagens de bastão foram resetados.")
         save_state() 
 
     except requests.exceptions.RequestException as e:
         print(f'Erro ao enviar relatório diário: {e}')
-        if e.response is not None:
-            print(f'Status: {e.response.status_code}, Resposta: {e.response.text}')
 
 def init_session_state():
     """Inicializa/sincroniza o st.session_state com o estado GLOBAL do cache."""
@@ -741,16 +690,17 @@ def init_session_state():
         'play_sound': False,
         'gif_warning': False,
         'lunch_warning_info': None,
-        'last_reg_status': None, # Flag para status de registro
-        'chamado_guide_step': 0, # Etapa do guia de chamados
-        'sessao_msg_preview': "", # Inicializa o estado da preview de sessão
-        'html_download_ready': False, # Flag para o botão de download
-        'html_content_cache': "", # Conteúdo do HTML
-        'auxilio_ativo': False # Default do auxílio
+        'last_reg_status': None, 
+        'chamado_guide_step': 0, 
+        'sessao_msg_preview': "", 
+        'html_download_ready': False, 
+        'html_content_cache': "", 
+        'auxilio_ativo': False,
+        'show_activity_menu': False # Flag para o menu de atividades
     }
 
     for key, default in defaults.items():
-        if key in ['play_sound', 'gif_warning', 'last_reg_status', 'chamado_guide_step', 'sessao_msg_preview', 'html_download_ready', 'html_content_cache']: 
+        if key in ['play_sound', 'gif_warning', 'last_reg_status', 'chamado_guide_step', 'sessao_msg_preview', 'html_download_ready', 'html_content_cache', 'show_activity_menu']: 
             st.session_state.setdefault(key, default)
         else: 
             st.session_state[key] = persisted_state.get(key, default)
@@ -763,7 +713,6 @@ def init_session_state():
     st.session_state['current_status_starts'] = persisted_state.get('current_status_starts', {}).copy()
     st.session_state['daily_logs'] = persisted_state.get('daily_logs', []).copy() 
     
-    # Garantir sincronia do auxilio
     st.session_state['auxilio_ativo'] = persisted_state.get('auxilio_ativo', False)
 
     for nome in CONSULTORES:
@@ -781,11 +730,9 @@ def init_session_state():
 
     checked_on = {c for c in CONSULTORES if st.session_state.get(f'check_{c}')}
     if not st.session_state.bastao_queue and checked_on:
-        print('!!! Fila vazia na carga, reconstruindo !!!')
         st.session_state.bastao_queue = sorted(list(checked_on))
 
     check_and_assume_baton()
-    print('--- Estado Sincronizado (GLOBAL -> LOCAL) ---')
 
 def find_next_holder_index(current_index, queue, skips):
     """Encontra o próximo consultor elegível na fila."""
@@ -802,13 +749,11 @@ def find_next_holder_index(current_index, queue, skips):
             return next_idx
         next_idx = (next_idx + 1) % num_consultores
         attempts += 1
-    print("AVISO: find_next_holder_index não encontrou ninguém elegível.")
     return -1
 
 
 def check_and_assume_baton():
     """Verifica o estado do bastão e o atribui/remove conforme necessário."""
-    print('--- VERIFICA E ASSUME BASTÃO ---')
     queue = st.session_state.bastao_queue
     skips = st.session_state.skip_flags
     current_holder_status = next((c for c, s in st.session_state.status_texto.items() if s == 'Bastão'), None)
@@ -830,14 +775,12 @@ def check_and_assume_baton():
 
     for c in CONSULTORES:
         if c != should_have_baton and st.session_state.status_texto.get(c) == 'Bastão':
-            print(f'Limpando bastão de {c} (não deveria ter)')
             duration = datetime.now() - st.session_state.current_status_starts.get(c, datetime.now())
             log_status_change(c, 'Bastão', 'Indisponível', duration)
             st.session_state.status_texto[c] = 'Indisponível'
             changed = True
 
     if should_have_baton and st.session_state.status_texto.get(should_have_baton) != 'Bastão':
-        print(f'Atribuindo bastão para {should_have_baton}')
         old_status = st.session_state.status_texto.get(should_have_baton, '')
         duration = datetime.now() - st.session_state.current_status_starts.get(should_have_baton, datetime.now())
         log_status_change(should_have_baton, old_status, 'Bastão', duration)
@@ -845,15 +788,12 @@ def check_and_assume_baton():
         st.session_state.bastao_start_time = datetime.now()
         if previous_holder != should_have_baton: 
             st.session_state.play_sound = True 
-            print("SOUND TRIGGER: check_and_assume_baton assigned baton.")
             send_chat_notification_internal(should_have_baton, 'Bastão') 
         if st.session_state.skip_flags.get(should_have_baton):
-            print(f' Consumindo skip flag de {should_have_baton} ao assumir.')
             st.session_state.skip_flags[should_have_baton] = False
         changed = True
     elif not should_have_baton:
         if current_holder_status:
-            print(f'Ninguém elegível, limpando bastão de {current_holder_status}')
             duration = datetime.now() - st.session_state.current_status_starts.get(current_holder_status, datetime.now())
             log_status_change(current_holder_status, 'Bastão', 'Indisponível', duration)
             st.session_state.status_texto[current_holder_status] = 'Indisponível' 
@@ -862,7 +802,6 @@ def check_and_assume_baton():
         st.session_state.bastao_start_time = None
 
     if changed: 
-        print('Estado do bastão mudou. Salvando GLOBAL.')
         save_state()
     return changed
 
@@ -871,8 +810,6 @@ def check_and_assume_baton():
 # ============================================
 
 def update_queue(consultor):
-    """Callback: Checkbox de disponibilidade (entrar/sair da fila)."""
-    print(f'CALLBACK UPDATE QUEUE: {consultor}')
     st.session_state.gif_warning = False; st.session_state.rotation_gif_start_time = None
     st.session_state.lunch_warning_info = None 
     
@@ -886,7 +823,6 @@ def update_queue(consultor):
         st.session_state.status_texto[consultor] = '' 
         if consultor not in st.session_state.bastao_queue:
             st.session_state.bastao_queue.append(consultor) 
-            print(f'Adicionado {consultor} ao fim da fila.')
         st.session_state.skip_flags[consultor] = False 
         if consultor in st.session_state.priority_return_queue:
             st.session_state.priority_return_queue.remove(consultor)
@@ -899,7 +835,6 @@ def update_queue(consultor):
         
         if consultor in st.session_state.bastao_queue:
             st.session_state.bastao_queue.remove(consultor)
-            print(f'Removido {consultor} da fila.')
         st.session_state.skip_flags.pop(consultor, None) 
         
     baton_changed = check_and_assume_baton() 
@@ -907,8 +842,6 @@ def update_queue(consultor):
         save_state()
 
 def rotate_bastao(): 
-    """Callback: Botão 'Passar'."""
-    print('CALLBACK ROTATE BASTAO (PASSAR)')
     selected = st.session_state.consultor_selectbox
     st.session_state.gif_warning = False; st.session_state.rotation_gif_start_time = None
     st.session_state.lunch_warning_info = None 
@@ -924,7 +857,6 @@ def rotate_bastao():
     current_index = -1
     try: current_index = queue.index(current_holder)
     except ValueError:
-        st.warning(f'Erro interno: Portador {current_holder} não encontrado na fila. Tentando corrigir.')
         if check_and_assume_baton(): pass 
         return
 
@@ -937,7 +869,6 @@ def rotate_bastao():
         potential_next_holder = queue[potential_next_index]
 
         if potential_next_holder == first_eligible_holder_overall and current_holder != first_eligible_holder_overall:
-            print("--- RESETANDO CICLO (Detectado ao passar para o primeiro elegível) ---")
             st.session_state.skip_flags = {c: False for c in CONSULTORES if st.session_state.get(f'check_{c}')}
             skips = st.session_state.skip_flags 
             reset_triggered = True
@@ -949,7 +880,6 @@ def rotate_bastao():
 
     if next_index != -1:
         next_holder = queue[next_index]
-        print(f'Passando bastão de {current_holder} para {next_holder} (Reset Triggered: {reset_triggered})')
         duration = datetime.now() - (st.session_state.bastao_start_time or datetime.now())
         
         log_status_change(current_holder, 'Bastão', '', duration)
@@ -964,18 +894,14 @@ def rotate_bastao():
         st.session_state.bastao_counts[current_holder] = st.session_state.bastao_counts.get(current_holder, 0) + 1
         
         st.session_state.play_sound = True 
-        print("SOUND TRIGGER: rotate_bastao successful.")
         st.session_state.rotation_gif_start_time = datetime.now()
         
         save_state()
     else:
-        print('Ninguém elegível. Forçando re-check e mantendo estado atual.')
         st.warning('Não há próximo(a) consultor(a) elegível na fila no momento.')
         check_and_assume_baton() 
 
 def toggle_skip(): 
-    """Callback: Botão 'Pular'."""
-    print('CALLBACK TOGGLE SKIP')
     selected = st.session_state.consultor_selectbox
     st.session_state.gif_warning = False; st.session_state.rotation_gif_start_time = None
     st.session_state.lunch_warning_info = None 
@@ -985,12 +911,9 @@ def toggle_skip():
 
     current_skip_status = st.session_state.skip_flags.get(selected, False)
     st.session_state.skip_flags[selected] = not current_skip_status
-    new_status_str = 'MARCADO para pular' if not current_skip_status else 'DESMARCADO para pular'
-    print(f'{selected} foi {new_status_str}')
 
     current_holder = next((c for c, s in st.session_state.status_texto.items() if s == 'Bastão'), None)
     if selected == current_holder and st.session_state.skip_flags[selected]:
-        print(f'Portador {selected} se marcou para pular. Tentando passar o bastão...')
         save_state() 
         rotate_bastao() 
         return 
@@ -998,8 +921,6 @@ def toggle_skip():
     save_state() 
 
 def update_status(status_text, change_to_available): 
-    """Callback: Botões de Ação (Atendimento, Almoço, etc.)."""
-    print(f'CALLBACK UPDATE STATUS: {status_text}')
     selected = st.session_state.consultor_selectbox
     st.session_state.gif_warning = False; st.session_state.rotation_gif_start_time = None
     if not selected or selected == 'Selecione um nome': 
@@ -1024,10 +945,7 @@ def update_status(status_text, change_to_available):
         num_almoco = sum(1 for s in all_statuses.values() if s == 'Almoço')
         limite_almoco = total_ativos / 2.0
         
-        print(f"Check Almoço: Ativos={total_ativos}, EmAlmoço={num_almoco}, Limite={limite_almoco}")
-        
         if total_ativos > 0 and num_almoco >= limite_almoco:
-            print(f"AVISO ALMOÇO (Global): {selected}.")
             st.session_state.lunch_warning_info = {
                 'consultor': selected,
                 'start_time': datetime.now(),
@@ -1053,7 +971,6 @@ def update_status(status_text, change_to_available):
         if selected not in st.session_state.priority_return_queue: st.session_state.priority_return_queue.append(selected)
     elif selected in st.session_state.priority_return_queue: st.session_state.priority_return_queue.remove(selected)
 
-    print(f'... Fila: {st.session_state.bastao_queue}, Skips: {st.session_state.skip_flags}')
     baton_changed = False
     if was_holder: 
         baton_changed = check_and_assume_baton() 
@@ -1062,22 +979,16 @@ def update_status(status_text, change_to_available):
         save_state() 
 
 def manual_rerun():
-    """Callback: Botão 'Atualizar (Manual)'."""
-    print('CALLBACK MANUAL RERUN')
     st.session_state.gif_warning = False; st.session_state.rotation_gif_start_time = None
     st.session_state.lunch_warning_info = None 
     st.rerun() 
     
 def on_auxilio_change():
-    """Callback: Salva estado do auxílio imediatamente ao alternar."""
     save_state()
 
 # --- Callbacks de Formulário de Registro ---
 
 def handle_atividade_submission(): 
-    """Callback: Envio do formulário 'Atendimento'."""
-    print("CALLBACK: handle_atividade_submission")
-    
     consultor_selecionado = st.session_state.consultor_selectbox
     tipo_atendimento = st.session_state.registro_tipo_selecao
     
@@ -1105,9 +1016,6 @@ def handle_atividade_submission():
         st.session_state.last_reg_status = "error"
 
 def handle_presencial_submission(): 
-    """Callback: Envio do formulário 'Atividade'."""
-    print("CALLBACK: handle_presencial_submission")
-    
     consultor_selecionado = st.session_state.consultor_selectbox
     
     atividade = st.session_state.get('reg_pres_atividade')
@@ -1125,7 +1033,6 @@ def handle_presencial_submission():
         inicio_time = time(int(inicio_h), int(inicio_m))
         fim_time = time(int(fim_h), int(fim_m))
     except ValueError as e:
-        print(f"Erro ao criar objeto time: {e} (h:{inicio_h}, m:{inicio_m})")
         st.session_state.last_reg_status = "error_time"
         return
 
@@ -1136,7 +1043,7 @@ def handle_presencial_submission():
         "particip_externos": st.session_state.get('reg_pres_particip_externos') or "N/A",
         "data": st.session_state.get('reg_pres_data') or date.today(),
         "inicio": inicio_time, 
-        "fim": fim_time          
+        "fim": fim_time           
     }
     
     success = send_presencial_to_chat(consultor_selecionado, form_data) 
@@ -1157,9 +1064,6 @@ def handle_presencial_submission():
         st.session_state.last_reg_status = "error"
 
 def handle_sessao_submission():
-    """Callback: Envio do Registro de Sessão."""
-    print("CALLBACK: handle_sessao_submission")
-    
     consultor = st.session_state.consultor_selectbox
     texto_final = st.session_state.get("sessao_msg_preview", "")
     
@@ -1174,7 +1078,6 @@ def handle_sessao_submission():
         st.session_state.last_reg_status = "success_sessao"
         st.session_state.sessao_msg_preview = ""
         
-        # GERA O HTML COM OS PROCEDIMENTOS ATUALIZADOS
         html_content = gerar_html_checklist(consultor, camara, data_formatada)
         st.session_state.html_content_cache = html_content
         st.session_state.html_download_ready = True
@@ -1185,15 +1088,10 @@ def handle_sessao_submission():
         st.session_state.last_reg_status = "error_sessao"
         st.session_state.html_download_ready = False
 
-# Callbacks para o guia de chamados
 def set_chamado_step(step_num):
-    """Callback para ATUALIZAR a etapa do guia de chamados."""
     st.session_state.chamado_guide_step = step_num
 
 def handle_chamado_submission():
-    """Callback: Envio do rascunho do chamado."""
-    print("CALLBACK: handle_chamado_submission")
-    
     consultor = st.session_state.consultor_selectbox
     texto_chamado = st.session_state.get("chamado_textarea", "")
     
@@ -1303,15 +1201,40 @@ if proximo_index != -1:
 # --- Coluna Principal ---
 with col_principal:
     st.header("Responsável pelo Bastão")
-    _, col_time = st.columns([0.25, 0.75])
-    duration = timedelta()
-    if responsavel and st.session_state.bastao_start_time:
-        try: duration = datetime.now() - st.session_state.bastao_start_time
-        except: pass
-    col_time.markdown(f'#### 🕒 Tempo: **{format_time_duration(duration)}**')
+    
+    # --- VISUAL DO RESPONSÁVEL COM TARJA E GIF ---
     if responsavel:
-        st.markdown(f'<span style="font-size: 2em; font-weight: bold;">{responsavel}</span>', unsafe_allow_html=True)
-    else: st.markdown('<h2>(Ninguém com o bastão)</h2>', unsafe_allow_html=True)
+        bg_color = "#e8f4f8" # Azul claro
+        border_color = "#007BFF"
+        
+        st.markdown(f"""
+        <div style="
+            background-color: {bg_color}; 
+            border-left: 10px solid {border_color}; 
+            padding: 20px; 
+            border-radius: 8px; 
+            display: flex; 
+            align-items: center; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;">
+            <div style="flex-shrink: 0; margin-right: 20px;">
+                <img src="{GIF_BASTAO_HOLDER}" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover;">
+            </div>
+            <div>
+                <span style="font-size: 14px; color: #555; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">Atualmente com:</span><br>
+                <span style="font-size: 42px; font-weight: 800; color: #003366; line-height: 1.1;">{responsavel}</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        duration = timedelta()
+        if st.session_state.bastao_start_time:
+             try: duration = datetime.now() - st.session_state.bastao_start_time
+             except: pass
+        st.caption(f"⏱️ Tempo com o bastão: **{format_time_duration(duration)}**")
+        
+    else: 
+        st.markdown('<h2>(Ninguém com o bastão)</h2>', unsafe_allow_html=True)
     st.markdown("###")
 
     st.header("Próximos da Fila")
@@ -1346,15 +1269,54 @@ with col_principal:
     st.selectbox('Selecione:', options=['Selecione um nome'] + CONSULTORES, key='consultor_selectbox', label_visibility='collapsed')
     st.markdown("#### "); st.markdown("**Ações:**")
     
+    # --- MENUS DE AÇÃO ---
+    if 'show_activity_menu' not in st.session_state:
+        st.session_state.show_activity_menu = False
+
+    def open_activity_menu():
+        st.session_state.show_activity_menu = True
+    
     c1, c2, c3, c4, c5, c6, c7 = st.columns(7) 
     
-    c1.button('🎯 Passar', on_click=rotate_bastao, use_container_width=True, help='Passa o bastão para o próximo elegível. Apenas o responsável atual.')
-    c2.button('⏭️ Pular', on_click=toggle_skip, use_container_width=True, help='Marca/Desmarca o consultor selecionado para ser pulado na próxima rotação.')
-    c3.button('✏️ Atendimento', on_click=update_status, args=('Atendimento', False,), use_container_width=True) 
+    c1.button('🎯 Passar', on_click=rotate_bastao, use_container_width=True, help='Passa o bastão.')
+    c2.button('⏭️ Pular', on_click=toggle_skip, use_container_width=True, help='Pular vez.')
+    
+    # ATIVIDADES (Agrupa os antigos botões)
+    c3.button('📋 Atividades', on_click=open_activity_menu, use_container_width=True)
+    
     c4.button('🍽️ Almoço', on_click=update_status, args=('Almoço', False,), use_container_width=True)
     c5.button('👤 Ausente', on_click=update_status, args=('Ausente', False,), use_container_width=True)
-    c6.button('🎙️ Sessão', on_click=update_status, args=('Sessão', False,), use_container_width=True)
+    # c6 vazio por realinhamento
     c7.button('🚶 Saída', on_click=update_status, args=('Saída Temporária', False,), use_container_width=True)
+    
+    # --- CONTAINER DO MENU DE ATIVIDADES ---
+    if st.session_state.show_activity_menu:
+        with st.container(border=True):
+            st.markdown("### Selecione a Atividade")
+            atividade_escolhida = st.radio("Tipo:", OPCOES_ATIVIDADES_STATUS, horizontal=False)
+            
+            texto_extra = ""
+            if atividade_escolhida == "Outros":
+                texto_extra = st.text_input("Descreva a atividade:", placeholder="Ex: Ajuste técnico...")
+            
+            col_confirm_1, col_confirm_2 = st.columns(2)
+            with col_confirm_1:
+                if st.button("Confirmar Status", type="primary", use_container_width=True):
+                    # Define o status final
+                    status_final = f"Atividade: {atividade_escolhida}"
+                    if atividade_escolhida == "Outros" and texto_extra:
+                        status_final += f" - {texto_extra}"
+                    elif atividade_escolhida == "Outros" and not texto_extra:
+                        status_final += " (Não especificado)"
+                        
+                    update_status(status_final, False)
+                    st.session_state.show_activity_menu = False 
+                    st.rerun()
+            
+            with col_confirm_2:
+                if st.button("Cancelar", use_container_width=True):
+                    st.session_state.show_activity_menu = False
+                    st.rerun()
     
     st.markdown("####")
     st.button('🔄 Atualizar (Manual)', on_click=manual_rerun, use_container_width=True)
@@ -1373,6 +1335,19 @@ with col_principal:
         
         if st.session_state.get('html_download_ready') and st.session_state.get('html_content_cache'):
             filename = st.session_state.get('html_filename', 'Checklist_Sessao.html')
+            
+            # --- ENVIO DO CÓDIGO VIA WEBHOOK ---
+            if st.button("🚀 Enviar Arquivo HTML para o Chat (Via Webhook)"):
+                try:
+                    msg_html = f"**Arquivo HTML Gerado (Código)**\n\n```html\n{st.session_state.html_content_cache}\n```"
+                    if len(msg_html) > 4000:
+                        st.warning("O arquivo é muito grande para o chat. Use o download abaixo.")
+                    else:
+                        requests.post(GOOGLE_CHAT_WEBHOOK_SESSAO, json={'text': msg_html})
+                        st.success("Código HTML enviado para o chat!")
+                except Exception as e:
+                    st.error(f"Erro ao enviar: {e}")
+
             st.download_button(
                 label=f"⬇️ Baixar Formulário HTML ({filename})",
                 data=st.session_state.html_content_cache,
@@ -1471,24 +1446,20 @@ with col_principal:
                     on_click=handle_presencial_submission 
                 )
     
-    # --- Formulário "Registro de Sessão" (COM MENSAGEM ATUALIZADA) ---
+    # --- Formulário "Registro de Sessão" ---
     elif st.session_state.registro_tipo_selecao == "Registro de Sessão":
         st.subheader("Registro de Sessão")
         
-        # Função para atualizar o texto da sessão automaticamente (Reatividade)
         def atualizar_texto_sessao():
             data_input = st.session_state.get('sessao_data_input')
             camara_input = st.session_state.get('sessao_camara_select')
             consultor_atual = st.session_state.consultor_selectbox
             
             if data_input and camara_input:
-                # Garante a saudação neutra: o(a) responsável
                 nome_consultor_txt = consultor_atual if consultor_atual and consultor_atual != "Selecione um nome" else "[NOME DO(A) CONSULTOR(A)]"
                 data_formatada = data_input.strftime("%d/%m/%Y")
-                
                 email_setor = CAMARAS_DICT.get(camara_input, "")
                 
-                # CORPO DA MENSAGEM SOLICITADO
                 texto_gerado = (
                     f"Prezada equipe do {camara_input},\n\n"
                     f"Meu nome é {nome_consultor_txt}, sou assistente de processos judiciais da CESUPE/TJMG e serei o(a) responsável pelo acompanhamento técnico da sessão de julgamento agendada para o dia {data_formatada}.\n\n"
@@ -1579,9 +1550,6 @@ with col_principal:
                 
                 **7. Identificação do(a) Consultor(a)**
                 * Inserir a assinatura e identificação do(a) consultor(a).
-                
-                > **Observação para a Abertura:**
-                > Ao abrir chamados na aba específica "CONSULTORES CESUPE - ERRO", deve-se verificar se o campo "Título Extra" está preenchido com o nome do setor responsável pela abertura (CESUPE).
                 """)
                 st.button("Próximo (Passo 3) ➡️", on_click=set_chamado_step, args=(3,))
                 
@@ -1633,12 +1601,10 @@ with col_principal:
                     )
 
 
-# --- Coluna Disponibilidade (Mantida) ---
+# --- Coluna Disponibilidade ---
 with col_disponibilidade:
-    # --- NOVO BLOCO: AUXÍLIO EMAIL/WHATSAPP ---
     st.markdown("###")
     
-    # Use a chave 'auxilio_ativo' diretamente para que o estado do widget controle a variável
     st.toggle(
         "Auxílio HP/Emails/Whatsapp", 
         key='auxilio_ativo', 
@@ -1650,34 +1616,29 @@ with col_disponibilidade:
         st.image(GIF_URL_NEDRY, width=300)
     
     st.markdown("---")
-    # ------------------------------------------
 
     st.header('Status dos(as) Consultores(as)')
     st.markdown('Marque/Desmarque para entrar/sair.')
-    ui_lists = {'fila': [], 'atendimento': [], 'almoco': [], 'saida': [], 'ausente': [], 'sessao': [], 'indisponivel': []} 
+    
+    ui_lists = {'fila': [], 'atendimento': [], 'almoco': [], 'saida': [], 'ausente': [], 'atividade_especifica': [], 'indisponivel': []} 
     
     for nome in CONSULTORES:
         is_checked = st.session_state.get(f'check_{nome}', False)
         status = st.session_state.status_texto.get(nome, 'Indisponível')
         
-        if status == 'Bastão': 
-            ui_lists['fila'].insert(0, nome)
-        elif status == '': 
-            ui_lists['fila'].append(nome) 
-        elif status == 'Atendimento': 
-            ui_lists['atendimento'].append(nome) 
-        elif status == 'Almoço': 
-            ui_lists['almoco'].append(nome)
-        elif status == 'Ausente':
-            ui_lists['ausente'].append(nome)
-        elif status == 'Sessão':
-            ui_lists['sessao'].append(nome)
-        elif status == 'Saída Temporária': 
-            ui_lists['saida'].append(nome)
-        elif status == 'Indisponível': 
-            ui_lists['indisponivel'].append(nome)
+        if status == 'Bastão': ui_lists['fila'].insert(0, nome)
+        elif status == '': ui_lists['fila'].append(nome)
+        elif status == 'Atendimento': ui_lists['atendimento'].append(nome)
+        elif status == 'Almoço': ui_lists['almoco'].append(nome)
+        elif status == 'Ausente': ui_lists['ausente'].append(nome)
+        elif status == 'Saída Temporária': ui_lists['saida'].append(nome)
+        # Captura os novos status de Atividades
+        elif status.startswith('Atividade'): 
+            ui_lists['atividade_especifica'].append((nome, status))
+        elif status == 'Indisponível': ui_lists['indisponivel'].append(nome)
+        else: ui_lists['indisponivel'].append(nome)
 
-    st.subheader(f'✅ Na Fila ({len(ui_lists['fila'])})')
+    st.subheader(f'✅ Na Fila ({len(ui_lists["fila"])})')
     render_order = [c for c in queue if c in ui_lists['fila']] + [c for c in ui_lists['fila'] if c not in queue]
     if not render_order: st.markdown('_Ninguém disponível._')
     else:
@@ -1704,24 +1665,32 @@ with col_disponibilidade:
             for nome in sorted(names):
                 col_nome, col_check = st.columns([0.8, 0.2])
                 key = f'check_{nome}'
-                
                 col_check.checkbox(' ', key=key, value=False, on_change=update_queue, args=(nome,), label_visibility='collapsed')
-                
                 col_nome.markdown(f'**{nome}** :{tag_color}-background[{title}]', unsafe_allow_html=True)
         st.markdown('---')
+
+    # Renderiza Atividades Específicas separadamente
+    st.subheader(f'📋 Em Atividades ({len(ui_lists["atividade_especifica"])})')
+    if not ui_lists['atividade_especifica']: 
+        st.markdown('_Ninguém em atividades específicas._')
+    else:
+        for nome, status_desc in sorted(ui_lists['atividade_especifica'], key=lambda x: x[0]):
+            col_nome, col_check = st.columns([0.8, 0.2])
+            display_status = status_desc.replace("Atividade: ", "")
+            col_check.checkbox(' ', key=f'check_{nome}', value=False, on_change=update_queue, args=(nome,), label_visibility='collapsed')
+            col_nome.markdown(f'**{nome}** :orange-background[{display_status}]', unsafe_allow_html=True)
+    st.markdown('---')
 
     render_section('Atendimento', '✏️', ui_lists['atendimento'], 'yellow') 
     render_section('Almoço', '🍽️', ui_lists['almoco'], 'blue')
     render_section('Ausente', '👤', ui_lists['ausente'], 'violet') 
-    render_section('Sessão', '🎙️', ui_lists['sessao'], 'green')
     render_section('Saída', '🚶', ui_lists['saida'], 'red')
     render_section('Indisponível', '❌', ui_lists['indisponivel'], 'grey')
 
-# --- Lógica de Relatório Diário (Mantida) ---
+# --- Lógica de Relatório Diário ---
 now = datetime.now()
 last_run_date = st.session_state.report_last_run_date.date() if isinstance(st.session_state.report_last_run_date, datetime) else datetime.min.date()
 
-# Rodar o relatório uma vez por dia, a partir das 20h
 if now.hour >= 20 and now.date() > last_run_date:
     print(f"TRIGGER: Enviando relatório diário. Agora: {now}, Última Execução: {st.session_state.report_last_run_date}")
     send_daily_report()
