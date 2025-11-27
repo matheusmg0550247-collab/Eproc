@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, date, time
 from operator import itemgetter
 from streamlit_autorefresh import st_autorefresh
 import json 
-import re # Importado para ajudar na limpeza do HTML
+import re 
 
 # --- Constantes de Consultores ---
 CONSULTORES = sorted([
@@ -1077,30 +1077,8 @@ def handle_sessao_submission():
         st.session_state.last_reg_status = "success_sessao"
         st.session_state.sessao_msg_preview = ""
         
-        # Gera HTML
+        # Gera HTML e prepara download
         html_content = gerar_html_checklist(consultor, camara, data_formatada)
-        
-        # --- LÓGICA DE ENVIO AUTOMÁTICO DO HTML ---
-        # "Minifica" o HTML removendo quebras de linha e espaços duplos para tentar caber no limite do Chat
-        html_minified = html_content.replace('\n', ' ').replace('  ', '')
-        
-        try:
-            # Tenta enviar o código
-            msg_html = f"**Arquivo HTML Gerado (Código)**\nCrie um arquivo .html e cole o código abaixo se necessário:\n\n```html\n{html_minified}\n```"
-            
-            # Limite seguro do Google Chat (~4096). Se passar, enviamos aviso.
-            if len(msg_html) > 4000:
-                # Tenta cortar ou enviar aviso
-                print("AVISO: HTML muito grande para Webhook automático. Enviando link de fallback.")
-                requests.post(GOOGLE_CHAT_WEBHOOK_SESSAO, json={'text': f"✅ **Checklist Gerado com Sucesso!**\n\nO arquivo HTML foi gerado, mas é muito extenso para ser exibido inteiramente aqui no chat.\n\n📂 *Por favor, baixe o arquivo diretamente no painel de controle.*"})
-            else:
-                requests.post(GOOGLE_CHAT_WEBHOOK_SESSAO, json={'text': msg_html})
-                print("HTML enviado automaticamente via Webhook.")
-                
-        except Exception as e:
-            print(f"Erro no envio automático do HTML: {e}")
-
-        # Prepara o botão de download (caso o usuário queira baixar)
         st.session_state.html_content_cache = html_content
         st.session_state.html_download_ready = True
         st.session_state.html_filename = f"Checklist_{data_nome_arquivo}.html"
@@ -1298,7 +1276,7 @@ with col_principal:
     def open_activity_menu():
         st.session_state.show_activity_menu = True
     
-    # AQUI ESTAVA O PROBLEMA DO BURACO (c7 removido)
+    # 6 Colunas alinhadas
     c1, c2, c3, c4, c5, c6 = st.columns(6) 
     
     c1.button('🎯 Passar', on_click=rotate_bastao, use_container_width=True, help='Passa o bastão.')
@@ -1353,9 +1331,9 @@ with col_principal:
         st.success("Chamado enviado! A resposta será enviada no seu email institucional.")
         st.session_state.last_reg_status = None
     elif st.session_state.last_reg_status == "success_sessao":
-        st.success("Registro de Sessão enviado! O HTML foi encaminhado automaticamente para o Webhook.")
+        st.success("Registro de Sessão enviado com sucesso!")
         
-        # Botão de download mantido como backup seguro
+        # Botão de download (MODO MANUAL)
         if st.session_state.get('html_download_ready') and st.session_state.get('html_content_cache'):
             filename = st.session_state.get('html_filename', 'Checklist_Sessao.html')
             
