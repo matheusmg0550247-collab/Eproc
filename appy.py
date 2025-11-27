@@ -293,7 +293,7 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
         let consultorResponsavel = "{consultor_formatado}";
         
         if (hoje > dataSessaoObj) {{
-            consultorResponsavel = "Cesupe";
+            consultorResponsavel = "Atendimento";
         }}
         
         const msgTexto = 
