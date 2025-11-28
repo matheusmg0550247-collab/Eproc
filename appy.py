@@ -1,3 +1,4 @@
+
 # ============================================
 # 1. IMPORTS E DEFINIÇÕES GLOBAIS
 # ============================================
@@ -70,7 +71,7 @@ REG_PRESENCIAL_ATIVIDADE_OPCOES = ["Sessão", "Homologação", "Treinamento", "C
 
 # --- NOVAS CONSTANTES SOLICITADAS ---
 OPCOES_ATIVIDADES_STATUS = [
-    "HP", "E-mail", "Sessão", "WhatsApp Plantão", 
+    "HP", "E-mail", "WhatsApp Plantão", 
     "Treinamento", "Homologação", "Redação Documentos", "Reunião", "Outros"
 ]
 GIF_BASTAO_HOLDER = "https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExa3Uwazd5cnNra2oxdDkydjZkcHdqcWN2cng0Y2N0cmNmN21vYXVzMiZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/3rXs5J0hZkXwTZjuvM/giphy.gif"
@@ -694,11 +695,12 @@ def init_session_state():
         'html_download_ready': False, 
         'html_content_cache': "", 
         'auxilio_ativo': False,
-        'show_activity_menu': False # Flag para o menu de atividades
+        'show_activity_menu': False,
+        'show_sessao_dialog': False # NOVO ESTADO
     }
 
     for key, default in defaults.items():
-        if key in ['play_sound', 'gif_warning', 'last_reg_status', 'chamado_guide_step', 'sessao_msg_preview', 'html_download_ready', 'html_content_cache', 'show_activity_menu']: 
+        if key in ['play_sound', 'gif_warning', 'last_reg_status', 'chamado_guide_step', 'sessao_msg_preview', 'html_download_ready', 'html_content_cache', 'show_activity_menu', 'show_sessao_dialog']: 
             st.session_state.setdefault(key, default)
         else: 
             st.session_state[key] = persisted_state.get(key, default)
@@ -1267,27 +1269,31 @@ with col_principal:
     st.selectbox('Selecione:', options=['Selecione um nome'] + CONSULTORES, key='consultor_selectbox', label_visibility='collapsed')
     st.markdown("#### "); st.markdown("**Ações:**")
     
-    # --- MENUS DE AÇÃO (COLUNAS CORRIGIDAS) ---
+    # --- MENUS DE AÇÃO ---
     if 'show_activity_menu' not in st.session_state:
         st.session_state.show_activity_menu = False
+    
+    if 'show_sessao_dialog' not in st.session_state:
+        st.session_state.show_sessao_dialog = False
 
     def open_activity_menu():
         st.session_state.show_activity_menu = True
+        st.session_state.show_sessao_dialog = False
+        
+    def open_sessao_dialog():
+        st.session_state.show_sessao_dialog = True
+        st.session_state.show_activity_menu = False
     
-    # 6 Colunas alinhadas
-    c1, c2, c3, c4, c5, c6 = st.columns(6) 
+    # 7 COLUNAS AGORA
+    c1, c2, c3, c4, c5, c6, c7 = st.columns(7) 
     
     c1.button('🎯 Passar', on_click=rotate_bastao, use_container_width=True, help='Passa o bastão.')
     c2.button('⏭️ Pular', on_click=toggle_skip, use_container_width=True, help='Pular vez.')
-    
-    # ATIVIDADES (Agrupa os antigos botões)
     c3.button('📋 Atividades', on_click=open_activity_menu, use_container_width=True)
-    
     c4.button('🍽️ Almoço', on_click=update_status, args=('Almoço', False,), use_container_width=True)
     c5.button('👤 Ausente', on_click=update_status, args=('Ausente', False,), use_container_width=True)
-    
-    # BOTÃO SAÍDA (ATUALIZADO)
-    c6.button('🚶 Saída rápida', on_click=update_status, args=('Saída rápida', False,), use_container_width=True)
+    c6.button('🎙️ Sessão', on_click=open_sessao_dialog, use_container_width=True)
+    c7.button('🚶 Saída rápida', on_click=update_status, args=('Saída rápida', False,), use_container_width=True)
     
     # --- CONTAINER DO MENU DE ATIVIDADES ---
     if st.session_state.show_activity_menu:
@@ -1301,8 +1307,7 @@ with col_principal:
             
             col_confirm_1, col_confirm_2 = st.columns(2)
             with col_confirm_1:
-                if st.button("Confirmar Status", type="primary", use_container_width=True):
-                    # Define o status final
+                if st.button("Confirmar Atividade", type="primary", use_container_width=True):
                     status_final = f"Atividade: {atividade_escolhida}"
                     if atividade_escolhida == "Outros" and texto_extra:
                         status_final += f" - {texto_extra}"
@@ -1314,8 +1319,30 @@ with col_principal:
                     st.rerun()
             
             with col_confirm_2:
-                if st.button("Cancelar", use_container_width=True):
+                if st.button("Cancelar", use_container_width=True, key='cancel_act'):
                     st.session_state.show_activity_menu = False
+                    st.rerun()
+
+    # --- CONTAINER DO MENU DE SESSÃO (NOVO) ---
+    if st.session_state.show_sessao_dialog:
+        with st.container(border=True):
+            st.markdown("### Informar Sessão")
+            sessao_input = st.text_input("Qual sessão?", placeholder="Ex: 1ª Câmara Cível")
+            
+            col_sess_1, col_sess_2 = st.columns(2)
+            with col_sess_1:
+                if st.button("Confirmar Sessão", type="primary", use_container_width=True):
+                    if sessao_input.strip():
+                        status_final = f"Sessão: {sessao_input}"
+                        update_status(status_final, False)
+                        st.session_state.show_sessao_dialog = False
+                        st.rerun()
+                    else:
+                        st.warning("Digite o nome da sessão.")
+            
+            with col_sess_2:
+                if st.button("Cancelar", use_container_width=True, key='cancel_sess'):
+                    st.session_state.show_sessao_dialog = False
                     st.rerun()
     
     st.markdown("####")
@@ -1610,10 +1637,9 @@ with col_disponibilidade:
     st.markdown('Marque/Desmarque para entrar/sair.')
     
     # ----------------------------------------------------
-    # CORREÇÃO: "Atendimento" removido da estrutura base
-    # e lógica de consolidação implementada
+    # LISTAS DO PAINEL DIREITO (ORGANIZADAS)
     # ----------------------------------------------------
-    ui_lists = {'fila': [], 'almoco': [], 'saida': [], 'ausente': [], 'atividade_especifica': [], 'indisponivel': []} 
+    ui_lists = {'fila': [], 'almoco': [], 'saida': [], 'ausente': [], 'atividade_especifica': [], 'sessao_especifica': [], 'indisponivel': []} 
     
     for nome in CONSULTORES:
         is_checked = st.session_state.get(f'check_{nome}', False)
@@ -1625,13 +1651,19 @@ with col_disponibilidade:
         elif status == 'Ausente': ui_lists['ausente'].append(nome)
         elif status == 'Saída rápida': ui_lists['saida'].append(nome)
         
-        # Captura os novos status de Atividades OU legado "Atendimento"
+        # SESSÃO
+        elif status.startswith('Sessão'):
+            # Remove "Sessão: " para exibir só o nome da câmara
+            clean_status = status.replace('Sessão: ', '')
+            ui_lists['sessao_especifica'].append((nome, clean_status))
+
+        # ATIVIDADES (Demanda)
         elif status.startswith('Atividade') or status == 'Atendimento': 
             if status == 'Atendimento':
-                # Normaliza para a nova visualização
-                ui_lists['atividade_especifica'].append((nome, "Atividade: Atendimento"))
+                ui_lists['atividade_especifica'].append((nome, "Atendimento"))
             else:
-                ui_lists['atividade_especifica'].append((nome, status))
+                clean_status = status.replace('Atividade: ', '')
+                ui_lists['atividade_especifica'].append((nome, clean_status))
                 
         elif status == 'Indisponível': ui_lists['indisponivel'].append(nome)
         else: ui_lists['indisponivel'].append(nome)
@@ -1667,21 +1699,39 @@ with col_disponibilidade:
                 col_nome.markdown(f'**{nome}** :{tag_color}-background[{title}]', unsafe_allow_html=True)
         st.markdown('---')
 
-    # Renderiza Atividades Específicas separadamente
-    st.subheader(f'📋 Em Atividades ({len(ui_lists["atividade_especifica"])})')
+    # 1. EM DEMANDA (Antigo Atividades/Atendimento)
+    st.subheader(f'📋 Em Demanda ({len(ui_lists["atividade_especifica"])})')
     if not ui_lists['atividade_especifica']: 
-        st.markdown('_Ninguém em atividades específicas._')
+        st.markdown('_Ninguém em demanda._')
     else:
         for nome, status_desc in sorted(ui_lists['atividade_especifica'], key=lambda x: x[0]):
             col_nome, col_check = st.columns([0.8, 0.2])
-            display_status = status_desc.replace("Atividade: ", "")
             col_check.checkbox(' ', key=f'check_{nome}', value=False, on_change=update_queue, args=(nome,), label_visibility='collapsed')
-            col_nome.markdown(f'**{nome}** :orange-background[{display_status}]', unsafe_allow_html=True)
+            col_nome.markdown(f'**{nome}** :orange-background[{status_desc}]', unsafe_allow_html=True)
     st.markdown('---')
 
+    # 2. ALMOÇO
     render_section('Almoço', '🍽️', ui_lists['almoco'], 'blue')
-    render_section('Ausente', '👤', ui_lists['ausente'], 'violet') 
+
+    # 3. SESSÃO (NOVO)
+    st.subheader(f'🎙️ Sessão ({len(ui_lists["sessao_especifica"])})')
+    if not ui_lists['sessao_especifica']: 
+        st.markdown('_Ninguém em sessão._')
+    else:
+        for nome, status_desc in sorted(ui_lists['sessao_especifica'], key=lambda x: x[0]):
+            col_nome, col_check = st.columns([0.8, 0.2])
+            col_check.checkbox(' ', key=f'check_{nome}', value=False, on_change=update_queue, args=(nome,), label_visibility='collapsed')
+            # Verde para sessão
+            col_nome.markdown(f'**{nome}** :green-background[{status_desc}]', unsafe_allow_html=True)
+    st.markdown('---')
+
+    # 4. SAÍDA RÁPIDA
     render_section('Saída rápida', '🚶', ui_lists['saida'], 'red')
+
+    # 5. AUSENTES
+    render_section('Ausente', '👤', ui_lists['ausente'], 'violet') 
+    
+    # 6. INDISPONÍVEL
     render_section('Indisponível', '❌', ui_lists['indisponivel'], 'grey')
 
 # --- Lógica de Relatório Diário ---
