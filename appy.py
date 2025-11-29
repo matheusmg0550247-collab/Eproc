@@ -68,7 +68,9 @@ OPCOES_ATIVIDADES_STATUS = [
 ]
 GIF_BASTAO_HOLDER = "https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExa3Uwazd5cnNra2oxdDkydjZkcHdqcWN2cng0Y2N0cmNmN21vYXVzMiZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/3rXs5J0hZkXwTZjuvM/giphy.gif"
 
-BASTAO_EMOJI = "💙" 
+# AQUI MUDOU O EMOJI
+BASTAO_EMOJI = "🎄" 
+
 APP_URL_CLOUD = 'https://controle-bastao-cesupe.streamlit.app'
 STATUS_SAIDA_PRIORIDADE = ['Saída rápida']
 STATUSES_DE_SAIDA = ['Atendimento', 'Almoço', 'Saída rápida', 'Ausente', 'Sessão'] 
@@ -594,8 +596,9 @@ def send_daily_report():
         
         if counts > 0 or times:
             consultores_com_dados.append(nome)
+            # AQUI: MUDANÇA PARA O EMOJI DE ÁRVORE NO RELATÓRIO
             report_text += f"**👤 {nome}**\n"
-            report_text += f"- 💙 Bastão Recebido: **{counts}** vez(es)\n"
+            report_text += f"- {BASTAO_EMOJI} Bastão Recebido: **{counts}** vez(es)\n"
             report_text += f"- ⏱️ Tempo com Bastão: **{format_time_duration(bastao_time)}**\n"
             
             other_statuses = []
@@ -987,7 +990,6 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# LINHA DIVISÓRIA VERMELHA
 st.markdown("<hr style='border: 1px solid #D42426;'>", unsafe_allow_html=True) 
 
 gif_start_time = st.session_state.get('rotation_gif_start_time')
