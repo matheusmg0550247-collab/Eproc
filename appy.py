@@ -185,14 +185,18 @@ def render_snow_effect():
     """
     st.markdown(snow_css, unsafe_allow_html=True)
 
-# --- Função Geradora do HTML Personalizado ---
+# --- Função Geradora do HTML Personalizado (COM TEMA VERMELHO) ---
 def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
-    """Gera o código HTML do checklist."""
+    """Gera o código HTML do checklist com tema vermelho de Natal."""
     
-    # Adiciona o @ se não tiver
     consultor_formatado = f"@{consultor_nome}" if not consultor_nome.startswith("@") else consultor_nome
     webhook_destino = GOOGLE_CHAT_WEBHOOK_CHECKLIST_HTML
     
+    # Paleta de cores vermelha
+    primary_red = "#8B0000" # Vermelho escuro para textos e bordas
+    light_red_bg = "#FFEBEE" # Fundo vermelho bem claro
+    accent_red = "#D42426" # Vermelho vibrante para destaques
+
     html_template = f"""
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -203,8 +207,8 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
 <style>
     body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px; color: #333; }}
     .container {{ max-width: 800px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
-    h1 {{ color: #003366; font-size: 24px; border-bottom: 2px solid #003366; padding-bottom: 10px; margin-bottom: 20px; }}
-    .intro-box {{ background-color: #eef4fa; border-left: 5px solid #003366; padding: 15px; margin-bottom: 25px; font-size: 14px; line-height: 1.5; }}
+    h1 {{ color: {primary_red}; font-size: 24px; border-bottom: 2px solid {primary_red}; padding-bottom: 10px; margin-bottom: 20px; }}
+    .intro-box {{ background-color: {light_red_bg}; border-left: 5px solid {primary_red}; padding: 15px; margin-bottom: 25px; font-size: 14px; line-height: 1.5; }}
     
     .row-flex {{ display: flex; gap: 20px; margin-bottom: 20px; align-items: flex-end; }}
     .col-flex {{ flex: 1; }}
@@ -215,14 +219,14 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
     
     .field-group {{ margin-bottom: 20px; }}
 
-    .section-header {{ background-color: #003366; color: white; padding: 10px 15px; border-radius: 4px; margin-top: 25px; margin-bottom: 15px; font-size: 15px; font-weight: bold; }}
+    .section-header {{ background-color: {primary_red}; color: white; padding: 10px 15px; border-radius: 4px; margin-top: 25px; margin-bottom: 15px; font-size: 15px; font-weight: bold; }}
     
     .checklist-title {{ font-size: 22px; font-weight: bold; color: #333; margin-top: 30px; margin-bottom: 5px; }}
     .checklist-desc {{ font-size: 14px; color: #666; font-style: italic; margin-bottom: 20px; }}
     
     .checkbox-item {{ margin-bottom: 15px; display: flex; align-items: flex-start; border-bottom: 1px solid #eee; padding-bottom: 10px; }}
     .checkbox-item:last-child {{ border-bottom: none; }}
-    .checkbox-item input[type="checkbox"] {{ margin-right: 10px; margin-top: 3px; width: 18px; height: 18px; accent-color: #003366; cursor: pointer; flex-shrink: 0; }}
+    .checkbox-item input[type="checkbox"] {{ margin-right: 10px; margin-top: 3px; width: 18px; height: 18px; accent-color: {primary_red}; cursor: pointer; flex-shrink: 0; }}
     .checkbox-item label {{ cursor: pointer; line-height: 1.4; font-size: 14px; color: #444; }}
     .checkbox-item label strong {{ color: #000; }}
     
@@ -983,7 +987,8 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-st.markdown("<hr style='border: 1px solid #4A90E2;'>", unsafe_allow_html=True) 
+# LINHA DIVISÓRIA VERMELHA
+st.markdown("<hr style='border: 1px solid #D42426;'>", unsafe_allow_html=True) 
 
 gif_start_time = st.session_state.get('rotation_gif_start_time')
 lunch_warning_info = st.session_state.get('lunch_warning_info') 
@@ -1061,10 +1066,11 @@ if proximo_index != -1:
 with col_principal:
     st.header("Responsável pelo Bastão")
     
-    # --- VISUAL DO RESPONSÁVEL COM TARJA E GIF ---
+    # --- VISUAL DO RESPONSÁVEL COM TARJA E GIF (TEMA VERMELHO) ---
     if responsavel:
-        bg_color = "#e8f4f8" # Azul claro
-        border_color = "#007BFF"
+        bg_color = "#FFEBEE" # Vermelho claro
+        border_color = "#D42426" # Vermelho vibrante
+        text_color = "#8B0000" # Vermelho escuro
         
         st.markdown(f"""
         <div style="
@@ -1081,7 +1087,7 @@ with col_principal:
             </div>
             <div>
                 <span style="font-size: 14px; color: #555; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">Atualmente com:</span><br>
-                <span style="font-size: 42px; font-weight: 800; color: #003366; line-height: 1.1;">{responsavel}</span>
+                <span style="font-size: 42px; font-weight: 800; color: {text_color}; line-height: 1.1;">{responsavel}</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -1168,7 +1174,7 @@ with col_principal:
             col_confirm_1, col_confirm_2 = st.columns(2)
             with col_confirm_1:
                 if st.button("Confirmar Atividade", type="primary", use_container_width=True):
-                    if atividades_escolhida:
+                    if atividades_escolhidas:
                         # Concatena as escolhas
                         str_atividades = ", ".join(atividades_escolhidas)
                         status_final = f"Atividade: {str_atividades}"
@@ -1381,11 +1387,13 @@ with col_disponibilidade:
             
             skip_flag = skips.get(nome, False)
             if nome == responsavel:
-                display = f'<span style="background-color: #007BFF; color: white; padding: 2px 6px; border-radius: 5px; font-weight: bold;">🔥 {nome}</span>'
+                # TAG VERMELHA PARA O RESPONSÁVEL
+                display = f'<span style="background-color: #D42426; color: white; padding: 2px 6px; border-radius: 5px; font-weight: bold;">🔥 {nome}</span>'
             elif skip_flag:
                 display = f'**{nome}** :orange-background[Pulando ⏭️]'
             else:
-                display = f'**{nome}** :blue-background[Aguardando]'
+                # TAG VERMELHA PARA AGUARDANDO
+                display = f'**{nome}** :red-background[Aguardando]'
             col_nome.markdown(display, unsafe_allow_html=True)
     st.markdown('---')
 
@@ -1411,10 +1419,10 @@ with col_disponibilidade:
             col_nome.markdown(f'**{nome}** :orange-background[{status_desc}]', unsafe_allow_html=True)
     st.markdown('---')
 
-    # 2. ALMOÇO
-    render_section('Almoço', '🍽️', ui_lists['almoco'], 'blue')
+    # 2. ALMOÇO - Agora com tag vermelha
+    render_section('Almoço', '🍽️', ui_lists['almoco'], 'red')
 
-    # 3. SESSÃO (NOVO)
+    # 3. SESSÃO
     st.subheader(f'🎙️ Sessão ({len(ui_lists["sessao_especifica"])})')
     if not ui_lists['sessao_especifica']: 
         st.markdown('_Ninguém em sessão._')
@@ -1422,7 +1430,6 @@ with col_disponibilidade:
         for nome, status_desc in sorted(ui_lists['sessao_especifica'], key=lambda x: x[0]):
             col_nome, col_check = st.columns([0.8, 0.2])
             col_check.checkbox(' ', key=f'check_{nome}', value=False, on_change=update_queue, args=(nome,), label_visibility='collapsed')
-            # Verde para sessão
             col_nome.markdown(f'**{nome}** :green-background[{status_desc}]', unsafe_allow_html=True)
     st.markdown('---')
 
