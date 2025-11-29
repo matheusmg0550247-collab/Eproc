@@ -1,4 +1,3 @@
-
 # ============================================
 # 1. IMPORTS E DEFINIÇÕES GLOBAIS
 # ============================================
@@ -62,13 +61,6 @@ CAMARAS_DICT = {
 }
 CAMARAS_OPCOES = sorted(list(CAMARAS_DICT.keys()))
 
-# Formulários e Listas
-REG_USUARIO_OPCOES = ["Cartório", "Externo", "Gabinete", "Interno"]
-REG_SISTEMA_OPCOES = ["Conveniados/Outros", "Eproc", "Themis", "JIPE", "SIAP"]
-REG_CANAL_OPCOES = ["Email", "Telefone", "Whatsapp"]
-REG_DESFECHO_OPCOES = ["Escalonado", "Resolvido - Cesupe"]
-REG_PRESENCIAL_ATIVIDADE_OPCOES = ["Sessão", "Homologação", "Treinamento", "Chamado/Jira", "Atendimento", "Outros"]
-
 # --- NOVAS CONSTANTES SOLICITADAS ---
 OPCOES_ATIVIDADES_STATUS = [
     "HP", "E-mail", "WhatsApp Plantão", 
@@ -85,7 +77,9 @@ GIF_URL_ROTATION = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExdmx4azVxbG
 GIF_URL_LUNCH_WARNING = 'https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExMGZlbHN1azB3b2drdTI1eG10cDEzeWpmcmtwenZxNTV0bnc2OWgzZSYlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/bNlqpmBJRDMpxulfFB/giphy.gif'
 GIF_URL_NEDRY = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExMGNkMGx3YnNkcXQ2bHJmNTZtZThraHhuNmVoOTNmbG0wcDloOXAybiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/7kyWoqTue3po4/giphy.gif'
 SOUND_URL = "https://github.com/matheusmg0550247-collab/controle-bastao-eproc2/raw/main/doorbell-223669.mp3"
-NOVEMBRO_AZUL_URL = "https://github.com/matheusmg0550247-collab/controle-bastao-eproc2/raw/main/novembro-azul.png"
+
+# --- IMAGEM DE NATAL (PUGNOEL) ---
+PUGNOEL_URL = "https://github.com/matheusmg0550247-collab/controle-bastao-eproc2/raw/main/Pugnoel.png"
 
 # ============================================
 # 2. FUNÇÕES AUXILIARES GLOBAIS
@@ -161,6 +155,35 @@ def send_chat_notification_internal(consultor, status):
     return False
 
 def play_sound_html(): return f'<audio autoplay="true"><source src="{SOUND_URL}" type="audio/mpeg"></audio>'
+
+# --- Efeito de Neve (CSS) ---
+def render_snow_effect():
+    snow_css = """
+    <style>
+    /* customizable snowflake styling */
+    .snowflake {
+      color: #fff;
+      font-size: 1em;
+      font-family: Arial;
+      text-shadow: 0 0 1px #000;
+    }
+
+    @-webkit-keyframes snowflakes-fall{0%{top:-10%}100%{top:100%}}@-webkit-keyframes snowflakes-shake{0%{-webkit-transform:translateX(0px);transform:translateX(0px)}50%{-webkit-transform:translateX(80px);transform:translateX(80px)}100%{-webkit-transform:translateX(0px);transform:translateX(0px)}}@keyframes snowflakes-fall{0%{top:-10%}100%{top:100%}}@keyframes snowflakes-shake{0%{transform:translateX(0px)}50%{transform:translateX(80px)}100%{transform:translateX(0px)}}.snowflake{position:fixed;top:-10%;z-index:9999;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;cursor:default;-webkit-animation-name:snowflakes-fall,snowflakes-shake;-webkit-animation-duration:10s,3s;-webkit-animation-timing-function:linear,ease-in-out;-webkit-animation-iteration-count:infinite,infinite;-webkit-animation-play-state:running,running;animation-name:snowflakes-fall,snowflakes-shake;animation-duration:10s,3s;animation-timing-function:linear,ease-in-out;animation-iteration-count:infinite,infinite;animation-play-state:running,running}.snowflake:nth-of-type(0){left:1%;-webkit-animation-delay:0s,0s;animation-delay:0s,0s}.snowflake:nth-of-type(1){left:10%;-webkit-animation-delay:1s,1s;animation-delay:1s,1s}.snowflake:nth-of-type(2){left:20%;-webkit-animation-delay:6s,.5s;animation-delay:6s,.5s}.snowflake:nth-of-type(3){left:30%;-webkit-animation-delay:4s,2s;animation-delay:4s,2s}.snowflake:nth-of-type(4){left:40%;-webkit-animation-delay:2s,2s;animation-delay:2s,2s}.snowflake:nth-of-type(5){left:50%;-webkit-animation-delay:8s,3s;animation-delay:8s,3s}.snowflake:nth-of-type(6){left:60%;-webkit-animation-delay:6s,2s;animation-delay:6s,2s}.snowflake:nth-of-type(7){left:70%;-webkit-animation-delay:2.5s,1s;animation-delay:2.5s,1s}.snowflake:nth-of-type(8){left:80%;-webkit-animation-delay:1s,0s;animation-delay:1s,0s}.snowflake:nth-of-type(9){left:90%;-webkit-animation-delay:3s,1.5s;animation-delay:3s,1.5s}
+    </style>
+    <div class="snowflakes" aria-hidden="true">
+      <div class="snowflake">❅</div>
+      <div class="snowflake">❅</div>
+      <div class="snowflake">❆</div>
+      <div class="snowflake">❄</div>
+      <div class="snowflake">❅</div>
+      <div class="snowflake">❆</div>
+      <div class="snowflake">❄</div>
+      <div class="snowflake">❅</div>
+      <div class="snowflake">❆</div>
+      <div class="snowflake">❄</div>
+    </div>
+    """
+    st.markdown(snow_css, unsafe_allow_html=True)
 
 # --- Função Geradora do HTML Personalizado ---
 def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
@@ -483,82 +506,6 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
     return html_template
 
 # --- Funções de Envio de Registro ---
-
-def send_atividade_to_chat(consultor, tipo_atendimento, form_data): 
-    if not GOOGLE_CHAT_WEBHOOK_REGISTRO: return False
-    if not consultor or consultor == 'Selecione um nome': return False
-
-    message_text = (
-        f"**📋 Novo Registro de Atendimento**\n\n"
-        f"**Consultor(a):** {consultor}\n"
-        f"**Tipo:** {tipo_atendimento}\n"
-        f"**Usuário:** {form_data['usuario']}\n"
-        f"**Nome/Setor:** {form_data['nome_setor']}\n"
-        f"**Sistema:** {form_data['sistema']}\n"
-        f"**Canal:** {form_data['canal']}\n"
-        f"**Desfecho:** {form_data['desfecho']}\n"
-        f"**Descrição:** {form_data['descricao']}\n"
-    )
-    
-    chat_message = {'text': message_text}
-    try:
-        response = requests.post(GOOGLE_CHAT_WEBHOOK_REGISTRO, json=chat_message)
-        response.raise_for_status()
-        return True
-    except requests.exceptions.RequestException as e:
-        print(f"Erro ao enviar registro de 'Atendimento': {e}")
-        return False
-
-def send_presencial_to_chat(consultor, form_data): 
-    if not GOOGLE_CHAT_WEBHOOK_REGISTRO: return False
-    if not consultor or consultor == 'Selecione um nome': return False
-
-    data_str = form_data['data'].strftime("%d/%m/%Y")
-    inicio_str = form_data['inicio'].strftime("%H:%M")
-    fim_str = form_data['fim'].strftime("%H:%M")
-
-    message_text = (
-        f"**📅 Novo Registro de Atividade**\n\n"
-        f"**Consultor(a):** {consultor}\n"
-        f"**Atividade:** {form_data['atividade']}\n"
-        f"**Data:** {data_str}\n"
-        f"**Início:** {inicio_str}\n"
-        f"**Fim:** {fim_str}\n"
-        f"**Descrição:** {form_data['descricao']}\n"
-        f"**Participantes Cesupe:** {form_data['particip_cesupe']}\n"
-        f"**Participantes Externos:** {form_data['particip_externos']}\n"
-    )
-    
-    chat_message = {'text': message_text}
-    try:
-        response = requests.post(GOOGLE_CHAT_WEBHOOK_REGISTRO, json=chat_message)
-        response.raise_for_status()
-        return True
-    except requests.exceptions.RequestException as e:
-        print(f"Erro ao enviar registro de 'Atividade': {e}") 
-        return False
-
-def send_chamado_to_chat(consultor, texto_chamado):
-    if not GOOGLE_CHAT_WEBHOOK_CHAMADO: return False
-    if not consultor or consultor == 'Selecione um nome': return False
-    if not texto_chamado: return False 
-
-    message_text = (
-        f"**🔔 Novo Rascunho de Chamado/Jira**\n\n"
-        f"**Consultor(a):** {consultor}\n"
-        f"--- (Início do Rascunho) ---\n"
-        f"{texto_chamado}\n"
-        f"--- (Fim do Rascunho) ---"
-    )
-    
-    chat_message = {'text': message_text}
-    try:
-        response = requests.post(GOOGLE_CHAT_WEBHOOK_CHAMADO, json=chat_message)
-        response.raise_for_status()
-        return True
-    except requests.exceptions.RequestException as e:
-        print(f"Erro ao enviar rascunho de chamado: {e}")
-        return False
 
 def send_sessao_to_chat(consultor, texto_mensagem):
     if not GOOGLE_CHAT_WEBHOOK_SESSAO: return False
@@ -984,83 +931,6 @@ def manual_rerun():
 def on_auxilio_change():
     save_state()
 
-# --- Callbacks de Formulário de Registro ---
-
-def handle_atividade_submission(): 
-    consultor_selecionado = st.session_state.consultor_selectbox
-    tipo_atendimento = st.session_state.registro_tipo_selecao
-    
-    form_data = {
-        "usuario": st.session_state.get('reg_usuario') or "N/A",
-        "nome_setor": st.session_state.get('reg_nome_setor') or "N/A",
-        "sistema": st.session_state.get('reg_sistema') or "N/A",
-        "descricao": st.session_state.get('reg_descricao') or "N/A",
-        "canal": st.session_state.get('reg_canal') or "N/A",
-        "desfecho": st.session_state.get('reg_desfecho') or "N/A"
-    }
-    
-    success = send_atividade_to_chat(consultor_selecionado, tipo_atendimento, form_data) 
-    
-    if success:
-        st.session_state.last_reg_status = "success"
-        st.session_state.registro_tipo_selecao = None
-        st.session_state.reg_usuario = None
-        st.session_state.reg_nome_setor = ""
-        st.session_state.reg_sistema = None
-        st.session_state.reg_descricao = ""
-        st.session_state.reg_canal = None
-        st.session_state.reg_desfecho = None
-    else:
-        st.session_state.last_reg_status = "error"
-
-def handle_presencial_submission(): 
-    consultor_selecionado = st.session_state.consultor_selectbox
-    
-    atividade = st.session_state.get('reg_pres_atividade')
-    if atividade == "Outros":
-        atividade_final = st.session_state.get('reg_pres_atividade_outro') or "Outros (não especificado)"
-    else:
-        atividade_final = atividade or "N/A"
-
-    inicio_h = st.session_state.get('reg_pres_inicio_h', 0)
-    inicio_m = st.session_state.get('reg_pres_inicio_m', 0)
-    fim_h = st.session_state.get('reg_pres_fim_h', 0)
-    fim_m = st.session_state.get('reg_pres_fim_m', 0)
-    
-    try:
-        inicio_time = time(int(inicio_h), int(inicio_m))
-        fim_time = time(int(fim_h), int(fim_m))
-    except ValueError as e:
-        st.session_state.last_reg_status = "error_time"
-        return
-
-    form_data = {
-        "atividade": atividade_final,
-        "descricao": st.session_state.get('reg_pres_descricao') or "N/A",
-        "particip_cesupe": st.session_state.get('reg_pres_particip_cesupe') or "N/A",
-        "particip_externos": st.session_state.get('reg_pres_particip_externos') or "N/A",
-        "data": st.session_state.get('reg_pres_data') or date.today(),
-        "inicio": inicio_time, 
-        "fim": fim_time           
-    }
-    
-    success = send_presencial_to_chat(consultor_selecionado, form_data) 
-    
-    if success:
-        st.session_state.last_reg_status = "success"
-        st.session_state.registro_tipo_selecao = None
-        st.session_state.reg_pres_atividade = None
-        st.session_state.reg_pres_atividade_outro = ""
-        st.session_state.reg_pres_descricao = ""
-        st.session_state.reg_pres_particip_cesupe = ""
-        st.session_state.reg_pres_particip_externos = ""
-        st.session_state.reg_pres_inicio_h = 0
-        st.session_state.reg_pres_inicio_m = 0
-        st.session_state.reg_pres_fim_h = 0
-        st.session_state.reg_pres_fim_m = 0
-    else:
-        st.session_state.last_reg_status = "error"
-
 def handle_sessao_submission():
     consultor = st.session_state.consultor_selectbox
     texto_final = st.session_state.get("sessao_msg_preview", "")
@@ -1091,20 +961,6 @@ def handle_sessao_submission():
 def set_chamado_step(step_num):
     st.session_state.chamado_guide_step = step_num
 
-def handle_chamado_submission():
-    consultor = st.session_state.consultor_selectbox
-    texto_chamado = st.session_state.get("chamado_textarea", "")
-    
-    success = send_chamado_to_chat(consultor, texto_chamado)
-    
-    if success:
-        st.session_state.last_reg_status = "success_chamado" 
-        st.session_state.chamado_guide_step = 0
-        st.session_state.chamado_textarea = ""
-    else:
-        st.session_state.last_reg_status = "error_chamado"
-
-
 # ============================================
 # 4. EXECUÇÃO PRINCIPAL DO STREAMLIT APP
 # ============================================
@@ -1114,11 +970,14 @@ init_session_state()
 
 st.components.v1.html("<script>window.scrollTo(0, 0);</script>", height=0)
 
+# Renderiza o efeito de neve
+render_snow_effect()
+
 st.markdown(
     f"""
     <div style="display: flex; align-items: center; gap: 10px;">
         <h1 style="margin-bottom: 0;">Controle Bastão Cesupe {BASTAO_EMOJI}</h1>
-        <img src="{NOVEMBRO_AZUL_URL}" alt="Novembro Azul" style="width: 120px; height: auto;">
+        <img src="{PUGNOEL_URL}" alt="Pug Noel" style="width: 120px; height: auto;">
     </div>
     """,
     unsafe_allow_html=True
@@ -1269,7 +1128,7 @@ with col_principal:
     st.selectbox('Selecione:', options=['Selecione um nome'] + CONSULTORES, key='consultor_selectbox', label_visibility='collapsed')
     st.markdown("#### "); st.markdown("**Ações:**")
     
-    # --- MENUS DE AÇÃO ---
+    # --- MENUS DE AÇÃO (COLUNAS CORRIGIDAS) ---
     if 'show_activity_menu' not in st.session_state:
         st.session_state.show_activity_menu = False
     
@@ -1299,24 +1158,29 @@ with col_principal:
     if st.session_state.show_activity_menu:
         with st.container(border=True):
             st.markdown("### Selecione a Atividade")
-            atividade_escolhida = st.radio("Tipo:", OPCOES_ATIVIDADES_STATUS, horizontal=False)
+            # MUDANÇA AQUI: MULTISELECT
+            atividades_escolhidas = st.multiselect("Tipo:", OPCOES_ATIVIDADES_STATUS)
             
             texto_extra = ""
-            if atividade_escolhida == "Outros":
-                texto_extra = st.text_input("Descreva a atividade:", placeholder="Ex: Ajuste técnico...")
+            if "Outros" in atividades_escolhidas:
+                texto_extra = st.text_input("Descreva a atividade 'Outros':", placeholder="Ex: Ajuste técnico...")
             
             col_confirm_1, col_confirm_2 = st.columns(2)
             with col_confirm_1:
                 if st.button("Confirmar Atividade", type="primary", use_container_width=True):
-                    status_final = f"Atividade: {atividade_escolhida}"
-                    if atividade_escolhida == "Outros" and texto_extra:
-                        status_final += f" - {texto_extra}"
-                    elif atividade_escolhida == "Outros" and not texto_extra:
-                        status_final += " (Não especificado)"
+                    if atividades_escolhida:
+                        # Concatena as escolhas
+                        str_atividades = ", ".join(atividades_escolhidas)
+                        status_final = f"Atividade: {str_atividades}"
                         
-                    update_status(status_final, False)
-                    st.session_state.show_activity_menu = False 
-                    st.rerun()
+                        if "Outros" in atividades_escolhidas and texto_extra:
+                            status_final += f" - {texto_extra}"
+                        
+                        update_status(status_final, False)
+                        st.session_state.show_activity_menu = False 
+                        st.rerun()
+                    else:
+                        st.warning("Selecione pelo menos uma atividade.")
             
             with col_confirm_2:
                 if st.button("Cancelar", use_container_width=True, key='cancel_act'):
@@ -1348,171 +1212,8 @@ with col_principal:
     st.markdown("####")
     st.button('🔄 Atualizar (Manual)', on_click=manual_rerun, use_container_width=True)
     
-    # --- Bloco de Registro de Atividade ---
-    st.markdown("---")
+    # --- SEÇÃO "REGISTROS" REMOVIDA DAQUI ---
     
-    if st.session_state.last_reg_status == "success":
-        st.success("Registro enviado com sucesso!")
-        st.session_state.last_reg_status = None 
-    elif st.session_state.last_reg_status == "success_chamado":
-        st.success("Chamado enviado! A resposta será enviada no seu email institucional.")
-        st.session_state.last_reg_status = None
-    elif st.session_state.last_reg_status == "success_sessao":
-        st.success("Registro de Sessão enviado com sucesso!")
-        
-        # Botão de download (MODO MANUAL)
-        if st.session_state.get('html_download_ready') and st.session_state.get('html_content_cache'):
-            filename = st.session_state.get('html_filename', 'Checklist_Sessao.html')
-            
-            st.download_button(
-                label=f"⬇️ Baixar Formulário HTML ({filename})",
-                data=st.session_state.html_content_cache,
-                file_name=filename,
-                mime="text/html"
-            )
-        
-        if st.button("Limpar Mensagem"):
-            st.session_state.last_reg_status = None
-            st.rerun()
-            
-    elif st.session_state.last_reg_status == "error":
-        st.error("Erro ao enviar registro. Verifique se seu nome está selecionado no menu 'Consultor' acima.")
-        st.session_state.last_reg_status = None
-    elif st.session_state.last_reg_status == "error_chamado":
-        st.error("Erro ao enviar chamado. Verifique se seu nome está selecionado e se o campo de rascunho não está vazio.")
-        st.session_state.last_reg_status = None
-    elif st.session_state.last_reg_status == "error_sessao":
-        st.error("Erro ao enviar registro de sessão. Verifique se preencheu a câmara e a data.")
-        st.session_state.last_reg_status = None
-    elif st.session_state.last_reg_status == "error_time":
-        st.error("Erro ao enviar registro. Hora ou minuto inválido.")
-        st.session_state.last_reg_status = None
-    
-    st.header("Registros")
-
-    st.radio(
-        "Tipo de Registro:",
-        ["Atendimento", "Atividade", "Registro de Sessão"], 
-        index=None,
-        key='registro_tipo_selecao', 
-        horizontal=True
-    )
-
-    # --- Formulário "Atendimento" --- 
-    if st.session_state.registro_tipo_selecao == "Atendimento": 
-        with st.form(key="form_atividade"):
-            st.subheader(f"Registro de: **Atendimento**") 
-            
-            st.selectbox("Usuário:", REG_USUARIO_OPCOES, index=None, placeholder="Selecione o tipo de usuário", key='reg_usuario')
-            st.text_input("Nome-usuário - Setor:", key='reg_nome_setor')
-            st.selectbox("Sistema:", REG_SISTEMA_OPCOES, index=None, placeholder="Selecione o sistema", key='reg_sistema')
-            st.text_input("Descrição do atendimento (até 7 palavras):", key='reg_descricao')
-            st.selectbox("Canal de atendimento:", REG_CANAL_OPCOES, index=None, placeholder="Selecione o canal", key='reg_canal')
-            st.selectbox("Desfecho:", REG_DESFECHO_OPCOES, index=None, placeholder="Selecione o desfecho", key='reg_desfecho')
-            
-            st.form_submit_button(
-                "Enviar Registro",
-                on_click=handle_atividade_submission 
-            )
-            
-    # --- Formulário "Atividade" --- 
-    elif st.session_state.registro_tipo_selecao == "Atividade": 
-        
-        st.selectbox(
-            "Atividade:", 
-            REG_PRESENCIAL_ATIVIDADE_OPCOES, 
-            index=None, 
-            placeholder="Selecione a atividade", 
-            key='reg_pres_atividade'
-        )
-
-        if st.session_state.get('reg_pres_atividade'):
-            with st.form(key="form_presencial"):
-                st.subheader(f"Registro de: **Atividade** ({st.session_state.get('reg_pres_atividade')})") 
-                
-                if st.session_state.get('reg_pres_atividade') == "Outros":
-                    st.text_input("Especifique a atividade:", key='reg_pres_atividade_outro')
-
-                st.text_input("Descrição:", key='reg_pres_descricao')
-                st.text_input(
-                    "Participantes Cesupe:", 
-                    help="(Preencher se o registro for para mais de um consultor)", 
-                    key='reg_pres_particip_cesupe'
-                )
-                st.text_input("Participantes Externos:", key='reg_pres_particip_externos')
-                
-                st.date_input("Data:", key='reg_pres_data', format="DD/MM/YYYY")
-                
-                st.markdown("**Início:**")
-                col_ini_1, col_ini_2 = st.columns(2)
-                with col_ini_1:
-                    st.number_input("Hora", min_value=0, max_value=23, step=1, key='reg_pres_inicio_h', format="%02d", label_visibility="collapsed")
-                with col_ini_2:
-                    st.number_input("Minuto", min_value=0, max_value=59, step=1, key='reg_pres_inicio_m', format="%02d", label_visibility="collapsed")
-
-                st.markdown("**Fim:**")
-                col_fim_1, col_fim_2 = st.columns(2)
-                with col_fim_1:
-                    st.number_input("Hora ", min_value=0, max_value=23, step=1, key='reg_pres_fim_h', format="%02d", label_visibility="collapsed")
-                with col_fim_2:
-                    st.number_input("Minuto ", min_value=0, max_value=59, step=1, key='reg_pres_fim_m', format="%02d", label_visibility="collapsed")
-
-                st.form_submit_button(
-                    "Enviar Registro",
-                    on_click=handle_presencial_submission 
-                )
-    
-    # --- Formulário "Registro de Sessão" ---
-    elif st.session_state.registro_tipo_selecao == "Registro de Sessão":
-        st.subheader("Registro de Sessão")
-        
-        def atualizar_texto_sessao():
-            data_input = st.session_state.get('sessao_data_input')
-            camara_input = st.session_state.get('sessao_camara_select')
-            consultor_atual = st.session_state.consultor_selectbox
-            
-            if data_input and camara_input:
-                nome_consultor_txt = consultor_atual if consultor_atual and consultor_atual != "Selecione um nome" else "[NOME DO(A) CONSULTOR(A)]"
-                data_formatada = data_input.strftime("%d/%m/%Y")
-                email_setor = CAMARAS_DICT.get(camara_input, "")
-                
-                texto_gerado = (
-                    f"Prezada equipe do {camara_input},\n\n"
-                    f"Meu nome é {nome_consultor_txt}, sou assistente de processos judiciais da CESUPE/TJMG e serei o(a) responsável pelo acompanhamento técnico da sessão de julgamento agendada para o dia {data_formatada}.\n\n"
-                    "Com o objetivo de agilizar o atendimento e a verificação de eventuais demandas, encaminharei um formulário em HTML para preenchimento de algumas informações prévias. As respostas retornarão diretamente para mim, permitindo a análise antecipada da situação e, sempre que possível, a definição prévia da orientação ou solução a ser adotada. O preenchimento não é obrigatório, mas contribuirá para tornar o suporte mais eficaz.\n\n"
-                    "Ressalto que continuamos disponíveis para sanar quaisquer dúvidas por meio do nosso suporte. Caso eu esteja indisponível no momento do contato, retornarei o mais breve possível.\n\n"
-                    "Após a realização da sessão, o suporte técnico voltará a ser prestado de forma rotineira pelo nosso setor. Havendo dúvidas ou necessidade de suporte, entre em contato conosco pelo telefone **3232-2640**.\n\n"
-                    "Permaneço à disposição e agradeço a colaboração.\n\n"
-                    "Atenciosamente,\n"
-                    f"{nome_consultor_txt}\n"
-                    "Assistente de Processos Judiciais – CESUPE/TJMG\n\n"
-                    f"Email do setor: {email_setor}"
-                )
-                st.session_state['sessao_msg_preview'] = texto_gerado
-            else:
-                st.session_state['sessao_msg_preview'] = ""
-
-        col_sessao_1, col_sessao_2 = st.columns(2)
-        with col_sessao_1:
-            st.date_input("Data da Sessão:", format="DD/MM/YYYY", key='sessao_data_input', on_change=atualizar_texto_sessao)
-        with col_sessao_2:
-            st.selectbox("Selecione a Câmara:", CAMARAS_OPCOES, index=None, key='sessao_camara_select', on_change=atualizar_texto_sessao)
-            
-        st.markdown("**Prévia da Mensagem (Editável):**")
-        st.text_area(
-            "Mensagem:", 
-            key="sessao_msg_preview",
-            height=450, 
-            label_visibility="collapsed"
-        )
-        
-        st.button(
-            "Enviar Mensagem de Sessão",
-            type="primary",
-            use_container_width=True,
-            on_click=handle_sessao_submission
-        )
-
     # --- Bloco Padrão Abertura de Chamados (Mantido) ---
     st.markdown("---")
     st.header("Padrão abertura de chamados / jiras")
