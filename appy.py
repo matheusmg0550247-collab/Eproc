@@ -78,7 +78,7 @@ SOUND_URL = "https://github.com/matheusmg0550247-collab/controle-bastao-eproc2/r
 PUGNOEL_URL = "https://github.com/matheusmg0550247-collab/controle-bastao-eproc2/raw/main/Pugnoel.png"
 
 # ============================================
-# 2. FUNÇÕES AUXILIARES GLOBAIS
+# 2. FUNÇÕES AUXILIARES GLOBAIS (DEFINIDAS ANTES DE USO)
 # ============================================
 
 def date_serializer(obj):
@@ -129,7 +129,7 @@ def load_state():
     loaded_data['daily_logs'] = final_logs
     return loaded_data
 
-# Função de log movida para cima para evitar NameError
+# --- FUNÇÕES DE LOG E TEMPO (AQUI É O LUGAR CERTO) ---
 def log_status_change(consultor, old_status, new_status, duration):
     print(f'LOG: {consultor} de "{old_status or "-"}" para "{new_status or "-"}" após {duration}')
     if not isinstance(duration, timedelta): duration = timedelta(0)
@@ -147,6 +147,11 @@ def log_status_change(consultor, old_status, new_status, duration):
     if consultor not in st.session_state.current_status_starts:
         st.session_state.current_status_starts[consultor] = datetime.now()
     st.session_state.current_status_starts[consultor] = datetime.now()
+
+def format_time_duration(duration):
+    if not isinstance(duration, timedelta): return '--:--:--'
+    s = int(duration.total_seconds()); h, s = divmod(s, 3600); m, s = divmod(s, 60)
+    return f'{h:02}:{m:02}:{s:02}'
 
 def send_chat_notification_internal(consultor, status):
     if CHAT_WEBHOOK_BASTAO and status == 'Bastão':
@@ -647,57 +652,6 @@ def update_queue(consultor):
     if not baton_changed:
         save_state()
 
-def update_status(status_text, change_to_available): 
-    selected = st.session_state.consultor_selectbox
-    st.session_state.gif_warning = False; st.session_state.rotation_gif_start_time = None
-    if not selected or selected == 'Selecione um nome': 
-        st.warning('Selecione um(a) consultor(a).')
-        return
-
-    if status_text != 'Almoço':
-        st.session_state.lunch_warning_info = None
-    
-    current_lunch_warning = st.session_state.get('lunch_warning_info')
-    is_second_try = False
-    if current_lunch_warning and current_lunch_warning.get('consultor') == selected:
-        elapsed = (datetime.now() - current_lunch_warning.get('start_time', datetime.min)).total_seconds()
-        if elapsed < 30:
-            is_second_try = True 
-
-    if status_text == 'Almoço' and not is_second_try:
-        all_statuses = st.session_state.status_texto
-        num_na_fila = sum(1 for s in all_statuses.values() if s == '' or s == 'Bastão')
-        num_atividade = sum(1 for s in all_statuses.values() if s == 'Atendimento') 
-        total_ativos = num_na_fila + num_atividade
-        num_almoco = sum(1 for s in all_statuses.values() if s == 'Almoço')
-        limite_almoco = total_ativos / 2.0
-        if total_ativos > 0 and num_almoco >= limite_almoco:
-            st.session_state.lunch_warning_info = {
-                'consultor': selected,
-                'start_time': datetime.now(),
-                'message': f'Consultor(a) {selected} verificar horário. Metade dos consultores ativos já em almoço. Clique novamente em "Almoço" para confirmar.'
-            }
-            save_state() 
-            return 
-            
-    st.session_state.lunch_warning_info = None
-    st.session_state[f'check_{selected}'] = False 
-    was_holder = next((True for c, s in st.session_state.status_texto.items() if s == 'Bastão' and c == selected), False)
-    old_status = st.session_state.status_texto.get(selected, '') or ('Bastão' if was_holder else 'Disponível')
-    duration = datetime.now() - st.session_state.current_status_starts.get(selected, datetime.now())
-    log_status_change(selected, old_status, status_text, duration)
-    st.session_state.status_texto[selected] = status_text 
-    if selected in st.session_state.bastao_queue: st.session_state.bastao_queue.remove(selected)
-    st.session_state.skip_flags.pop(selected, None)
-    if status_text == 'Saída rápida':
-        if selected not in st.session_state.priority_return_queue: st.session_state.priority_return_queue.append(selected)
-    elif selected in st.session_state.priority_return_queue: st.session_state.priority_return_queue.remove(selected)
-    baton_changed = False
-    if was_holder: 
-        baton_changed = check_and_assume_baton() 
-    if not baton_changed: 
-        save_state() 
-
 def rotate_bastao(): 
     selected = st.session_state.consultor_selectbox
     st.session_state.gif_warning = False; st.session_state.rotation_gif_start_time = None
@@ -717,16 +671,11 @@ def rotate_bastao():
         if check_and_assume_baton(): pass 
         return
 
-    # LÓGICA DE CORREÇÃO ANTECIPADA
-    # Verifica quem está elegível na fila
     eligible_in_queue = [p for p in queue if st.session_state.get(f'check_{p}')]
-    # Verifica quantos desses elegíveis estão pulando (excluindo o atual, pois ele vai sair)
     skippers_ahead = [p for p in eligible_in_queue if skips.get(p, False) and p != current_holder]
     
-    # Se todos à frente estão pulando (ou seja, só sobrou o atual ou ninguém)
-    # RESETAMOS TUDO ANTES DE PROCURAR O PRÓXIMO
     if len(skippers_ahead) > 0 and len(skippers_ahead) == len([p for p in eligible_in_queue if p != current_holder]):
-        print("Ciclo bloqueado por pulos. Resetando flags.")
+        print("DETECTADO BLOQUEIO DE PULOS. RESETANDO TODAS AS FLAGS ANTECIPADAMENTE.")
         for c in queue:
             st.session_state.skip_flags[c] = False
         skips = st.session_state.skip_flags 
@@ -824,6 +773,57 @@ def handle_chamado_submission():
         st.session_state.chamado_textarea = ""
     else:
         st.session_state.last_reg_status = "error_chamado"
+
+def update_status(status_text, change_to_available): 
+    selected = st.session_state.consultor_selectbox
+    st.session_state.gif_warning = False; st.session_state.rotation_gif_start_time = None
+    if not selected or selected == 'Selecione um nome': 
+        st.warning('Selecione um(a) consultor(a).')
+        return
+
+    if status_text != 'Almoço':
+        st.session_state.lunch_warning_info = None
+    
+    current_lunch_warning = st.session_state.get('lunch_warning_info')
+    is_second_try = False
+    if current_lunch_warning and current_lunch_warning.get('consultor') == selected:
+        elapsed = (datetime.now() - current_lunch_warning.get('start_time', datetime.min)).total_seconds()
+        if elapsed < 30:
+            is_second_try = True 
+
+    if status_text == 'Almoço' and not is_second_try:
+        all_statuses = st.session_state.status_texto
+        num_na_fila = sum(1 for s in all_statuses.values() if s == '' or s == 'Bastão')
+        num_atividade = sum(1 for s in all_statuses.values() if s == 'Atendimento') 
+        total_ativos = num_na_fila + num_atividade
+        num_almoco = sum(1 for s in all_statuses.values() if s == 'Almoço')
+        limite_almoco = total_ativos / 2.0
+        if total_ativos > 0 and num_almoco >= limite_almoco:
+            st.session_state.lunch_warning_info = {
+                'consultor': selected,
+                'start_time': datetime.now(),
+                'message': f'Consultor(a) {selected} verificar horário. Metade dos consultores ativos já em almoço. Clique novamente em "Almoço" para confirmar.'
+            }
+            save_state() 
+            return 
+            
+    st.session_state.lunch_warning_info = None
+    st.session_state[f'check_{selected}'] = False 
+    was_holder = next((True for c, s in st.session_state.status_texto.items() if s == 'Bastão' and c == selected), False)
+    old_status = st.session_state.status_texto.get(selected, '') or ('Bastão' if was_holder else 'Disponível')
+    duration = datetime.now() - st.session_state.current_status_starts.get(selected, datetime.now())
+    log_status_change(selected, old_status, status_text, duration)
+    st.session_state.status_texto[selected] = status_text 
+    if selected in st.session_state.bastao_queue: st.session_state.bastao_queue.remove(selected)
+    st.session_state.skip_flags.pop(selected, None)
+    if status_text == 'Saída rápida':
+        if selected not in st.session_state.priority_return_queue: st.session_state.priority_return_queue.append(selected)
+    elif selected in st.session_state.priority_return_queue: st.session_state.priority_return_queue.remove(selected)
+    baton_changed = False
+    if was_holder: 
+        baton_changed = check_and_assume_baton() 
+    if not baton_changed: 
+        save_state() 
 
 # ============================================
 # 4. EXECUÇÃO PRINCIPAL DO STREAMLIT APP
