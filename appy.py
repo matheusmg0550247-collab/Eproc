@@ -33,7 +33,7 @@ def get_global_state_cache():
         'priority_return_queue': [],
         'rotation_gif_start_time': None,
         'lunch_warning_info': None,
-        'auxilio_ativo': False,
+        'auxilio_ativo': False, 
         'daily_logs': [] 
     }
 
@@ -61,13 +61,11 @@ CAMARAS_DICT = {
 }
 CAMARAS_OPCOES = sorted(list(CAMARAS_DICT.keys()))
 
-# --- CONSTANTES ---
 OPCOES_ATIVIDADES_STATUS = [
     "HP", "E-mail", "WhatsApp Plantão", 
     "Treinamento", "Homologação", "Redação Documentos", "Reunião", "Outros"
 ]
 GIF_BASTAO_HOLDER = "https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExa3Uwazd5cnNra2oxdDkydjZkcHdqcWN2cng0Y2N0cmNmN21vYXVzMiZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/3rXs5J0hZkXwTZjuvM/giphy.gif"
-
 BASTAO_EMOJI = "🎄" 
 APP_URL_CLOUD = 'https://controle-bastao-cesupe.streamlit.app'
 STATUS_SAIDA_PRIORIDADE = ['Saída rápida']
@@ -130,6 +128,25 @@ def load_state():
     loaded_data = {k: v for k, v in global_data.items() if k != 'daily_logs'}
     loaded_data['daily_logs'] = final_logs
     return loaded_data
+
+# Função de log movida para cima para evitar NameError
+def log_status_change(consultor, old_status, new_status, duration):
+    print(f'LOG: {consultor} de "{old_status or "-"}" para "{new_status or "-"}" após {duration}')
+    if not isinstance(duration, timedelta): duration = timedelta(0)
+
+    entry = {
+        'timestamp': datetime.now(),
+        'consultor': consultor,
+        'old_status': old_status, 
+        'new_status': new_status,
+        'duration': duration,
+        'duration_s': duration.total_seconds()
+    }
+    st.session_state.daily_logs.append(entry)
+    
+    if consultor not in st.session_state.current_status_starts:
+        st.session_state.current_status_starts[consultor] = datetime.now()
+    st.session_state.current_status_starts[consultor] = datetime.now()
 
 def send_chat_notification_internal(consultor, status):
     if CHAT_WEBHOOK_BASTAO and status == 'Bastão':
@@ -508,7 +525,7 @@ def init_session_state():
         'auxilio_ativo': False,
         'show_activity_menu': False,
         'show_sessao_dialog': False,
-        'show_sessao_eproc_dialog': False # NOVO ESTADO SEPARADO
+        'show_sessao_eproc_dialog': False 
     }
     for key, default in defaults.items():
         if key not in st.session_state:
@@ -630,83 +647,6 @@ def update_queue(consultor):
     if not baton_changed:
         save_state()
 
-def rotate_bastao(): 
-    selected = st.session_state.consultor_selectbox
-    st.session_state.gif_warning = False; st.session_state.rotation_gif_start_time = None
-    st.session_state.lunch_warning_info = None 
-
-    if not selected or selected == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
-    queue = st.session_state.bastao_queue
-    skips = st.session_state.skip_flags
-    current_holder = next((c for c, s in st.session_state.status_texto.items() if s == 'Bastão'), None)
-    if selected != current_holder:
-        st.session_state.gif_warning = True
-        return 
-
-    current_index = -1
-    try: current_index = queue.index(current_holder)
-    except ValueError:
-        if check_and_assume_baton(): pass 
-        return
-
-    # --- LÓGICA DE CORREÇÃO PARA "TODOS PULANDO" (DETECTA ANTES) ---
-    eligible_people = [p for p in queue if st.session_state.get(f'check_{p}')]
-    skipping_people = [p for p in eligible_people if skips.get(p, False)]
-    
-    # Se todo mundo que está disponível (exceto talvez o atual) está pulando...
-    # Reseta tudo AGORA, antes de procurar o próximo.
-    if len(skipping_people) >= len(eligible_people) - 1:
-        print("DETECTADO BLOQUEIO DE PULOS. RESETANDO TODAS AS FLAGS ANTECIPADAMENTE.")
-        for c in queue:
-            st.session_state.skip_flags[c] = False
-        skips = st.session_state.skip_flags 
-        st.toast("Ciclo reiniciado! Todos pularam, então a fila foi resetada.", icon="🔄")
-
-    # Agora procura o próximo (já com as flags limpas se foi o caso)
-    next_idx = find_next_holder_index(current_index, queue, skips)
-
-    if next_idx != -1:
-        next_holder = queue[next_idx]
-        duration = datetime.now() - (st.session_state.bastao_start_time or datetime.now())
-        
-        log_status_change(current_holder, 'Bastão', '', duration)
-        st.session_state.status_texto[current_holder] = '' 
-        
-        log_status_change(next_holder, st.session_state.status_texto.get(next_holder, ''), 'Bastão', timedelta(0))
-        st.session_state.status_texto[next_holder] = 'Bastão'
-        
-        st.session_state.bastao_start_time = datetime.now()
-        st.session_state.skip_flags[next_holder] = False 
-        
-        st.session_state.bastao_counts[current_holder] = st.session_state.bastao_counts.get(current_holder, 0) + 1
-        
-        st.session_state.play_sound = True 
-        st.session_state.rotation_gif_start_time = datetime.now()
-        
-        save_state()
-    else:
-        st.warning('Não há próximo(a) consultor(a) elegível na fila no momento.')
-        check_and_assume_baton() 
-
-def toggle_skip(): 
-    selected = st.session_state.consultor_selectbox
-    st.session_state.gif_warning = False; st.session_state.rotation_gif_start_time = None
-    st.session_state.lunch_warning_info = None 
-
-    if not selected or selected == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
-    if not st.session_state.get(f'check_{selected}'): st.warning(f'{selected} não está disponível para marcar/desmarcar.'); return
-
-    current_skip_status = st.session_state.skip_flags.get(selected, False)
-    st.session_state.skip_flags[selected] = not current_skip_status
-
-    current_holder = next((c for c, s in st.session_state.status_texto.items() if s == 'Bastão'), None)
-    if selected == current_holder and st.session_state.skip_flags[selected]:
-        save_state() 
-        rotate_bastao() 
-        return 
-
-    save_state() 
-
 def update_status(status_text, change_to_available): 
     selected = st.session_state.consultor_selectbox
     st.session_state.gif_warning = False; st.session_state.rotation_gif_start_time = None
@@ -757,6 +697,74 @@ def update_status(status_text, change_to_available):
         baton_changed = check_and_assume_baton() 
     if not baton_changed: 
         save_state() 
+
+def rotate_bastao(): 
+    selected = st.session_state.consultor_selectbox
+    st.session_state.gif_warning = False; st.session_state.rotation_gif_start_time = None
+    st.session_state.lunch_warning_info = None 
+
+    if not selected or selected == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
+    queue = st.session_state.bastao_queue
+    skips = st.session_state.skip_flags
+    current_holder = next((c for c, s in st.session_state.status_texto.items() if s == 'Bastão'), None)
+    if selected != current_holder:
+        st.session_state.gif_warning = True
+        return 
+
+    current_index = -1
+    try: current_index = queue.index(current_holder)
+    except ValueError:
+        if check_and_assume_baton(): pass 
+        return
+
+    # LÓGICA DE CORREÇÃO ANTECIPADA
+    # Verifica quem está elegível na fila
+    eligible_in_queue = [p for p in queue if st.session_state.get(f'check_{p}')]
+    # Verifica quantos desses elegíveis estão pulando (excluindo o atual, pois ele vai sair)
+    skippers_ahead = [p for p in eligible_in_queue if skips.get(p, False) and p != current_holder]
+    
+    # Se todos à frente estão pulando (ou seja, só sobrou o atual ou ninguém)
+    # RESETAMOS TUDO ANTES DE PROCURAR O PRÓXIMO
+    if len(skippers_ahead) > 0 and len(skippers_ahead) == len([p for p in eligible_in_queue if p != current_holder]):
+        print("Ciclo bloqueado por pulos. Resetando flags.")
+        for c in queue:
+            st.session_state.skip_flags[c] = False
+        skips = st.session_state.skip_flags 
+        st.toast("Ciclo reiniciado! Todos os próximos pularam, fila resetada.", icon="🔄")
+
+    next_idx = find_next_holder_index(current_index, queue, skips)
+
+    if next_idx != -1:
+        next_holder = queue[next_idx]
+        duration = datetime.now() - (st.session_state.bastao_start_time or datetime.now())
+        log_status_change(current_holder, 'Bastão', '', duration)
+        st.session_state.status_texto[current_holder] = '' 
+        log_status_change(next_holder, st.session_state.status_texto.get(next_holder, ''), 'Bastão', timedelta(0))
+        st.session_state.status_texto[next_holder] = 'Bastão'
+        st.session_state.bastao_start_time = datetime.now()
+        st.session_state.skip_flags[next_holder] = False 
+        st.session_state.bastao_counts[current_holder] = st.session_state.bastao_counts.get(current_holder, 0) + 1
+        st.session_state.play_sound = True 
+        st.session_state.rotation_gif_start_time = datetime.now()
+        save_state()
+    else:
+        st.warning('Não há próximo(a) consultor(a) elegível na fila no momento.')
+        check_and_assume_baton() 
+
+def toggle_skip(): 
+    selected = st.session_state.consultor_selectbox
+    st.session_state.gif_warning = False; st.session_state.rotation_gif_start_time = None
+    st.session_state.lunch_warning_info = None 
+    if not selected or selected == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
+    if not st.session_state.get(f'check_{selected}'): st.warning(f'{selected} não está disponível para marcar/desmarcar.'); return
+    current_skip_status = st.session_state.skip_flags.get(selected, False)
+    st.session_state.skip_flags[selected] = not current_skip_status
+    current_holder = next((c for c, s in st.session_state.status_texto.items() if s == 'Bastão'), None)
+    if selected == current_holder and st.session_state.skip_flags[selected]:
+        save_state() 
+        rotate_bastao() 
+        return 
+    save_state() 
 
 def manual_rerun():
     st.session_state.gif_warning = False; st.session_state.rotation_gif_start_time = None
