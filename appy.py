@@ -78,7 +78,7 @@ SOUND_URL = "https://github.com/matheusmg0550247-collab/controle-bastao-eproc2/r
 PUGNOEL_URL = "https://github.com/matheusmg0550247-collab/controle-bastao-eproc2/raw/main/Pugnoel.png"
 
 # ============================================
-# 2. FUNÇÕES AUXILIARES GLOBAIS (DEFINIDAS ANTES DE USO)
+# 2. FUNÇÕES AUXILIARES GLOBAIS
 # ============================================
 
 def date_serializer(obj):
@@ -129,7 +129,7 @@ def load_state():
     loaded_data['daily_logs'] = final_logs
     return loaded_data
 
-# --- FUNÇÕES DE LOG E TEMPO (AQUI É O LUGAR CERTO) ---
+# --- FUNÇÕES DE LOG E TEMPO (MOVIDAS PARA CIMA) ---
 def log_status_change(consultor, old_status, new_status, duration):
     print(f'LOG: {consultor} de "{old_status or "-"}" para "{new_status or "-"}" após {duration}')
     if not isinstance(duration, timedelta): duration = timedelta(0)
@@ -671,15 +671,16 @@ def rotate_bastao():
         if check_and_assume_baton(): pass 
         return
 
+    # RESET TOTAL SE TODOS ESTIVEREM PULANDO
     eligible_in_queue = [p for p in queue if st.session_state.get(f'check_{p}')]
     skippers_ahead = [p for p in eligible_in_queue if skips.get(p, False) and p != current_holder]
     
     if len(skippers_ahead) > 0 and len(skippers_ahead) == len([p for p in eligible_in_queue if p != current_holder]):
-        print("DETECTADO BLOQUEIO DE PULOS. RESETANDO TODAS AS FLAGS ANTECIPADAMENTE.")
+        print("RESET DE PULOS ATIVADO.")
         for c in queue:
             st.session_state.skip_flags[c] = False
         skips = st.session_state.skip_flags 
-        st.toast("Ciclo reiniciado! Todos os próximos pularam, fila resetada.", icon="🔄")
+        st.toast("Todos os próximos pularam! O ciclo foi reiniciado.", icon="🔄")
 
     next_idx = find_next_holder_index(current_index, queue, skips)
 
@@ -812,7 +813,10 @@ def update_status(status_text, change_to_available):
     was_holder = next((True for c, s in st.session_state.status_texto.items() if s == 'Bastão' and c == selected), False)
     old_status = st.session_state.status_texto.get(selected, '') or ('Bastão' if was_holder else 'Disponível')
     duration = datetime.now() - st.session_state.current_status_starts.get(selected, datetime.now())
+    
+    # AQUI ESTÁ A CORREÇÃO DA ORDEM DE CHAMADA
     log_status_change(selected, old_status, status_text, duration)
+    
     st.session_state.status_texto[selected] = status_text 
     if selected in st.session_state.bastao_queue: st.session_state.bastao_queue.remove(selected)
     st.session_state.skip_flags.pop(selected, None)
