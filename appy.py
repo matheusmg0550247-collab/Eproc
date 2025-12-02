@@ -20,6 +20,7 @@ CONSULTORES = sorted([
 # --- FUNÇÃO DE CACHE GLOBAL ---
 @st.cache_resource(show_spinner=False)
 def get_global_state_cache():
+    """Inicializa e retorna o dicionário de estado GLOBAL compartilhado."""
     print("--- Inicializando o Cache de Estado GLOBAL (Executa Apenas 1x) ---")
     return {
         'status_texto': {nome: 'Indisponível' for nome in CONSULTORES},
@@ -669,61 +670,39 @@ def rotate_bastao():
         if check_and_assume_baton(): pass 
         return
 
-    # --- LÓGICA DE CORREÇÃO DE CICLO (FORÇA BRUTA) ---
-    # 1. Quem está ativo na fila?
-    active_queue = [c for c in queue if st.session_state.get(f'check_{c}')]
+    # --- LÓGICA SIMPLIFICADA E INFALÍVEL ---
+    # Sempre zera as flags de quem pular, independente de ser "ciclo completo" ou não
+    # Isso garante que "Pular" seja apenas para ESTA VEZ.
     
-    # 2. Simulação para ver se todo mundo pula
-    if not active_queue:
-         st.warning("Fila vazia.")
-         return
-
-    try: current_active_idx = active_queue.index(current_holder)
-    except: current_active_idx = -1 # Caso estranho
-
-    next_found = None
-    reset_needed = False
+    next_idx = find_next_holder_index(current_index, queue, skips)
     
-    # Procura o próximo válido na lista circular
-    for i in range(1, len(active_queue) + 1):
-        candidate_idx = (current_active_idx + i) % len(active_queue)
-        candidate = active_queue[candidate_idx]
+    # Se não achou ninguém (todos pulando), força o reset e pega o próximo
+    if next_idx == -1 or (next_idx != -1 and queue[next_idx] == current_holder and len(queue) > 1):
+        # Reseta tudo
+        st.session_state.skip_flags = {c: False for c in CONSULTORES}
+        skips = st.session_state.skip_flags
+        # Pega o próximo da fila (agora sem pulos)
+        next_idx = find_next_holder_index(current_index, queue, skips)
+        st.toast("Ciclo resetado automaticamente.", icon="🔄")
+    
+    # AGORA A MÁGICA: Se o bastão vai rodar, limpamos TUDO.
+    if next_idx != -1 and queue[next_idx] != current_holder:
+        # Limpa flags de todos. Assim ninguém fica "preso" no pulo.
+        st.session_state.skip_flags = {c: False for c in CONSULTORES}
         
-        # Se o candidato NÃO está pulando, achamos!
-        if not skips.get(candidate, False):
-            next_found = candidate
-            break
-    
-    # Se next_found continuou None (ou voltou pro mesmo), significa que TODOS os outros estão pulando
-    if next_found is None or (next_found == current_holder and len(active_queue) > 1):
-        reset_needed = True
-        # Força o próximo ser o vizinho imediato
-        next_idx_absolute = (current_active_idx + 1) % len(active_queue)
-        next_found = active_queue[next_idx_absolute]
-
-    if next_found:
+        next_holder = queue[next_idx]
         duration = datetime.now() - (st.session_state.bastao_start_time or datetime.now())
         log_status_change(current_holder, 'Bastão', '', duration)
         st.session_state.status_texto[current_holder] = '' 
-        log_status_change(next_found, st.session_state.status_texto.get(next_found, ''), 'Bastão', timedelta(0))
-        st.session_state.status_texto[next_found] = 'Bastão'
+        log_status_change(next_holder, st.session_state.status_texto.get(next_holder, ''), 'Bastão', timedelta(0))
+        st.session_state.status_texto[next_holder] = 'Bastão'
         st.session_state.bastao_start_time = datetime.now()
-        
-        # Se precisou resetar, limpa TODAS as flags da fila ativa
-        if reset_needed:
-            for c in active_queue:
-                st.session_state.skip_flags[c] = False
-            st.toast("Ciclo reiniciado! Todos pularam, fila resetada.", icon="🔄")
-        else:
-            # Senão, limpa só a do próximo (padrão)
-            st.session_state.skip_flags[next_found] = False
-
         st.session_state.bastao_counts[current_holder] = st.session_state.bastao_counts.get(current_holder, 0) + 1
         st.session_state.play_sound = True 
         st.session_state.rotation_gif_start_time = datetime.now()
         save_state()
     else:
-        st.warning('Não foi possível determinar o próximo.')
+        st.warning('Não há próximo(a) consultor(a) elegível na fila no momento.')
         check_and_assume_baton() 
 
 def toggle_skip(): 
