@@ -21,6 +21,7 @@ CONSULTORES = sorted([
 # --- FUNÇÃO DE CACHE GLOBAL ---
 @st.cache_resource(show_spinner=False)
 def get_global_state_cache():
+    """Inicializa e retorna o dicionário de estado GLOBAL compartilhado."""
     print("--- Inicializando o Cache de Estado GLOBAL (Executa Apenas 1x) ---")
     return {
         'status_texto': {nome: 'Indisponível' for nome in CONSULTORES},
@@ -44,6 +45,8 @@ GOOGLE_CHAT_WEBHOOK_REGISTRO = "https://chat.googleapis.com/v1/spaces/AAQAVvsU4L
 GOOGLE_CHAT_WEBHOOK_CHAMADO = "https://chat.googleapis.com/v1/spaces/AAQAPPWlpW8/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=jMg2PkqtpIe3JbG_SZG_ZhcfuQQII9RXM0rZQienUZk"
 GOOGLE_CHAT_WEBHOOK_SESSAO = "https://chat.googleapis.com/v1/spaces/AAQAWs1zqNM/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=hIxKd9f35kKdJqWUNjttzRBfCsxomK0OJ3AkH9DJmxY"
 GOOGLE_CHAT_WEBHOOK_CHECKLIST_HTML = "https://chat.googleapis.com/v1/spaces/AAQAXbwpQHY/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=7AQaoGHiWIfv3eczQzVZ-fbQdBqSBOh1CyQ854o1f7k"
+# NOVO WEBHOOK HORAS EXTRAS
+GOOGLE_CHAT_WEBHOOK_HORAS_EXTRAS = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU"
 
 # Dados das Câmaras
 CAMARAS_DICT = {
@@ -129,6 +132,7 @@ def load_state():
     loaded_data['daily_logs'] = final_logs
     return loaded_data
 
+# --- FUNÇÕES DE LOG E TEMPO ---
 def log_status_change(consultor, old_status, new_status, duration):
     print(f'LOG: {consultor} de "{old_status or "-"}" para "{new_status or "-"}" após {duration}')
     if not isinstance(duration, timedelta): duration = timedelta(0)
@@ -164,11 +168,31 @@ def send_chat_notification_internal(consultor, status):
         message_template = "🎉 **BASTÃO GIRADO!** 🎉 \n\n- **Novo(a) Responsável:** {consultor}\n- **Acesse o Painel:** {app_url}"
         message_text = message_template.format(consultor=consultor, app_url=APP_URL_CLOUD) 
         chat_message = {"text": message_text}
-        
-        # Dispara thread para não travar a UI
         threading.Thread(target=_send_webhook_thread, args=(CHAT_WEBHOOK_BASTAO, chat_message)).start()
         return True
     return False
+
+# --- NOVA FUNÇÃO PARA HORAS EXTRAS ---
+def send_horas_extras_to_chat(consultor, data, inicio, tempo, motivo):
+    """Envia o registro de horas extras para o chat."""
+    if not GOOGLE_CHAT_WEBHOOK_HORAS_EXTRAS:
+        return False
+    
+    data_formatada = data.strftime("%d/%m/%Y")
+    inicio_formatado = inicio.strftime("%H:%M")
+    
+    msg = (
+        f"⏰ **Registro de Horas Extras**\n\n"
+        f"👤 **Consultor:** {consultor}\n"
+        f"📅 **Data:** {data_formatada}\n"
+        f"🕐 **Início:** {inicio_formatado}\n"
+        f"⏱️ **Tempo Total:** {tempo}\n"
+        f"📝 **Motivo:** {motivo}"
+    )
+    
+    chat_message = {"text": msg}
+    threading.Thread(target=_send_webhook_thread, args=(GOOGLE_CHAT_WEBHOOK_HORAS_EXTRAS, chat_message)).start()
+    return True
 
 def play_sound_html(): return f'<audio autoplay="true"><source src="{SOUND_URL}" type="audio/mpeg"></audio>'
 
@@ -534,7 +558,8 @@ def init_session_state():
         'auxilio_ativo': False,
         'show_activity_menu': False,
         'show_sessao_dialog': False,
-        'show_sessao_eproc_dialog': False 
+        'show_sessao_eproc_dialog': False,
+        'show_horas_extras_dialog': False # NOVO ESTADO
     }
     for key, default in defaults.items():
         if key not in st.session_state:
@@ -679,7 +704,7 @@ def rotate_bastao():
     skippers_ahead = [p for p in eligible_in_queue if skips.get(p, False) and p != current_holder]
     
     if len(skippers_ahead) > 0 and len(skippers_ahead) == len([p for p in eligible_in_queue if p != current_holder]):
-        # RESET DE EMERGENCIA
+        # RESET TOTAL SE TODOS ESTIVEREM PULANDO
         for c in queue:
             st.session_state.skip_flags[c] = False
         skips = st.session_state.skip_flags 
@@ -833,7 +858,10 @@ def update_status(status_text, change_to_available):
     was_holder = next((True for c, s in st.session_state.status_texto.items() if s == 'Bastão' and c == selected), False)
     old_status = st.session_state.status_texto.get(selected, '') or ('Bastão' if was_holder else 'Disponível')
     duration = datetime.now() - st.session_state.current_status_starts.get(selected, datetime.now())
+    
+    # AQUI ESTÁ A CORREÇÃO DA ORDEM DE CHAMADA
     log_status_change(selected, old_status, status_text, duration)
+    
     st.session_state.status_texto[selected] = status_text 
     if selected in st.session_state.bastao_queue: st.session_state.bastao_queue.remove(selected)
     st.session_state.skip_flags.pop(selected, None)
@@ -845,6 +873,25 @@ def update_status(status_text, change_to_available):
         baton_changed = check_and_assume_baton() 
     if not baton_changed: 
         save_state() 
+
+# --- LÓGICA DE ABERTURA DO DIALOG DE HORAS EXTRAS ---
+def open_horas_extras_dialog():
+    st.session_state.show_horas_extras_dialog = True
+
+def handle_horas_extras_submission(consultor_sel, data, inicio, tempo, motivo):
+    if not consultor_sel or consultor_sel == "Selecione um nome":
+        st.error("Selecione um consultor.")
+        return
+    
+    if send_horas_extras_to_chat(consultor_sel, data, inicio, tempo, motivo):
+        st.success("Horas extras registradas com sucesso!")
+        st.session_state.show_horas_extras_dialog = False
+        # Pequeno delay para a mensagem de sucesso aparecer antes do rerun
+        time.sleep(1)
+        st.rerun()
+    else:
+        st.error("Erro ao enviar. Verifique o Webhook.")
+
 
 # ============================================
 # 4. EXECUÇÃO PRINCIPAL DO STREAMLIT APP
@@ -1165,6 +1212,34 @@ with col_principal:
                     st.button("Enviar Rascunho", on_click=handle_chamado_submission, use_container_width=True, type="primary")
                 with col_btn_2:
                     st.button("Cancelar", on_click=set_chamado_step, args=(0,), use_container_width=True)
+
+    # --- BOTÃO HORAS EXTRAS (NOVO) ---
+    st.markdown("---")
+    if st.button("⏰ Registrar Horas Extras", on_click=open_horas_extras_dialog, use_container_width=True):
+        pass
+
+    if st.session_state.show_horas_extras_dialog:
+        with st.container(border=True):
+            st.markdown("### Registro de Horas Extras")
+            
+            # Campos do formulário
+            he_data = st.date_input("Data:", value=date.today())
+            he_inicio = st.time_input("Horário de Início:", value=time(18, 0))
+            he_tempo = st.text_input("Tempo Total (ex: 2h30):")
+            he_motivo = st.text_input("Motivo da Hora Extra:")
+            
+            col_he_1, col_he_2 = st.columns(2)
+            
+            with col_he_1:
+                # Botão de envio chama a função auxiliar com os dados preenchidos
+                st.button("Enviar Registro", type="primary", use_container_width=True, 
+                          on_click=lambda: handle_horas_extras_submission(st.session_state.consultor_selectbox, he_data, he_inicio, he_tempo, he_motivo))
+            
+            with col_he_2:
+                # Botão cancelar fecha o dialog
+                if st.button("Cancelar", use_container_width=True, key="cancel_he"):
+                    st.session_state.show_horas_extras_dialog = False
+                    st.rerun()
 
 with col_disponibilidade:
     st.markdown("###")
