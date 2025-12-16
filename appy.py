@@ -4,12 +4,13 @@
 import streamlit as st
 import pandas as pd
 import requests
-from datetime import datetime, timedelta, date, time
+import time # Importa o módulo de tempo (para o sleep)
+from datetime import datetime, timedelta, date, time as dt_time # Renomeia time para dt_time para evitar conflito
 from operator import itemgetter
 from streamlit_autorefresh import st_autorefresh
 import json 
 import re 
-import threading # Importante para não travar a UI
+import threading 
 
 # --- Constantes de Consultores ---
 CONSULTORES = sorted([
@@ -87,7 +88,8 @@ PUGNOEL_URL = "https://github.com/matheusmg0550247-collab/controle-bastao-eproc2
 def date_serializer(obj):
     if isinstance(obj, datetime): return obj.isoformat()
     if isinstance(obj, timedelta): return obj.total_seconds()
-    if isinstance(obj, (date, time)): return obj.isoformat()
+    # MUDANÇA AQUI: dt_time em vez de time
+    if isinstance(obj, (date, dt_time)): return obj.isoformat()
     return str(obj)
 
 def save_state():
@@ -178,6 +180,7 @@ def send_horas_extras_to_chat(consultor, data, inicio, tempo, motivo):
     if not GOOGLE_CHAT_WEBHOOK_HORAS_EXTRAS:
         return False
     
+    # Formatação da data para dd/mm/aaaa
     data_formatada = data.strftime("%d/%m/%Y")
     inicio_formatado = inicio.strftime("%H:%M")
     
@@ -858,10 +861,7 @@ def update_status(status_text, change_to_available):
     was_holder = next((True for c, s in st.session_state.status_texto.items() if s == 'Bastão' and c == selected), False)
     old_status = st.session_state.status_texto.get(selected, '') or ('Bastão' if was_holder else 'Disponível')
     duration = datetime.now() - st.session_state.current_status_starts.get(selected, datetime.now())
-    
-    # AQUI ESTÁ A CORREÇÃO DA ORDEM DE CHAMADA
     log_status_change(selected, old_status, status_text, duration)
-    
     st.session_state.status_texto[selected] = status_text 
     if selected in st.session_state.bastao_queue: st.session_state.bastao_queue.remove(selected)
     st.session_state.skip_flags.pop(selected, None)
@@ -886,8 +886,7 @@ def handle_horas_extras_submission(consultor_sel, data, inicio, tempo, motivo):
     if send_horas_extras_to_chat(consultor_sel, data, inicio, tempo, motivo):
         st.success("Horas extras registradas com sucesso!")
         st.session_state.show_horas_extras_dialog = False
-        # Pequeno delay para a mensagem de sucesso aparecer antes do rerun
-        time.sleep(1)
+        time.sleep(1) # Aqui time se refere ao módulo time
         st.rerun()
     else:
         st.error("Erro ao enviar. Verifique o Webhook.")
@@ -1222,9 +1221,9 @@ with col_principal:
         with st.container(border=True):
             st.markdown("### Registro de Horas Extras")
             
-            # Campos do formulário
+            # Campos do formulário - usando dt_time para evitar conflito
             he_data = st.date_input("Data:", value=date.today())
-            he_inicio = st.time_input("Horário de Início:", value=time(18, 0))
+            he_inicio = st.time_input("Horário de Início:", value=dt_time(18, 0))
             he_tempo = st.text_input("Tempo Total (ex: 2h30):")
             he_motivo = st.text_input("Motivo da Hora Extra:")
             
