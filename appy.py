@@ -9,6 +9,7 @@ from operator import itemgetter
 from streamlit_autorefresh import st_autorefresh
 import json 
 import re 
+import threading # Importante para não travar a UI
 
 # --- Constantes de Consultores ---
 CONSULTORES = sorted([
@@ -20,7 +21,6 @@ CONSULTORES = sorted([
 # --- FUNÇÃO DE CACHE GLOBAL ---
 @st.cache_resource(show_spinner=False)
 def get_global_state_cache():
-    """Inicializa e retorna o dicionário de estado GLOBAL compartilhado."""
     print("--- Inicializando o Cache de Estado GLOBAL (Executa Apenas 1x) ---")
     return {
         'status_texto': {nome: 'Indisponível' for nome in CONSULTORES},
@@ -38,9 +38,8 @@ def get_global_state_cache():
     }
 
 # --- Constantes (Webhooks) ---
-# DICA: Verifique se estes Links ainda são válidos no Google Chat!
 GOOGLE_CHAT_WEBHOOK_BACKUP = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU"
-CHAT_WEBHOOK_BASTAO = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU" # PREENCHA AQUI SE ESTIVER VAZIO
+CHAT_WEBHOOK_BASTAO = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU" 
 GOOGLE_CHAT_WEBHOOK_REGISTRO = "https://chat.googleapis.com/v1/spaces/AAQAVvsU4Lg/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=hSghjEZq8-1EmlfHdSoPRq_nTSpYc0usCs23RJOD-yk"
 GOOGLE_CHAT_WEBHOOK_CHAMADO = "https://chat.googleapis.com/v1/spaces/AAQAPPWlpW8/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=jMg2PkqtpIe3JbG_SZG_ZhcfuQQII9RXM0rZQienUZk"
 GOOGLE_CHAT_WEBHOOK_SESSAO = "https://chat.googleapis.com/v1/spaces/AAQAWs1zqNM/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=hIxKd9f35kKdJqWUNjttzRBfCsxomK0OJ3AkH9DJmxY"
@@ -130,7 +129,6 @@ def load_state():
     loaded_data['daily_logs'] = final_logs
     return loaded_data
 
-# Função de log
 def log_status_change(consultor, old_status, new_status, duration):
     print(f'LOG: {consultor} de "{old_status or "-"}" para "{new_status or "-"}" após {duration}')
     if not isinstance(duration, timedelta): duration = timedelta(0)
@@ -154,26 +152,22 @@ def format_time_duration(duration):
     s = int(duration.total_seconds()); h, s = divmod(s, 3600); m, s = divmod(s, 60)
     return f'{h:02}:{m:02}:{s:02}'
 
-# --- ENVIO SEGURO DE MENSAGENS (COM TIMEOUT) ---
-def send_chat_notification_internal(consultor, status):
-    """Envia notificação com timeout para não travar o app."""
-    # Se o webhook estiver vazio, retorna
-    if not CHAT_WEBHOOK_BASTAO:
-        print("Webhook de bastão não configurado.")
-        return False
+# --- ENVIO ASSÍNCRONO DE MENSAGENS (THREADING) ---
+def _send_webhook_thread(url, payload):
+    try:
+        requests.post(url, json=payload, timeout=5)
+    except Exception as e:
+        print(f"Erro no envio assíncrono: {e}")
 
-    if status == 'Bastão':
+def send_chat_notification_internal(consultor, status):
+    if CHAT_WEBHOOK_BASTAO and status == 'Bastão':
         message_template = "🎉 **BASTÃO GIRADO!** 🎉 \n\n- **Novo(a) Responsável:** {consultor}\n- **Acesse o Painel:** {app_url}"
         message_text = message_template.format(consultor=consultor, app_url=APP_URL_CLOUD) 
         chat_message = {"text": message_text}
-        try:
-            # Timeout de 3 segundos para não congelar a tela
-            requests.post(CHAT_WEBHOOK_BASTAO, json=chat_message, timeout=3)
-            print(f"Notificação enviada para {consultor}")
-            return True
-        except Exception as e:
-            print(f"Erro/Timeout ao enviar notificação de bastão: {e}")
-            return False
+        
+        # Dispara thread para não travar a UI
+        threading.Thread(target=_send_webhook_thread, args=(CHAT_WEBHOOK_BASTAO, chat_message)).start()
+        return True
     return False
 
 def play_sound_html(): return f'<audio autoplay="true"><source src="{SOUND_URL}" type="audio/mpeg"></audio>'
@@ -464,10 +458,8 @@ def send_sessao_to_chat(consultor, texto_mensagem):
     if not GOOGLE_CHAT_WEBHOOK_SESSAO: return False
     if not consultor or consultor == 'Selecione um nome': return False
     chat_message = {'text': texto_mensagem}
-    try:
-        requests.post(GOOGLE_CHAT_WEBHOOK_SESSAO, json=chat_message, timeout=3)
-        return True
-    except: return False
+    threading.Thread(target=_send_webhook_thread, args=(GOOGLE_CHAT_WEBHOOK_SESSAO, chat_message)).start()
+    return True
 
 def send_daily_report(): 
     logs = load_logs() 
@@ -517,13 +509,13 @@ def send_daily_report():
     if not GOOGLE_CHAT_WEBHOOK_BACKUP: return 
 
     chat_message = {'text': report_text}
-    try:
-        requests.post(GOOGLE_CHAT_WEBHOOK_BACKUP, json=chat_message, timeout=3)
-        st.session_state['report_last_run_date'] = datetime.now()
-        st.session_state['daily_logs'] = []
-        st.session_state['bastao_counts'] = {nome: 0 for nome in CONSULTORES}
-        save_state() 
-    except: pass
+    # Envio assíncrono para o relatório também
+    threading.Thread(target=_send_webhook_thread, args=(GOOGLE_CHAT_WEBHOOK_BACKUP, chat_message)).start()
+    
+    st.session_state['report_last_run_date'] = datetime.now()
+    st.session_state['daily_logs'] = []
+    st.session_state['bastao_counts'] = {nome: 0 for nome in CONSULTORES}
+    save_state()
 
 def init_session_state():
     persisted_state = load_state()
@@ -683,38 +675,30 @@ def rotate_bastao():
         if check_and_assume_baton(): pass 
         return
 
-    # LÓGICA SIMPLIFICADA DE "FORCE BRUTE":
-    # 1. Verifica se todos estão pulando.
     eligible_in_queue = [p for p in queue if st.session_state.get(f'check_{p}')]
     skippers_ahead = [p for p in eligible_in_queue if skips.get(p, False) and p != current_holder]
     
     if len(skippers_ahead) > 0 and len(skippers_ahead) == len([p for p in eligible_in_queue if p != current_holder]):
-        # Se todos os próximos pularam, reseta tudo AGORA
+        # RESET DE EMERGENCIA
         for c in queue:
             st.session_state.skip_flags[c] = False
         skips = st.session_state.skip_flags 
         st.toast("Ciclo reiniciado! Todos os próximos pularam, fila resetada.", icon="🔄")
 
-    # 2. Busca o próximo
     next_idx = find_next_holder_index(current_index, queue, skips)
 
     if next_idx != -1:
         next_holder = queue[next_idx]
         
-        # 3. ZERA A FLAG DE QUEM ACABOU DE PULAR!
-        # Isso garante que "Pular" só vale para uma rodada.
-        # Assim que o bastão passa por alguém que pulou, o pulo é "gasto".
-        
-        # Pega a fatia da fila entre o atual e o próximo
+        # Consome o pulo de todos que foram saltados
         if next_idx > current_index:
              skipped_over = queue[current_index+1 : next_idx]
         else:
              skipped_over = queue[current_index+1:] + queue[:next_idx]
              
         for person in skipped_over:
-             st.session_state.skip_flags[person] = False # Consome o pulo
+             st.session_state.skip_flags[person] = False 
              
-        # Zera também a flag do próximo dono (caso estivesse suja)
         st.session_state.skip_flags[next_holder] = False
 
         duration = datetime.now() - (st.session_state.bastao_start_time or datetime.now())
@@ -727,6 +711,10 @@ def rotate_bastao():
         st.session_state.bastao_counts[current_holder] = st.session_state.bastao_counts.get(current_holder, 0) + 1
         st.session_state.play_sound = True 
         st.session_state.rotation_gif_start_time = datetime.now()
+        
+        # Envio assíncrono do Webhook
+        send_chat_notification_internal(next_holder, 'Bastão')
+
         save_state()
     else:
         st.warning('Não há próximo(a) consultor(a) elegível na fila no momento.')
@@ -784,6 +772,7 @@ def handle_sessao_submission(consultor_sel, camara_sel, data_obj):
         st.session_state.last_reg_status = "success_sessao"
         html_content = gerar_html_checklist(consultor_sel, camara_sel, data_formatada)
         st.session_state.html_content_cache = html_content
+        st.session_state.html_download_ready = True
         st.session_state.html_download_ready = True
         st.session_state.html_filename = f"Checklist_{data_nome_arquivo}.html"
         return True
