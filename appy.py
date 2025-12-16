@@ -38,8 +38,9 @@ def get_global_state_cache():
     }
 
 # --- Constantes (Webhooks) ---
+# DICA: Verifique se estes Links ainda são válidos no Google Chat!
 GOOGLE_CHAT_WEBHOOK_BACKUP = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU"
-CHAT_WEBHOOK_BASTAO = "" 
+CHAT_WEBHOOK_BASTAO = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU" # PREENCHA AQUI SE ESTIVER VAZIO
 GOOGLE_CHAT_WEBHOOK_REGISTRO = "https://chat.googleapis.com/v1/spaces/AAQAVvsU4Lg/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=hSghjEZq8-1EmlfHdSoPRq_nTSpYc0usCs23RJOD-yk"
 GOOGLE_CHAT_WEBHOOK_CHAMADO = "https://chat.googleapis.com/v1/spaces/AAQAPPWlpW8/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=jMg2PkqtpIe3JbG_SZG_ZhcfuQQII9RXM0rZQienUZk"
 GOOGLE_CHAT_WEBHOOK_SESSAO = "https://chat.googleapis.com/v1/spaces/AAQAWs1zqNM/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=hIxKd9f35kKdJqWUNjttzRBfCsxomK0OJ3AkH9DJmxY"
@@ -129,6 +130,7 @@ def load_state():
     loaded_data['daily_logs'] = final_logs
     return loaded_data
 
+# Função de log
 def log_status_change(consultor, old_status, new_status, duration):
     print(f'LOG: {consultor} de "{old_status or "-"}" para "{new_status or "-"}" após {duration}')
     if not isinstance(duration, timedelta): duration = timedelta(0)
@@ -152,15 +154,26 @@ def format_time_duration(duration):
     s = int(duration.total_seconds()); h, s = divmod(s, 3600); m, s = divmod(s, 60)
     return f'{h:02}:{m:02}:{s:02}'
 
+# --- ENVIO SEGURO DE MENSAGENS (COM TIMEOUT) ---
 def send_chat_notification_internal(consultor, status):
-    if CHAT_WEBHOOK_BASTAO and status == 'Bastão':
+    """Envia notificação com timeout para não travar o app."""
+    # Se o webhook estiver vazio, retorna
+    if not CHAT_WEBHOOK_BASTAO:
+        print("Webhook de bastão não configurado.")
+        return False
+
+    if status == 'Bastão':
         message_template = "🎉 **BASTÃO GIRADO!** 🎉 \n\n- **Novo(a) Responsável:** {consultor}\n- **Acesse o Painel:** {app_url}"
         message_text = message_template.format(consultor=consultor, app_url=APP_URL_CLOUD) 
         chat_message = {"text": message_text}
         try:
-            requests.post(CHAT_WEBHOOK_BASTAO, json=chat_message)
+            # Timeout de 3 segundos para não congelar a tela
+            requests.post(CHAT_WEBHOOK_BASTAO, json=chat_message, timeout=3)
+            print(f"Notificação enviada para {consultor}")
             return True
-        except: return False
+        except Exception as e:
+            print(f"Erro/Timeout ao enviar notificação de bastão: {e}")
+            return False
     return False
 
 def play_sound_html(): return f'<audio autoplay="true"><source src="{SOUND_URL}" type="audio/mpeg"></audio>'
@@ -452,7 +465,7 @@ def send_sessao_to_chat(consultor, texto_mensagem):
     if not consultor or consultor == 'Selecione um nome': return False
     chat_message = {'text': texto_mensagem}
     try:
-        requests.post(GOOGLE_CHAT_WEBHOOK_SESSAO, json=chat_message)
+        requests.post(GOOGLE_CHAT_WEBHOOK_SESSAO, json=chat_message, timeout=3)
         return True
     except: return False
 
@@ -505,7 +518,7 @@ def send_daily_report():
 
     chat_message = {'text': report_text}
     try:
-        requests.post(GOOGLE_CHAT_WEBHOOK_BACKUP, json=chat_message)
+        requests.post(GOOGLE_CHAT_WEBHOOK_BACKUP, json=chat_message, timeout=3)
         st.session_state['report_last_run_date'] = datetime.now()
         st.session_state['daily_logs'] = []
         st.session_state['bastao_counts'] = {nome: 0 for nome in CONSULTORES}
@@ -670,33 +683,47 @@ def rotate_bastao():
         if check_and_assume_baton(): pass 
         return
 
-    # --- LÓGICA SIMPLIFICADA E INFALÍVEL ---
-    # Sempre zera as flags de quem pular, independente de ser "ciclo completo" ou não
-    # Isso garante que "Pular" seja apenas para ESTA VEZ.
+    # LÓGICA SIMPLIFICADA DE "FORCE BRUTE":
+    # 1. Verifica se todos estão pulando.
+    eligible_in_queue = [p for p in queue if st.session_state.get(f'check_{p}')]
+    skippers_ahead = [p for p in eligible_in_queue if skips.get(p, False) and p != current_holder]
     
+    if len(skippers_ahead) > 0 and len(skippers_ahead) == len([p for p in eligible_in_queue if p != current_holder]):
+        # Se todos os próximos pularam, reseta tudo AGORA
+        for c in queue:
+            st.session_state.skip_flags[c] = False
+        skips = st.session_state.skip_flags 
+        st.toast("Ciclo reiniciado! Todos os próximos pularam, fila resetada.", icon="🔄")
+
+    # 2. Busca o próximo
     next_idx = find_next_holder_index(current_index, queue, skips)
-    
-    # Se não achou ninguém (todos pulando), força o reset e pega o próximo
-    if next_idx == -1 or (next_idx != -1 and queue[next_idx] == current_holder and len(queue) > 1):
-        # Reseta tudo
-        st.session_state.skip_flags = {c: False for c in CONSULTORES}
-        skips = st.session_state.skip_flags
-        # Pega o próximo da fila (agora sem pulos)
-        next_idx = find_next_holder_index(current_index, queue, skips)
-        st.toast("Ciclo resetado automaticamente.", icon="🔄")
-    
-    # AGORA A MÁGICA: Se o bastão vai rodar, limpamos TUDO.
-    if next_idx != -1 and queue[next_idx] != current_holder:
-        # Limpa flags de todos. Assim ninguém fica "preso" no pulo.
-        st.session_state.skip_flags = {c: False for c in CONSULTORES}
-        
+
+    if next_idx != -1:
         next_holder = queue[next_idx]
+        
+        # 3. ZERA A FLAG DE QUEM ACABOU DE PULAR!
+        # Isso garante que "Pular" só vale para uma rodada.
+        # Assim que o bastão passa por alguém que pulou, o pulo é "gasto".
+        
+        # Pega a fatia da fila entre o atual e o próximo
+        if next_idx > current_index:
+             skipped_over = queue[current_index+1 : next_idx]
+        else:
+             skipped_over = queue[current_index+1:] + queue[:next_idx]
+             
+        for person in skipped_over:
+             st.session_state.skip_flags[person] = False # Consome o pulo
+             
+        # Zera também a flag do próximo dono (caso estivesse suja)
+        st.session_state.skip_flags[next_holder] = False
+
         duration = datetime.now() - (st.session_state.bastao_start_time or datetime.now())
         log_status_change(current_holder, 'Bastão', '', duration)
         st.session_state.status_texto[current_holder] = '' 
         log_status_change(next_holder, st.session_state.status_texto.get(next_holder, ''), 'Bastão', timedelta(0))
         st.session_state.status_texto[next_holder] = 'Bastão'
         st.session_state.bastao_start_time = datetime.now()
+        
         st.session_state.bastao_counts[current_holder] = st.session_state.bastao_counts.get(current_holder, 0) + 1
         st.session_state.play_sound = True 
         st.session_state.rotation_gif_start_time = datetime.now()
