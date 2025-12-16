@@ -197,10 +197,12 @@ def send_horas_extras_to_chat(consultor, data, inicio, tempo, motivo):
     threading.Thread(target=_send_webhook_thread, args=(GOOGLE_CHAT_WEBHOOK_HORAS_EXTRAS, chat_message)).start()
     return True
 
-def send_atendimento_to_chat(consultor, data, usuario, nome_setor, sistema, descricao, canal, desfecho):
+def send_atendimento_to_chat(consultor, data, usuario, nome_setor, sistema, descricao, canal, desfecho, jira_opcional=""):
     if not GOOGLE_CHAT_WEBHOOK_REGISTRO: return False
     
     data_formatada = data.strftime("%d/%m/%Y")
+    
+    jira_str = f"\n🔢 **Jira:** CESUPE-{jira_opcional}" if jira_opcional else ""
     
     msg = (
         f"📋 **Novo Registro de Atendimento**\n\n"
@@ -212,11 +214,28 @@ def send_atendimento_to_chat(consultor, data, usuario, nome_setor, sistema, desc
         f"📝 **Descrição:** {descricao}\n"
         f"📞 **Canal:** {canal}\n"
         f"✅ **Desfecho:** {desfecho}"
+        f"{jira_str}"
     )
     
     chat_message = {"text": msg}
     threading.Thread(target=_send_webhook_thread, args=(GOOGLE_CHAT_WEBHOOK_REGISTRO, chat_message)).start()
     return True
+
+# --- NOVA FUNÇÃO PARA ENVIAR NOTIFICAÇÃO DE "ATIVIDADE" (NO MENU SUPERIOR) ---
+def send_atividade_status_to_chat(consultor, status_msg):
+    if not GOOGLE_CHAT_WEBHOOK_REGISTRO: return False
+    
+    msg = (
+        f"📌 **Atualização de Status (Atividade)**\n\n"
+        f"👤 **Consultor:** {consultor}\n"
+        f"📋 **Status:** {status_msg}\n"
+        f"🕒 **Horário:** {datetime.now().strftime('%H:%M')}"
+    )
+    
+    chat_message = {"text": msg}
+    threading.Thread(target=_send_webhook_thread, args=(GOOGLE_CHAT_WEBHOOK_REGISTRO, chat_message)).start()
+    return True
+
 
 def play_sound_html(): return f'<audio autoplay="true"><source src="{SOUND_URL}" type="audio/mpeg"></audio>'
 
@@ -584,7 +603,7 @@ def init_session_state():
         'show_sessao_dialog': False,
         'show_sessao_eproc_dialog': False,
         'show_horas_extras_dialog': False,
-        'show_atendimento_dialog': False # NOVO ESTADO
+        'show_atendimento_dialog': False 
     }
     for key, default in defaults.items():
         if key not in st.session_state:
@@ -931,12 +950,12 @@ def handle_horas_extras_submission(consultor_sel, data, inicio, tempo, motivo):
         st.error("Erro ao enviar. Verifique o Webhook.")
 
 # Handler para Atendimento (usando callback no botão)
-def handle_atendimento_submission(consultor, data, usuario, nome_setor, sistema, descricao, canal, desfecho):
+def handle_atendimento_submission(consultor, data, usuario, nome_setor, sistema, descricao, canal, desfecho, jira_opcional=""):
     if not consultor or consultor == "Selecione um nome":
         st.error("Selecione um consultor.")
         return
 
-    if send_atendimento_to_chat(consultor, data, usuario, nome_setor, sistema, descricao, canal, desfecho):
+    if send_atendimento_to_chat(consultor, data, usuario, nome_setor, sistema, descricao, canal, desfecho, jira_opcional):
         st.success("Atendimento registrado com sucesso!")
         st.session_state.show_atendimento_dialog = False
         time.sleep(1)
@@ -1148,8 +1167,7 @@ with col_principal:
             st.markdown("### Selecione a Atividade")
             atividades_escolhidas = st.multiselect("Tipo:", OPCOES_ATIVIDADES_STATUS)
             
-            # --- CAMPO JIRA ---
-            jira_num = st.text_input("Número do Jira (opcional):", placeholder="Ex: 4231")
+            # --- REMOVIDO: CAMPO JIRA (Volta para o formulário de atendimento) ---
             
             texto_extra = ""
             if "Outros" in atividades_escolhidas:
@@ -1162,13 +1180,18 @@ with col_principal:
                         str_atividades = ", ".join(atividades_escolhidas)
                         status_final = f"Atividade: {str_atividades}"
                         
-                        if jira_num:
-                            status_final += f" | Jira: CESUPE-{jira_num}"
-                            
                         if "Outros" in atividades_escolhidas and texto_extra:
                             status_final += f" - {texto_extra}"
                         
                         update_status(status_final, False)
+                        # Envia notificação de atividade para o webhook
+                        msg_atividade = (f"**📌 Atualização de Status (Atividade)**\n\n"
+                                         f"👤 **Consultor:** {st.session_state.consultor_selectbox}\n"
+                                         f"📋 **Atividades:** {str_atividades}\n"
+                                         f"ℹ️ **Detalhes:** {texto_extra if texto_extra else 'N/A'}")
+                        chat_msg = {"text": msg_atividade}
+                        threading.Thread(target=_send_webhook_thread, args=(GOOGLE_CHAT_WEBHOOK_REGISTRO, chat_msg)).start()
+
                         st.session_state.show_activity_menu = False 
                         st.rerun()
                     else:
@@ -1302,13 +1325,18 @@ with col_principal:
             with c_he1:
                 # Usando lambda com chamada imperativa
                 if st.button("Enviar Registro HE", type="primary", use_container_width=True):
-                     lambda: handle_horas_extras_submission(st.session_state.consultor_selectbox, he_data, he_inicio, he_tempo, he_motivo)()
+                    consultor = st.session_state.consultor_selectbox
+                    if not consultor or consultor == "Selecione um nome":
+                        st.error("Selecione um consultor.")
+                    else:
+                        handle_horas_extras_submission(consultor, he_data, he_inicio, he_tempo, he_motivo)
+            
             with c_he2:
                 if st.button("Cancelar", use_container_width=True, key="cancel_he"):
                     st.session_state.show_horas_extras_dialog = False
                     st.rerun()
 
-    # --- DIALOG ATENDIMENTO ---
+    # --- DIALOG ATENDIMENTO (RESTAURADO E ATUALIZADO) ---
     if st.session_state.show_atendimento_dialog:
         with st.container(border=True):
             st.markdown("### Registro de Atendimento")
@@ -1321,14 +1349,18 @@ with col_principal:
             at_canal = st.selectbox("Canal:", REG_CANAL_OPCOES, index=None, placeholder="Selecione...", key="at_channel")
             at_desfecho = st.selectbox("Desfecho:", REG_DESFECHO_OPCOES, index=None, placeholder="Selecione...", key="at_outcome")
             
+            # NOVO CAMPO JIRA NO FORMULÁRIO DE ATENDIMENTO
+            at_jira = st.text_input("Número do Jira (opcional):", placeholder="Ex: 1234", key="at_jira")
+            
             c_at1, c_at2 = st.columns(2)
             
             with c_at1:
-                # Botão imperativo
                 if st.button("Enviar Atendimento", type="primary", use_container_width=True):
                     consultor = st.session_state.consultor_selectbox
-                    # Chama o handler diretamente aqui
-                    handle_atendimento_submission(consultor, at_data, at_usuario, at_nome_setor, at_sistema, at_descricao, at_canal, at_desfecho)
+                    if not consultor or consultor == "Selecione um nome":
+                        st.error("Selecione um consultor.")
+                    else:
+                        handle_atendimento_submission(consultor, at_data, at_usuario, at_nome_setor, at_sistema, at_descricao, at_canal, at_desfecho, at_jira)
             
             with c_at2:
                 if st.button("Cancelar", use_container_width=True, key="cancel_at"):
