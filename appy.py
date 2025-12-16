@@ -88,7 +88,6 @@ PUGNOEL_URL = "https://github.com/matheusmg0550247-collab/controle-bastao-eproc2
 def date_serializer(obj):
     if isinstance(obj, datetime): return obj.isoformat()
     if isinstance(obj, timedelta): return obj.total_seconds()
-    # MUDANÇA AQUI: dt_time em vez de time
     if isinstance(obj, (date, dt_time)): return obj.isoformat()
     return str(obj)
 
@@ -562,7 +561,7 @@ def init_session_state():
         'show_activity_menu': False,
         'show_sessao_dialog': False,
         'show_sessao_eproc_dialog': False,
-        'show_horas_extras_dialog': False # NOVO ESTADO
+        'show_horas_extras_dialog': False 
     }
     for key, default in defaults.items():
         if key not in st.session_state:
@@ -703,22 +702,29 @@ def rotate_bastao():
         if check_and_assume_baton(): pass 
         return
 
+    # LÓGICA SIMPLIFICADA DE "FORCE BRUTE":
+    # 1. Verifica se todos estão pulando.
     eligible_in_queue = [p for p in queue if st.session_state.get(f'check_{p}')]
     skippers_ahead = [p for p in eligible_in_queue if skips.get(p, False) and p != current_holder]
     
     if len(skippers_ahead) > 0 and len(skippers_ahead) == len([p for p in eligible_in_queue if p != current_holder]):
-        # RESET TOTAL SE TODOS ESTIVEREM PULANDO
+        # Se todos os próximos pularam, reseta tudo AGORA
         for c in queue:
             st.session_state.skip_flags[c] = False
         skips = st.session_state.skip_flags 
         st.toast("Ciclo reiniciado! Todos os próximos pularam, fila resetada.", icon="🔄")
 
+    # 2. Busca o próximo
     next_idx = find_next_holder_index(current_index, queue, skips)
 
     if next_idx != -1:
         next_holder = queue[next_idx]
         
-        # Consome o pulo de todos que foram saltados
+        # 3. ZERA A FLAG DE QUEM ACABOU DE PULAR!
+        # Isso garante que "Pular" só vale para uma rodada.
+        # Assim que o bastão passa por alguém que pulou, o pulo é "gasto".
+        
+        # Pega a fatia da fila entre o atual e o próximo
         if next_idx > current_index:
              skipped_over = queue[current_index+1 : next_idx]
         else:
@@ -727,6 +733,7 @@ def rotate_bastao():
         for person in skipped_over:
              st.session_state.skip_flags[person] = False 
              
+        # Zera também a flag do próximo dono (caso estivesse suja)
         st.session_state.skip_flags[next_holder] = False
 
         duration = datetime.now() - (st.session_state.bastao_start_time or datetime.now())
@@ -861,7 +868,10 @@ def update_status(status_text, change_to_available):
     was_holder = next((True for c, s in st.session_state.status_texto.items() if s == 'Bastão' and c == selected), False)
     old_status = st.session_state.status_texto.get(selected, '') or ('Bastão' if was_holder else 'Disponível')
     duration = datetime.now() - st.session_state.current_status_starts.get(selected, datetime.now())
+    
+    # AQUI ESTÁ A CORREÇÃO DA ORDEM DE CHAMADA
     log_status_change(selected, old_status, status_text, duration)
+    
     st.session_state.status_texto[selected] = status_text 
     if selected in st.session_state.bastao_queue: st.session_state.bastao_queue.remove(selected)
     st.session_state.skip_flags.pop(selected, None)
@@ -878,19 +888,8 @@ def update_status(status_text, change_to_available):
 def open_horas_extras_dialog():
     st.session_state.show_horas_extras_dialog = True
 
-def handle_horas_extras_submission(consultor_sel, data, inicio, tempo, motivo):
-    if not consultor_sel or consultor_sel == "Selecione um nome":
-        st.error("Selecione um consultor.")
-        return
-    
-    if send_horas_extras_to_chat(consultor_sel, data, inicio, tempo, motivo):
-        st.success("Horas extras registradas com sucesso!")
-        st.session_state.show_horas_extras_dialog = False
-        time.sleep(1) # Aqui time se refere ao módulo time
-        st.rerun()
-    else:
-        st.error("Erro ao enviar. Verifique o Webhook.")
-
+# --- MODIFICAÇÃO AQUI: LÓGICA IMPERATIVA NO LUGAR DE CALLBACK ---
+# A lógica agora ficará diretamente no botão na seção principal
 
 # ============================================
 # 4. EXECUÇÃO PRINCIPAL DO STREAMLIT APP
@@ -1221,21 +1220,30 @@ with col_principal:
         with st.container(border=True):
             st.markdown("### Registro de Horas Extras")
             
-            # Campos do formulário - usando dt_time para evitar conflito
-            he_data = st.date_input("Data:", value=date.today())
+            # Campos do formulário
+            he_data = st.date_input("Data:", value=date.today(), format="DD/MM/YYYY")
             he_inicio = st.time_input("Horário de Início:", value=dt_time(18, 0))
             he_tempo = st.text_input("Tempo Total (ex: 2h30):")
             he_motivo = st.text_input("Motivo da Hora Extra:")
             
             col_he_1, col_he_2 = st.columns(2)
             
+            # --- CORREÇÃO AQUI: LÓGICA IMPERATIVA NO LUGAR DE CALLBACK PARA EVITAR ERRO ---
             with col_he_1:
-                # Botão de envio chama a função auxiliar com os dados preenchidos
-                st.button("Enviar Registro", type="primary", use_container_width=True, 
-                          on_click=lambda: handle_horas_extras_submission(st.session_state.consultor_selectbox, he_data, he_inicio, he_tempo, he_motivo))
+                if st.button("Enviar Registro", type="primary", use_container_width=True):
+                    consultor = st.session_state.consultor_selectbox
+                    if not consultor or consultor == "Selecione um nome":
+                        st.error("Selecione um consultor.")
+                    else:
+                        if send_horas_extras_to_chat(consultor, he_data, he_inicio, he_tempo, he_motivo):
+                            st.success("Horas extras registradas com sucesso!")
+                            st.session_state.show_horas_extras_dialog = False
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error("Erro ao enviar. Verifique o Webhook.")
             
             with col_he_2:
-                # Botão cancelar fecha o dialog
                 if st.button("Cancelar", use_container_width=True, key="cancel_he"):
                     st.session_state.show_horas_extras_dialog = False
                     st.rerun()
