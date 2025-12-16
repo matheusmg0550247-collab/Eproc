@@ -4,8 +4,8 @@
 import streamlit as st
 import pandas as pd
 import requests
-import time # Importa o módulo de tempo (para o sleep)
-from datetime import datetime, timedelta, date, time as dt_time # Renomeia time para dt_time para evitar conflito
+import time 
+from datetime import datetime, timedelta, date, time as dt_time 
 from operator import itemgetter
 from streamlit_autorefresh import st_autorefresh
 import json 
@@ -46,7 +46,6 @@ GOOGLE_CHAT_WEBHOOK_REGISTRO = "https://chat.googleapis.com/v1/spaces/AAQAVvsU4L
 GOOGLE_CHAT_WEBHOOK_CHAMADO = "https://chat.googleapis.com/v1/spaces/AAQAPPWlpW8/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=jMg2PkqtpIe3JbG_SZG_ZhcfuQQII9RXM0rZQienUZk"
 GOOGLE_CHAT_WEBHOOK_SESSAO = "https://chat.googleapis.com/v1/spaces/AAQAWs1zqNM/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=hIxKd9f35kKdJqWUNjttzRBfCsxomK0OJ3AkH9DJmxY"
 GOOGLE_CHAT_WEBHOOK_CHECKLIST_HTML = "https://chat.googleapis.com/v1/spaces/AAQAXbwpQHY/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=7AQaoGHiWIfv3eczQzVZ-fbQdBqSBOh1CyQ854o1f7k"
-# NOVO WEBHOOK HORAS EXTRAS
 GOOGLE_CHAT_WEBHOOK_HORAS_EXTRAS = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU"
 
 # Dados das Câmaras
@@ -702,29 +701,22 @@ def rotate_bastao():
         if check_and_assume_baton(): pass 
         return
 
-    # LÓGICA SIMPLIFICADA DE "FORCE BRUTE":
-    # 1. Verifica se todos estão pulando.
     eligible_in_queue = [p for p in queue if st.session_state.get(f'check_{p}')]
     skippers_ahead = [p for p in eligible_in_queue if skips.get(p, False) and p != current_holder]
     
     if len(skippers_ahead) > 0 and len(skippers_ahead) == len([p for p in eligible_in_queue if p != current_holder]):
-        # Se todos os próximos pularam, reseta tudo AGORA
+        # RESET TOTAL SE TODOS ESTIVEREM PULANDO
         for c in queue:
             st.session_state.skip_flags[c] = False
         skips = st.session_state.skip_flags 
         st.toast("Ciclo reiniciado! Todos os próximos pularam, fila resetada.", icon="🔄")
 
-    # 2. Busca o próximo
     next_idx = find_next_holder_index(current_index, queue, skips)
 
     if next_idx != -1:
         next_holder = queue[next_idx]
         
-        # 3. ZERA A FLAG DE QUEM ACABOU DE PULAR!
-        # Isso garante que "Pular" só vale para uma rodada.
-        # Assim que o bastão passa por alguém que pulou, o pulo é "gasto".
-        
-        # Pega a fatia da fila entre o atual e o próximo
+        # Consome o pulo de todos que foram saltados
         if next_idx > current_index:
              skipped_over = queue[current_index+1 : next_idx]
         else:
@@ -733,7 +725,6 @@ def rotate_bastao():
         for person in skipped_over:
              st.session_state.skip_flags[person] = False 
              
-        # Zera também a flag do próximo dono (caso estivesse suja)
         st.session_state.skip_flags[next_holder] = False
 
         duration = datetime.now() - (st.session_state.bastao_start_time or datetime.now())
@@ -868,10 +859,7 @@ def update_status(status_text, change_to_available):
     was_holder = next((True for c, s in st.session_state.status_texto.items() if s == 'Bastão' and c == selected), False)
     old_status = st.session_state.status_texto.get(selected, '') or ('Bastão' if was_holder else 'Disponível')
     duration = datetime.now() - st.session_state.current_status_starts.get(selected, datetime.now())
-    
-    # AQUI ESTÁ A CORREÇÃO DA ORDEM DE CHAMADA
     log_status_change(selected, old_status, status_text, duration)
-    
     st.session_state.status_texto[selected] = status_text 
     if selected in st.session_state.bastao_queue: st.session_state.bastao_queue.remove(selected)
     st.session_state.skip_flags.pop(selected, None)
@@ -888,8 +876,19 @@ def update_status(status_text, change_to_available):
 def open_horas_extras_dialog():
     st.session_state.show_horas_extras_dialog = True
 
-# --- MODIFICAÇÃO AQUI: LÓGICA IMPERATIVA NO LUGAR DE CALLBACK ---
-# A lógica agora ficará diretamente no botão na seção principal
+def handle_horas_extras_submission(consultor_sel, data, inicio, tempo, motivo):
+    if not consultor_sel or consultor_sel == "Selecione um nome":
+        st.error("Selecione um consultor.")
+        return
+    
+    if send_horas_extras_to_chat(consultor_sel, data, inicio, tempo, motivo):
+        st.success("Horas extras registradas com sucesso!")
+        st.session_state.show_horas_extras_dialog = False
+        time.sleep(1) # Aqui time se refere ao módulo time
+        st.rerun()
+    else:
+        st.error("Erro ao enviar. Verifique o Webhook.")
+
 
 # ============================================
 # 4. EXECUÇÃO PRINCIPAL DO STREAMLIT APP
@@ -1092,17 +1091,27 @@ with col_principal:
         with st.container(border=True):
             st.markdown("### Selecione a Atividade")
             atividades_escolhidas = st.multiselect("Tipo:", OPCOES_ATIVIDADES_STATUS)
+            
+            # --- NOVO: CAMPO JIRA ---
+            jira_num = st.text_input("Número do Jira (opcional):", placeholder="Ex: 4231")
+            
             texto_extra = ""
             if "Outros" in atividades_escolhidas:
                 texto_extra = st.text_input("Descreva a atividade 'Outros':", placeholder="Ex: Ajuste técnico...")
+            
             col_confirm_1, col_confirm_2 = st.columns(2)
             with col_confirm_1:
                 if st.button("Confirmar Atividade", type="primary", use_container_width=True):
                     if atividades_escolhidas:
                         str_atividades = ", ".join(atividades_escolhidas)
                         status_final = f"Atividade: {str_atividades}"
+                        
+                        if jira_num:
+                            status_final += f" | Jira: CESUPE-{jira_num}"
+                            
                         if "Outros" in atividades_escolhidas and texto_extra:
                             status_final += f" - {texto_extra}"
+                        
                         update_status(status_final, False)
                         st.session_state.show_activity_menu = False 
                         st.rerun()
@@ -1220,7 +1229,7 @@ with col_principal:
         with st.container(border=True):
             st.markdown("### Registro de Horas Extras")
             
-            # Campos do formulário
+            # Campos do formulário - usando dt_time para evitar conflito
             he_data = st.date_input("Data:", value=date.today(), format="DD/MM/YYYY")
             he_inicio = st.time_input("Horário de Início:", value=dt_time(18, 0))
             he_tempo = st.text_input("Tempo Total (ex: 2h30):")
