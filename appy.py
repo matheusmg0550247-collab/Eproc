@@ -603,7 +603,8 @@ def init_session_state():
         'show_sessao_dialog': False,
         'show_sessao_eproc_dialog': False,
         'show_horas_extras_dialog': False,
-        'show_atendimento_dialog': False 
+        'show_atendimento_dialog': False,
+        'last_jira_number': "" # Memory for Jira
     }
     for key, default in defaults.items():
         if key not in st.session_state:
@@ -910,10 +911,7 @@ def update_status(status_text, change_to_available):
     was_holder = next((True for c, s in st.session_state.status_texto.items() if s == 'Bastão' and c == selected), False)
     old_status = st.session_state.status_texto.get(selected, '') or ('Bastão' if was_holder else 'Disponível')
     duration = datetime.now() - st.session_state.current_status_starts.get(selected, datetime.now())
-    
-    # AQUI ESTÁ A CORREÇÃO DA ORDEM DE CHAMADA
     log_status_change(selected, old_status, status_text, duration)
-    
     st.session_state.status_texto[selected] = status_text 
     if selected in st.session_state.bastao_queue: st.session_state.bastao_queue.remove(selected)
     st.session_state.skip_flags.pop(selected, None)
@@ -1350,7 +1348,9 @@ with col_principal:
             at_desfecho = st.selectbox("Desfecho:", REG_DESFECHO_OPCOES, index=None, placeholder="Selecione...", key="at_outcome")
             
             # NOVO CAMPO JIRA NO FORMULÁRIO DE ATENDIMENTO
-            at_jira = st.text_input("Número do Jira (opcional):", placeholder="Ex: 1234", key="at_jira")
+            # Use o valor salvo na memória
+            default_jira = st.session_state.get('last_jira_number', "")
+            at_jira = st.text_input("Número do Jira:", value=default_jira, placeholder="Ex: 1234", key="at_jira_input")
             
             c_at1, c_at2 = st.columns(2)
             
@@ -1360,6 +1360,8 @@ with col_principal:
                     if not consultor or consultor == "Selecione um nome":
                         st.error("Selecione um consultor.")
                     else:
+                        # Salva o valor do Jira na memória
+                        st.session_state['last_jira_number'] = at_jira
                         handle_atendimento_submission(consultor, at_data, at_usuario, at_nome_setor, at_sistema, at_descricao, at_canal, at_desfecho, at_jira)
             
             with c_at2:
