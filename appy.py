@@ -985,60 +985,35 @@ st.components.v1.html("<script>window.scrollTo(0, 0);</script>", height=0)
 render_snow_effect()
 
 # --- CABEÇALHO LADO A LADO ---
-c_title, c_controls = st.columns([1, 1.5], vertical_alignment="bottom")
+# [MODIFICAÇÃO LAYOUT] Removidos os botões daqui
+c_topo_esq, c_topo_dir = st.columns([2, 1], vertical_alignment="bottom")
 
-with c_title:
+with c_topo_esq:
     st.markdown(
         f"""
-        <div style="display: flex; align-items: center; gap: 10px;">
-            <h1 style="margin: 0; padding: 0; font-size: 2rem;">Controle Bastão Cesupe {BASTAO_EMOJI}</h1>
-            <img src="{PUGNOEL_URL}" alt="Pug Noel" style="width: 60px; height: auto; border-radius: 5px;">
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <h1 style="margin: 0; padding: 0; font-size: 2.2rem;">Controle Bastão Cesupe {BASTAO_EMOJI}</h1>
+            <img src="{PUGNOEL_URL}" alt="Pug Noel" style="width: 70px; height: auto; border-radius: 5px;">
         </div>
         """,
         unsafe_allow_html=True
     )
 
-with c_controls:
-    # Agrupamos todos os controles em colunas compactas dentro do bloco da direita
-    c_sel, c_btn_entrar, c_btn1, c_btn2, c_btn3, c_btn4 = st.columns([1.5, 0.5, 0.8, 0.8, 0.8, 0.8], gap="small", vertical_alignment="bottom")
-    
-    with c_sel:
+with c_topo_dir:
+    # --- NOVIDADE: MENU "ASSUMIR BASTÃO" NO TOPO ---
+    # Usamos st.columns aninhado para alinhar o selectbox e o botão "Entrar"
+    c_sub1, c_sub2 = st.columns([2, 1], vertical_alignment="bottom")
+    with c_sub1:
         novo_responsavel = st.selectbox("Assumir Bastão (Rápido)", options=["Selecione"] + CONSULTORES, label_visibility="collapsed", key="quick_enter")
-    
-    with c_btn_entrar:
+    with c_sub2:
         # ATENÇÃO: AQUI NÃO TEM SCROLL (trigger_scroll NÃO É CHAMADO)
         if st.button("🚀 Entrar", help="Ficar disponível na fila imediatamente"):
             if novo_responsavel and novo_responsavel != "Selecione":
-                st.session_state[f'check_{novo_responsavel}'] = True 
-                update_queue(novo_responsavel) 
-                st.session_state.consultor_selectbox = novo_responsavel 
+                st.session_state[f'check_{novo_responsavel}'] = True # Marca o checkbox
+                update_queue(novo_responsavel) # Atualiza a lógica
+                st.session_state.consultor_selectbox = novo_responsavel # Já seleciona no menu principal
                 st.success(f"{novo_responsavel} agora está na fila!")
                 st.rerun()
-    
-    # BOTÕES DE NAVEGAÇÃO COM SCROLL (TODOS ATIVOS)
-    with c_btn1:
-        if st.button("📑 Checklist", help="Checklist Eproc"):
-            open_sessao_eproc_dialog()
-            st.session_state.trigger_scroll = True
-            st.rerun()
-            
-    with c_btn2:
-        if st.button("🆘 Chamados", help="Guia Chamados"):
-            st.session_state.chamado_guide_step = 1
-            st.session_state.trigger_scroll = True
-            st.rerun()
-            
-    with c_btn3:
-        if st.button("📝 Atendimentos", help="Registrar Atendimento"):
-            open_atendimento_dialog()
-            st.session_state.trigger_scroll = True 
-            st.rerun()
-            
-    with c_btn4:
-        if st.button("⏰ H. Extras", help="Registrar H. Extras"):
-            open_horas_extras_dialog()
-            st.session_state.trigger_scroll = True 
-            st.rerun()
 
 st.markdown("<hr style='border: 1px solid #D42426; margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True) 
 
@@ -1207,6 +1182,27 @@ with col_principal:
         st.session_state.show_sessao_dialog = True
         st.session_state.show_activity_menu = False
         st.session_state.show_sessao_eproc_dialog = False
+        
+    # [MODIFICAÇÃO] BOTÕES DE FERRAMENTAS AGORA AQUI EMBAIXO
+    c_tool1, c_tool2, c_tool3, c_tool4 = st.columns(4)
+    if c_tool1.button("📑 Checklist", help="Gerador de Checklist Eproc", use_container_width=True):
+        open_sessao_eproc_dialog()
+        st.session_state.trigger_scroll = True
+        st.rerun()
+    if c_tool2.button("🆘 Chamados", help="Guia de Abertura de Chamados", use_container_width=True):
+        st.session_state.chamado_guide_step = 1
+        st.session_state.trigger_scroll = True
+        st.rerun()
+    if c_tool3.button("📝 Atendimentos", help="Registrar Atendimento", use_container_width=True):
+        open_atendimento_dialog()
+        st.session_state.trigger_scroll = True 
+        st.rerun()
+    if c_tool4.button("⏰ H. Extras", help="Registrar Horas Extras", use_container_width=True):
+        open_horas_extras_dialog()
+        st.session_state.trigger_scroll = True 
+        st.rerun()
+    
+    st.markdown("---")
     
     c1, c2, c3, c4, c5, c6, c7 = st.columns(7) 
     c1.button('🎯 Passar', on_click=rotate_bastao, use_container_width=True, help='Passa o bastão.')
