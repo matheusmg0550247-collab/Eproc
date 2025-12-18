@@ -985,57 +985,60 @@ st.components.v1.html("<script>window.scrollTo(0, 0);</script>", height=0)
 render_snow_effect()
 
 # --- CABEÇALHO LADO A LADO ---
-# [MODIFICAÇÃO LAYOUT] Colunas ajustadas para aproximar os botões e vertical_alignment="bottom" para nivelar
-c_topo_esq, c_topo_meio, c_topo_dir = st.columns([2.5, 1.5, 3], gap="small", vertical_alignment="bottom")
+c_title, c_controls = st.columns([1, 1.5], vertical_alignment="bottom")
 
-with c_topo_esq:
+with c_title:
     st.markdown(
         f"""
-        <div style="display: flex; align-items: center; gap: 15px;">
-            <h1 style="margin: 0; padding: 0; font-size: 2.2rem;">Controle Bastão Cesupe {BASTAO_EMOJI}</h1>
-            <img src="{PUGNOEL_URL}" alt="Pug Noel" style="width: 70px; height: auto; border-radius: 5px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <h1 style="margin: 0; padding: 0; font-size: 2rem;">Controle Bastão Cesupe {BASTAO_EMOJI}</h1>
+            <img src="{PUGNOEL_URL}" alt="Pug Noel" style="width: 60px; height: auto; border-radius: 5px;">
         </div>
         """,
         unsafe_allow_html=True
     )
 
-with c_topo_meio:
-    # --- NOVIDADE: MENU "ASSUMIR BASTÃO" NO TOPO ---
-    # Usamos st.columns aninhado para alinhar o selectbox e o botão "Entrar"
-    c_sub1, c_sub2 = st.columns([2, 1], vertical_alignment="bottom")
-    with c_sub1:
+with c_controls:
+    # Agrupamos todos os controles em colunas compactas dentro do bloco da direita
+    c_sel, c_btn_entrar, c_btn1, c_btn2, c_btn3, c_btn4 = st.columns([1.5, 0.5, 0.8, 0.8, 0.8, 0.8], gap="small", vertical_alignment="bottom")
+    
+    with c_sel:
         novo_responsavel = st.selectbox("Assumir Bastão (Rápido)", options=["Selecione"] + CONSULTORES, label_visibility="collapsed", key="quick_enter")
-    with c_sub2:
+    
+    with c_btn_entrar:
         # ATENÇÃO: AQUI NÃO TEM SCROLL (trigger_scroll NÃO É CHAMADO)
         if st.button("🚀 Entrar", help="Ficar disponível na fila imediatamente"):
             if novo_responsavel and novo_responsavel != "Selecione":
-                st.session_state[f'check_{novo_responsavel}'] = True # Marca o checkbox
-                update_queue(novo_responsavel) # Atualiza a lógica
-                st.session_state.consultor_selectbox = novo_responsavel # Já seleciona no menu principal
-                # st.session_state.trigger_scroll = True  <-- REMOVIDO PARA NÃO DESCER A TELA
+                st.session_state[f'check_{novo_responsavel}'] = True 
+                update_queue(novo_responsavel) 
+                st.session_state.consultor_selectbox = novo_responsavel 
                 st.success(f"{novo_responsavel} agora está na fila!")
                 st.rerun()
-
-with c_topo_dir:
-    # BOTÕES DO TOPO COM SCROLL (AGORA TODOS TEM O TRIGGER_SCROLL=TRUE)
-    c_nav1, c_nav2, c_nav3, c_nav4 = st.columns(4, vertical_alignment="bottom")
     
-    if c_nav1.button("📑 Checklist", help="Gerador de Checklist Eproc"):
-        open_sessao_eproc_dialog()
-        st.session_state.trigger_scroll = True
-        st.rerun()
-    if c_nav2.button("🆘 Chamados", help="Guia de Abertura de Chamados"):
-        st.session_state.chamado_guide_step = 1
-        st.session_state.trigger_scroll = True
-        st.rerun()
-    if c_nav3.button("📝 Atendimentos", help="Registrar Atendimento"):
-        open_atendimento_dialog()
-        st.session_state.trigger_scroll = True # AQUI TEM SCROLL (DESCE A TELA)
-        st.rerun()
-    if c_nav4.button("⏰ H. Extras", help="Registrar Horas Extras"):
-        open_horas_extras_dialog()
-        st.session_state.trigger_scroll = True # AQUI TEM SCROLL (DESCE A TELA)
-        st.rerun()
+    # BOTÕES DE NAVEGAÇÃO COM SCROLL (TODOS ATIVOS)
+    with c_btn1:
+        if st.button("📑 Checklist", help="Checklist Eproc"):
+            open_sessao_eproc_dialog()
+            st.session_state.trigger_scroll = True
+            st.rerun()
+            
+    with c_btn2:
+        if st.button("🆘 Chamados", help="Guia Chamados"):
+            st.session_state.chamado_guide_step = 1
+            st.session_state.trigger_scroll = True
+            st.rerun()
+            
+    with c_btn3:
+        if st.button("📝 Atendimentos", help="Registrar Atendimento"):
+            open_atendimento_dialog()
+            st.session_state.trigger_scroll = True 
+            st.rerun()
+            
+    with c_btn4:
+        if st.button("⏰ H. Extras", help="Registrar H. Extras"):
+            open_horas_extras_dialog()
+            st.session_state.trigger_scroll = True 
+            st.rerun()
 
 st.markdown("<hr style='border: 1px solid #D42426; margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True) 
 
@@ -1175,7 +1178,7 @@ with col_principal:
 
     # --- ÂNCORA PARA SCROLL ---
     # Aqui inserimos um DIV invisível para ser o alvo do scroll
-    st.markdown('<div id="main_action_area"></div>', unsafe_allow_html=True)
+    st.markdown('<div id="target_scrolldown"></div>', unsafe_allow_html=True)
     
     st.markdown("###")
     st.header("**Consultor(a)**")
@@ -1490,21 +1493,22 @@ with col_disponibilidade:
     render_section('Ausente', '👤', ui_lists['ausente'], 'violet') 
     render_section('Indisponível', '❌', ui_lists['indisponivel'], 'grey')
 
-# --- SCRIPT DE SCROLL AUTOMÁTICO ---
-# Verifica se a flag está ativa e rola até a âncora "main_action_area"
+# --- SCRIPT DE SCROLL AUTOMÁTICO (REFORÇADO) ---
 if st.session_state.trigger_scroll:
     st.components.v1.html(
         """
         <script>
-            var element = window.parent.document.getElementById('main_action_area');
-            if (element) {
-                element.scrollIntoView({behavior: 'smooth'});
-            }
+            setTimeout(function() {
+                var element = window.parent.document.getElementById('target_scrolldown');
+                if (element) {
+                    element.scrollIntoView({behavior: 'smooth', block: 'start'});
+                }
+            }, 300); // 300ms delay para garantir que o Streamlit renderizou
         </script>
         """,
         height=0
     )
-    # Reseta a flag para não rolar de novo em outros re-runs
+    # Reseta a flag
     st.session_state.trigger_scroll = False
 
 # RELATÓRIO DIÁRIO
