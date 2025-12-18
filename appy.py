@@ -1170,6 +1170,9 @@ with col_principal:
             st.session_state.active_tool = None
         else:
             st.session_state.active_tool = tool_name
+            # Força o passo 1 se for chamados
+            if tool_name == "chamados":
+                st.session_state.chamado_guide_step = 1
 
     c_tool1, c_tool2, c_tool3, c_tool4 = st.columns(4)
     c_tool1.button("📑 Checklist", help="Gerador de Checklist Eproc", use_container_width=True, on_click=set_active_tool, args=("checklist",))
