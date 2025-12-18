@@ -111,7 +111,7 @@ def save_state():
         global_data['report_last_run_date'] = st.session_state.report_last_run_date
         global_data['rotation_gif_start_time'] = st.session_state.get('rotation_gif_start_time')
         global_data['lunch_warning_info'] = st.session_state.get('lunch_warning_info')
-        global_data['auxilio_ativo'] = st.session_state.get('auxilio_ativo', False)
+        global_data['auxilio_ativo'] = st.session_state.get('auxilio_ativo', False) 
         global_data['daily_logs'] = json.loads(json.dumps(st.session_state.daily_logs, default=date_serializer))
     except Exception as e: 
         print(f'Erro ao salvar estado GLOBAL: {e}')
@@ -1157,6 +1157,47 @@ with col_principal:
     c6.button('🎙️ Sessão', on_click=lambda: update_status("Sessão", False), use_container_width=True)
     c7.button('🚶 Saída rápida', on_click=update_status, args=('Saída rápida', False,), use_container_width=True)
     
+    # -------------------------------------------------------------
+    # [MODIFICAÇÃO] MOVIDO PARA CÁ (ACIMA DO ATUALIZAR MANUAL)
+    # -------------------------------------------------------------
+    if st.session_state.show_activity_menu:
+        with st.container(border=True):
+            st.markdown("### Selecione a Atividade")
+            atividades_escolhidas = st.multiselect("Tipo:", OPCOES_ATIVIDADES_STATUS)
+            
+            texto_extra = ""
+            if "Outros" in atividades_escolhidas:
+                texto_extra = st.text_input("Descreva a atividade 'Outros':", placeholder="Ex: Ajuste técnico...")
+            
+            col_confirm_1, col_confirm_2 = st.columns(2)
+            with col_confirm_1:
+                if st.button("Confirmar Atividade", type="primary", use_container_width=True):
+                    if atividades_escolhidas:
+                        str_atividades = ", ".join(atividades_escolhidas)
+                        status_final = f"Atividade: {str_atividades}"
+                        
+                        if "Outros" in atividades_escolhidas and texto_extra:
+                            status_final += f" - {texto_extra}"
+                        
+                        update_status(status_final, False)
+                        # Envia notificação de atividade para o webhook
+                        msg_atividade = (f"**📌 Atualização de Status (Atividade)**\n\n"
+                                         f"👤 **Consultor:** {st.session_state.consultor_selectbox}\n"
+                                         f"📋 **Atividades:** {str_atividades}\n"
+                                         f"ℹ️ **Detalhes:** {texto_extra if texto_extra else 'N/A'}")
+                        chat_msg = {"text": msg_atividade}
+                        threading.Thread(target=_send_webhook_thread, args=(GOOGLE_CHAT_WEBHOOK_REGISTRO, chat_msg)).start()
+
+                        st.session_state.show_activity_menu = False 
+                        st.rerun()
+                    else:
+                        st.warning("Selecione pelo menos uma atividade.")
+            with col_confirm_2:
+                if st.button("Cancelar", use_container_width=True, key='cancel_act'):
+                    st.session_state.show_activity_menu = False
+                    st.rerun()
+    # -------------------------------------------------------------
+    
     st.markdown("####")
     st.button('🔄 Atualizar (Manual)', on_click=manual_rerun, use_container_width=True)
     
@@ -1271,44 +1312,6 @@ with col_principal:
                 else:
                     handle_horas_extras_submission(consultor, he_data, he_inicio, he_tempo, he_motivo)
     
-    # 1. Atividades (Menu Expandido - Original)
-    if st.session_state.show_activity_menu:
-        with st.container(border=True):
-            st.markdown("### Selecione a Atividade")
-            atividades_escolhidas = st.multiselect("Tipo:", OPCOES_ATIVIDADES_STATUS)
-            
-            texto_extra = ""
-            if "Outros" in atividades_escolhidas:
-                texto_extra = st.text_input("Descreva a atividade 'Outros':", placeholder="Ex: Ajuste técnico...")
-            
-            col_confirm_1, col_confirm_2 = st.columns(2)
-            with col_confirm_1:
-                if st.button("Confirmar Atividade", type="primary", use_container_width=True):
-                    if atividades_escolhidas:
-                        str_atividades = ", ".join(atividades_escolhidas)
-                        status_final = f"Atividade: {str_atividades}"
-                        
-                        if "Outros" in atividades_escolhidas and texto_extra:
-                            status_final += f" - {texto_extra}"
-                        
-                        update_status(status_final, False)
-                        # Envia notificação de atividade para o webhook
-                        msg_atividade = (f"**📌 Atualização de Status (Atividade)**\n\n"
-                                         f"👤 **Consultor:** {st.session_state.consultor_selectbox}\n"
-                                         f"📋 **Atividades:** {str_atividades}\n"
-                                         f"ℹ️ **Detalhes:** {texto_extra if texto_extra else 'N/A'}")
-                        chat_msg = {"text": msg_atividade}
-                        threading.Thread(target=_send_webhook_thread, args=(GOOGLE_CHAT_WEBHOOK_REGISTRO, chat_msg)).start()
-
-                        st.session_state.show_activity_menu = False 
-                        st.rerun()
-                    else:
-                        st.warning("Selecione pelo menos uma atividade.")
-            with col_confirm_2:
-                if st.button("Cancelar", use_container_width=True, key='cancel_act'):
-                    st.session_state.show_activity_menu = False
-                    st.rerun()
-
 with col_disponibilidade:
     st.markdown("###")
     st.toggle("Auxílio HP/Emails/Whatsapp", key='auxilio_ativo', on_change=on_auxilio_change)
