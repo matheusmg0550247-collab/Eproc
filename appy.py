@@ -35,8 +35,7 @@ def get_global_state_cache():
         'rotation_gif_start_time': None,
         'lunch_warning_info': None,
         'auxilio_ativo': False, 
-        'daily_logs': [],
-        'trigger_scroll': False # Controle de scroll
+        'daily_logs': []
     }
 
 # --- Constantes (Webhooks) ---
@@ -1183,27 +1182,6 @@ with col_principal:
         st.session_state.show_activity_menu = False
         st.session_state.show_sessao_eproc_dialog = False
         
-    # [MODIFICAÇÃO] BOTÕES DE FERRAMENTAS AGORA AQUI EMBAIXO
-    c_tool1, c_tool2, c_tool3, c_tool4 = st.columns(4)
-    if c_tool1.button("📑 Checklist", help="Gerador de Checklist Eproc", use_container_width=True):
-        open_sessao_eproc_dialog()
-        st.session_state.trigger_scroll = True
-        st.rerun()
-    if c_tool2.button("🆘 Chamados", help="Guia de Abertura de Chamados", use_container_width=True):
-        st.session_state.chamado_guide_step = 1
-        st.session_state.trigger_scroll = True
-        st.rerun()
-    if c_tool3.button("📝 Atendimentos", help="Registrar Atendimento", use_container_width=True):
-        open_atendimento_dialog()
-        st.session_state.trigger_scroll = True 
-        st.rerun()
-    if c_tool4.button("⏰ H. Extras", help="Registrar Horas Extras", use_container_width=True):
-        open_horas_extras_dialog()
-        st.session_state.trigger_scroll = True 
-        st.rerun()
-    
-    st.markdown("---")
-    
     c1, c2, c3, c4, c5, c6, c7 = st.columns(7) 
     c1.button('🎯 Passar', on_click=rotate_bastao, use_container_width=True, help='Passa o bastão.')
     c2.button('⏭️ Pular', on_click=toggle_skip, use_container_width=True, help='Pular vez.')
@@ -1488,24 +1466,6 @@ with col_disponibilidade:
     render_section('Saída rápida', '🚶', ui_lists['saida'], 'red')
     render_section('Ausente', '👤', ui_lists['ausente'], 'violet') 
     render_section('Indisponível', '❌', ui_lists['indisponivel'], 'grey')
-
-# --- SCRIPT DE SCROLL AUTOMÁTICO (REFORÇADO) ---
-if st.session_state.trigger_scroll:
-    st.components.v1.html(
-        """
-        <script>
-            setTimeout(function() {
-                var element = window.parent.document.getElementById('target_scrolldown');
-                if (element) {
-                    element.scrollIntoView({behavior: 'smooth', block: 'start'});
-                }
-            }, 300); // 300ms delay para garantir que o Streamlit renderizou
-        </script>
-        """,
-        height=0
-    )
-    # Reseta a flag
-    st.session_state.trigger_scroll = False
 
 # RELATÓRIO DIÁRIO
 now_utc = datetime.utcnow()
