@@ -35,7 +35,8 @@ def get_global_state_cache():
         'rotation_gif_start_time': None,
         'lunch_warning_info': None,
         'auxilio_ativo': False, 
-        'daily_logs': [] 
+        'daily_logs': [],
+        'trigger_scroll': False # Controle de scroll
     }
 
 # --- Constantes (Webhooks) ---
@@ -89,8 +90,6 @@ PUGNOEL_URL = "https://github.com/matheusmg0550247-collab/controle-bastao-eproc2
 # 2. FUNÇÕES AUXILIARES GLOBAIS
 # ============================================
 
-# --- CORREÇÃO DO ERRO ---
-# Adicionei esta função para garantir que o código encontre os logs ao gerar o relatório
 def load_logs():
     return st.session_state.daily_logs
 
@@ -609,7 +608,8 @@ def init_session_state():
         'show_sessao_eproc_dialog': False,
         'show_horas_extras_dialog': False,
         'show_atendimento_dialog': False,
-        'last_jira_number': "" 
+        'last_jira_number': "",
+        'trigger_scroll': False
     }
     for key, default in defaults.items():
         if key not in st.session_state:
@@ -984,38 +984,56 @@ st.components.v1.html("<script>window.scrollTo(0, 0);</script>", height=0)
 
 render_snow_effect()
 
-# --- REVISÃO: CABEÇALHO LADO A LADO ---
-# Aqui mudamos a estrutura para colocar os botões na mesma linha do título
-c_topo_esq, c_topo_dir = st.columns([5, 4])
+# --- CABEÇALHO LADO A LADO ---
+c_topo_esq, c_topo_meio, c_topo_dir = st.columns([3, 2, 4])
 
 with c_topo_esq:
-    # Título e Imagem juntos
     st.markdown(
         f"""
         <div style="display: flex; align-items: center; gap: 15px;">
-            <h1 style="margin: 0; padding: 0; font-size: 2.5rem;">Controle Bastão Cesupe {BASTAO_EMOJI}</h1>
-            <img src="{PUGNOEL_URL}" alt="Pug Noel" style="width: 80px; height: auto; border-radius: 5px;">
+            <h1 style="margin: 0; padding: 0; font-size: 2.2rem;">Controle Bastão Cesupe {BASTAO_EMOJI}</h1>
+            <img src="{PUGNOEL_URL}" alt="Pug Noel" style="width: 70px; height: auto; border-radius: 5px;">
         </div>
         """,
         unsafe_allow_html=True
     )
 
+with c_topo_meio:
+    # --- NOVIDADE: MENU "ASSUMIR BASTÃO" NO TOPO ---
+    st.write("") # Espaçamento
+    c_sub1, c_sub2 = st.columns([2, 1])
+    with c_sub1:
+        novo_responsavel = st.selectbox("Assumir Bastão (Rápido)", options=["Selecione"] + CONSULTORES, label_visibility="collapsed", key="quick_enter")
+    with c_sub2:
+        if st.button("🚀 Entrar", help="Ficar disponível na fila imediatamente"):
+            if novo_responsavel and novo_responsavel != "Selecione":
+                st.session_state[f'check_{novo_responsavel}'] = True # Marca o checkbox
+                update_queue(novo_responsavel) # Atualiza a lógica
+                st.session_state.consultor_selectbox = novo_responsavel # Já seleciona no menu principal
+                st.session_state.trigger_scroll = True # Ativa o scroll
+                st.success(f"{novo_responsavel} agora está na fila!")
+                st.rerun()
+
 with c_topo_dir:
-    # Pequenos botões alinhados à direita do título
-    st.write("") # Espaçamento vertical para alinhar
+    st.write("")
     st.write("")
     c_nav1, c_nav2, c_nav3, c_nav4 = st.columns(4)
+    # BOTÕES DO TOPO COM SCROLL
     if c_nav1.button("📑 Checklist", help="Gerador de Checklist Eproc"):
         open_sessao_eproc_dialog()
+        st.session_state.trigger_scroll = True
         st.rerun()
     if c_nav2.button("🆘 Chamados", help="Guia de Abertura de Chamados"):
         st.session_state.chamado_guide_step = 1
+        st.session_state.trigger_scroll = True
         st.rerun()
     if c_nav3.button("📝 Atendimentos", help="Registrar Atendimento"):
         open_atendimento_dialog()
+        st.session_state.trigger_scroll = True
         st.rerun()
     if c_nav4.button("⏰ H. Extras", help="Registrar Horas Extras"):
         open_horas_extras_dialog()
+        st.session_state.trigger_scroll = True
         st.rerun()
 
 st.markdown("<hr style='border: 1px solid #D42426; margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True) 
@@ -1154,8 +1172,14 @@ with col_principal:
         </div>
         ''', unsafe_allow_html=True)
 
+    # --- ÂNCORA PARA SCROLL ---
+    # Aqui inserimos um DIV invisível para ser o alvo do scroll
+    st.markdown('<div id="main_action_area"></div>', unsafe_allow_html=True)
+    
     st.markdown("###")
     st.header("**Consultor(a)**")
+    
+    # --- ÁREA DE AÇÃO ORIGINAL RESTAURADA AQUI EMBAIXO ---
     st.selectbox('Selecione:', options=['Selecione um nome'] + CONSULTORES, key='consultor_selectbox', label_visibility='collapsed')
     st.markdown("#### "); st.markdown("**Ações:**")
     
@@ -1464,6 +1488,23 @@ with col_disponibilidade:
     render_section('Saída rápida', '🚶', ui_lists['saida'], 'red')
     render_section('Ausente', '👤', ui_lists['ausente'], 'violet') 
     render_section('Indisponível', '❌', ui_lists['indisponivel'], 'grey')
+
+# --- SCRIPT DE SCROLL AUTOMÁTICO ---
+# Verifica se a flag está ativa e rola até a âncora "main_action_area"
+if st.session_state.trigger_scroll:
+    st.components.v1.html(
+        """
+        <script>
+            var element = window.parent.document.getElementById('main_action_area');
+            if (element) {
+                element.scrollIntoView({behavior: 'smooth'});
+            }
+        </script>
+        """,
+        height=0
+    )
+    # Reseta a flag para não rolar de novo em outros re-runs
+    st.session_state.trigger_scroll = False
 
 # RELATÓRIO DIÁRIO
 now_utc = datetime.utcnow()
