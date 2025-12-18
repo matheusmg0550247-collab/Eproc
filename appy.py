@@ -1163,7 +1163,7 @@ with col_principal:
     # [MODIFICAÇÃO] BOTÕES DE FERRAMENTAS AGORA AQUI EMBAIXO DO MANUAL
     st.markdown("---")
     
-    # Adicionado lógica de callback para garantir que a aba abra
+    # Adicionado lógica de callback para garantir que a aba abra e force o estado correto
     def set_active_tool(tool_name):
         # Se clicar no mesmo botão que já está aberto, fecha (toggle)
         if st.session_state.active_tool == tool_name:
@@ -1173,6 +1173,8 @@ with col_principal:
             # Força o passo 1 se for chamados
             if tool_name == "chamados":
                 st.session_state.chamado_guide_step = 1
+        # FECHA O OUTRO MENU (ATIVIDADES)
+        st.session_state.show_activity_menu = False
 
     c_tool1, c_tool2, c_tool3, c_tool4 = st.columns(4)
     c_tool1.button("📑 Checklist", help="Gerador de Checklist Eproc", use_container_width=True, on_click=set_active_tool, args=("checklist",))
