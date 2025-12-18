@@ -1144,21 +1144,25 @@ with col_principal:
     if 'show_activity_menu' not in st.session_state:
         st.session_state.show_activity_menu = False
     
-    def open_activity_menu():
-        st.session_state.show_activity_menu = True
-        st.session_state.active_tool = None # Fecha outras abas ao abrir atividade
+    # Função para ALTERNAR (Toggle) o menu de atividade
+    def toggle_activity_menu():
+        if st.session_state.show_activity_menu:
+            st.session_state.show_activity_menu = False
+        else:
+            st.session_state.show_activity_menu = True
+            st.session_state.active_tool = None # Fecha os formulários de baixo (HE, Checklist...)
     
     c1, c2, c3, c4, c5, c6, c7 = st.columns(7) 
     c1.button('🎯 Passar', on_click=rotate_bastao, use_container_width=True, help='Passa o bastão.')
     c2.button('⏭️ Pular', on_click=toggle_skip, use_container_width=True, help='Pular vez.')
-    c3.button('📋 Atividades', on_click=open_activity_menu, use_container_width=True)
+    c3.button('📋 Atividades', on_click=toggle_activity_menu, use_container_width=True)
     c4.button('🍽️ Almoço', on_click=update_status, args=('Almoço', False,), use_container_width=True)
     c5.button('👤 Ausente', on_click=update_status, args=('Ausente', False,), use_container_width=True)
     c6.button('🎙️ Sessão', on_click=lambda: update_status("Sessão", False), use_container_width=True)
     c7.button('🚶 Saída rápida', on_click=update_status, args=('Saída rápida', False,), use_container_width=True)
     
     # -------------------------------------------------------------
-    # [MODIFICAÇÃO] MOVIDO PARA CÁ (ACIMA DO ATUALIZAR MANUAL)
+    # POSICIONADO AQUI: LOGO ABAIXO DOS BOTÕES DE AÇÃO E ACIMA DO ATUALIZAR
     # -------------------------------------------------------------
     if st.session_state.show_activity_menu:
         with st.container(border=True):
@@ -1193,18 +1197,18 @@ with col_principal:
                     else:
                         st.warning("Selecione pelo menos uma atividade.")
             with col_confirm_2:
-                if st.button("Cancelar", use_container_width=True, key='cancel_act'):
-                    st.session_state.show_activity_menu = False
-                    st.rerun()
+                # O cancelar agora usa a função toggle para fechar corretamente
+                if st.button("Cancelar", use_container_width=True, key='cancel_act', on_click=toggle_activity_menu):
+                    pass
     # -------------------------------------------------------------
     
     st.markdown("####")
     st.button('🔄 Atualizar (Manual)', on_click=manual_rerun, use_container_width=True)
     
-    # [MODIFICAÇÃO] BOTÕES DE FERRAMENTAS AGORA AQUI EMBAIXO DO MANUAL
+    # BOTÕES DE FERRAMENTAS INFERIORES
     st.markdown("---")
     
-    # Adicionado lógica de callback para garantir que a aba abra e force o estado correto
+    # Lógica de callback para abrir ferramenta de baixo E FECHAR A DE CIMA
     def set_active_tool(tool_name):
         # Se clicar no mesmo botão que já está aberto, fecha (toggle)
         if st.session_state.active_tool == tool_name:
@@ -1214,8 +1218,9 @@ with col_principal:
             # Força o passo 1 se for chamados
             if tool_name == "chamados":
                 st.session_state.chamado_guide_step = 1
-        # FECHA O OUTRO MENU (ATIVIDADES)
-        st.session_state.show_activity_menu = False
+            
+            # FECHA O MENU DE CIMA (ATIVIDADES)
+            st.session_state.show_activity_menu = False
 
     c_tool1, c_tool2, c_tool3, c_tool4 = st.columns(4)
     c_tool1.button("📑 Checklist", help="Gerador de Checklist Eproc", use_container_width=True, on_click=set_active_tool, args=("checklist",))
