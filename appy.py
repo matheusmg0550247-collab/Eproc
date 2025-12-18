@@ -985,7 +985,8 @@ st.components.v1.html("<script>window.scrollTo(0, 0);</script>", height=0)
 render_snow_effect()
 
 # --- CABEÇALHO LADO A LADO ---
-c_topo_esq, c_topo_meio, c_topo_dir = st.columns([3, 2, 4])
+# Usamos vertical_alignment="bottom" para nivelar os botões e selects pela base
+c_topo_esq, c_topo_meio, c_topo_dir = st.columns([3, 2, 4], vertical_alignment="bottom")
 
 with c_topo_esq:
     st.markdown(
@@ -1000,25 +1001,25 @@ with c_topo_esq:
 
 with c_topo_meio:
     # --- NOVIDADE: MENU "ASSUMIR BASTÃO" NO TOPO ---
-    st.write("") # Espaçamento
-    c_sub1, c_sub2 = st.columns([2, 1])
+    # Usamos st.columns aninhado para alinhar o selectbox e o botão "Entrar"
+    c_sub1, c_sub2 = st.columns([2, 1], vertical_alignment="bottom")
     with c_sub1:
         novo_responsavel = st.selectbox("Assumir Bastão (Rápido)", options=["Selecione"] + CONSULTORES, label_visibility="collapsed", key="quick_enter")
     with c_sub2:
+        # ATENÇÃO: AQUI NÃO TEM SCROLL (trigger_scroll NÃO É CHAMADO)
         if st.button("🚀 Entrar", help="Ficar disponível na fila imediatamente"):
             if novo_responsavel and novo_responsavel != "Selecione":
                 st.session_state[f'check_{novo_responsavel}'] = True # Marca o checkbox
                 update_queue(novo_responsavel) # Atualiza a lógica
                 st.session_state.consultor_selectbox = novo_responsavel # Já seleciona no menu principal
-                st.session_state.trigger_scroll = True # Ativa o scroll
+                # st.session_state.trigger_scroll = True  <-- REMOVIDO PARA NÃO DESCER A TELA
                 st.success(f"{novo_responsavel} agora está na fila!")
                 st.rerun()
 
 with c_topo_dir:
-    st.write("")
-    st.write("")
-    c_nav1, c_nav2, c_nav3, c_nav4 = st.columns(4)
-    # BOTÕES DO TOPO COM SCROLL
+    # BOTÕES DO TOPO COM SCROLL (EXCETO SE NÃO FOR DESEJADO)
+    c_nav1, c_nav2, c_nav3, c_nav4 = st.columns(4, vertical_alignment="bottom")
+    
     if c_nav1.button("📑 Checklist", help="Gerador de Checklist Eproc"):
         open_sessao_eproc_dialog()
         st.session_state.trigger_scroll = True
@@ -1029,11 +1030,11 @@ with c_topo_dir:
         st.rerun()
     if c_nav3.button("📝 Atendimentos", help="Registrar Atendimento"):
         open_atendimento_dialog()
-        st.session_state.trigger_scroll = True
+        st.session_state.trigger_scroll = True # AQUI TEM SCROLL (DESCE A TELA)
         st.rerun()
     if c_nav4.button("⏰ H. Extras", help="Registrar Horas Extras"):
         open_horas_extras_dialog()
-        st.session_state.trigger_scroll = True
+        st.session_state.trigger_scroll = True # AQUI TEM SCROLL (DESCE A TELA)
         st.rerun()
 
 st.markdown("<hr style='border: 1px solid #D42426; margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True) 
