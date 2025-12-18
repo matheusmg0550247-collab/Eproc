@@ -22,7 +22,6 @@ CONSULTORES = sorted([
 # --- FUNÇÃO DE CACHE GLOBAL ---
 @st.cache_resource(show_spinner=False)
 def get_global_state_cache():
-    """Inicializa e retorna o dicionário de estado GLOBAL compartilhado."""
     print("--- Inicializando o Cache de Estado GLOBAL (Executa Apenas 1x) ---")
     return {
         'status_texto': {nome: 'Indisponível' for nome in CONSULTORES},
@@ -988,12 +987,13 @@ st.markdown(
 
 st.markdown("<hr style='border: 1px solid #D42426;'>", unsafe_allow_html=True) 
 
+# REFRESH TIME: Changed to 8 seconds for better sync
 gif_start_time = st.session_state.get('rotation_gif_start_time')
 lunch_warning_info = st.session_state.get('lunch_warning_info') 
 
 show_gif = False
 show_lunch_warning = False
-refresh_interval = 40000 
+refresh_interval = 8000 # 8 seconds sync
 
 if gif_start_time:
     try:
@@ -1021,6 +1021,26 @@ if lunch_warning_info and lunch_warning_info.get('start_time'):
         st.session_state.lunch_warning_info = None
         
 st_autorefresh(interval=refresh_interval, key='auto_rerun_key') 
+
+# --- MENU DE NAVEGAÇÃO RÁPIDA (TOPO) ---
+col_header_1, col_header_2 = st.columns([2, 3])
+
+# (Nota: As ações dos botões do topo apenas setam o estado e dão rerun)
+with col_header_2:
+    # Pequenos botões alinhados
+    c_nav1, c_nav2, c_nav3, c_nav4 = st.columns(4)
+    if c_nav1.button("📑 Checklist", help="Gerador de Checklist Eproc"):
+        open_sessao_eproc_dialog()
+        st.rerun()
+    if c_nav2.button("🆘 Chamados", help="Guia de Abertura de Chamados"):
+        st.session_state.chamado_guide_step = 1
+        st.rerun()
+    if c_nav3.button("📝 Atendimentos", help="Registrar Atendimento"):
+        open_atendimento_dialog()
+        st.rerun()
+    if c_nav4.button("⏰ Horas Extras", help="Registrar Horas Extras"):
+        open_horas_extras_dialog()
+        st.rerun()
 
 if st.session_state.get('play_sound', False):
     st.components.v1.html(play_sound_html(), height=0, width=0)
@@ -1243,9 +1263,6 @@ with col_principal:
         st.error("Erro ao enviar registro de sessão. Verifique se preencheu a câmara e a data.")
         st.session_state.last_reg_status = None
 
-    if st.button("Abrir Gerador de Checklist", on_click=open_sessao_eproc_dialog, use_container_width=True):
-        pass
-
     if st.session_state.show_sessao_eproc_dialog:
         with st.container(border=True):
             st.markdown("### Gerar HTML e Notificar")
@@ -1273,7 +1290,7 @@ with col_principal:
     st.header("Padrão abertura de chamados / jiras")
     guide_step = st.session_state.get('chamado_guide_step', 0)
     if guide_step == 0:
-        st.button("Gerar prévia", on_click=set_chamado_step, args=(1,), use_container_width=True)
+        pass # Hidden by default, triggered by top button
     else:
         with st.container(border=True):
             if guide_step == 1:
@@ -1300,18 +1317,6 @@ with col_principal:
                     st.button("Enviar Rascunho", on_click=handle_chamado_submission, use_container_width=True, type="primary")
                 with col_btn_2:
                     st.button("Cancelar", on_click=set_chamado_step, args=(0,), use_container_width=True)
-
-    # --- BOTÕES DE ADMINISTRAÇÃO (ATENDIMENTO E HORAS EXTRAS) ---
-    st.markdown("---")
-    col_adm1, col_adm2 = st.columns(2)
-    
-    with col_adm1:
-        if st.button("📝 Registrar Atendimento", on_click=open_atendimento_dialog, use_container_width=True):
-            pass
-    
-    with col_adm2:
-        if st.button("⏰ Registrar Horas Extras", on_click=open_horas_extras_dialog, use_container_width=True):
-            pass
 
     # --- DIALOG HORAS EXTRAS ---
     if st.session_state.show_horas_extras_dialog:
@@ -1459,8 +1464,11 @@ with col_disponibilidade:
     render_section('Ausente', '👤', ui_lists['ausente'], 'violet') 
     render_section('Indisponível', '❌', ui_lists['indisponivel'], 'grey')
 
-now = datetime.now()
+# RELATÓRIO DIÁRIO (Lógica corrigida para UTC-3)
+now_utc = datetime.utcnow()
+now_br = now_utc - timedelta(hours=3) # Horário de Brasília
 last_run_date = st.session_state.report_last_run_date.date() if isinstance(st.session_state.report_last_run_date, datetime) else datetime.min.date()
-if now.hour >= 20 and now.date() > last_run_date:
-    print(f"TRIGGER: Enviando relatório diário. Agora: {now}, Última Execução: {st.session_state.report_last_run_date}")
+
+if now_br.hour >= 20 and now_br.date() > last_run_date:
+    print(f"TRIGGER: Enviando relatório diário. Agora (BRT): {now_br}, Última Execução: {st.session_state.report_last_run_date}")
     send_daily_report()
