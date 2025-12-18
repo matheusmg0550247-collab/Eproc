@@ -985,8 +985,8 @@ st.components.v1.html("<script>window.scrollTo(0, 0);</script>", height=0)
 render_snow_effect()
 
 # --- CABEÇALHO LADO A LADO ---
-# Usamos vertical_alignment="bottom" para nivelar os botões e selects pela base
-c_topo_esq, c_topo_meio, c_topo_dir = st.columns([3, 2, 4], vertical_alignment="bottom")
+# [MODIFICAÇÃO LAYOUT] Colunas ajustadas para aproximar os botões e vertical_alignment="bottom" para nivelar
+c_topo_esq, c_topo_meio, c_topo_dir = st.columns([2.5, 1.5, 3], gap="small", vertical_alignment="bottom")
 
 with c_topo_esq:
     st.markdown(
@@ -1017,7 +1017,7 @@ with c_topo_meio:
                 st.rerun()
 
 with c_topo_dir:
-    # BOTÕES DO TOPO COM SCROLL (EXCETO SE NÃO FOR DESEJADO)
+    # BOTÕES DO TOPO COM SCROLL (AGORA TODOS TEM O TRIGGER_SCROLL=TRUE)
     c_nav1, c_nav2, c_nav3, c_nav4 = st.columns(4, vertical_alignment="bottom")
     
     if c_nav1.button("📑 Checklist", help="Gerador de Checklist Eproc"):
