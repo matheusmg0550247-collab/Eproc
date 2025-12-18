@@ -89,6 +89,11 @@ PUGNOEL_URL = "https://github.com/matheusmg0550247-collab/controle-bastao-eproc2
 # 2. FUNÇÕES AUXILIARES GLOBAIS
 # ============================================
 
+# --- CORREÇÃO DO ERRO ---
+# Adicionei esta função para garantir que o código encontre os logs ao gerar o relatório
+def load_logs():
+    return st.session_state.daily_logs
+
 def date_serializer(obj):
     if isinstance(obj, datetime): return obj.isoformat()
     if isinstance(obj, timedelta): return obj.total_seconds()
@@ -529,6 +534,7 @@ def send_sessao_to_chat(consultor, texto_mensagem):
     return True
 
 def send_daily_report(): 
+    # load_logs agora existe e retorna st.session_state.daily_logs
     logs = load_logs() 
     bastao_counts = st.session_state.bastao_counts.copy()
     aggregated_data = {nome: {} for nome in CONSULTORES}
@@ -576,7 +582,6 @@ def send_daily_report():
     if not GOOGLE_CHAT_WEBHOOK_BACKUP: return 
 
     chat_message = {'text': report_text}
-    # Envio assíncrono para o relatório também
     threading.Thread(target=_send_webhook_thread, args=(GOOGLE_CHAT_WEBHOOK_BACKUP, chat_message)).start()
     
     st.session_state['report_last_run_date'] = datetime.now()
@@ -604,7 +609,7 @@ def init_session_state():
         'show_sessao_eproc_dialog': False,
         'show_horas_extras_dialog': False,
         'show_atendimento_dialog': False,
-        'last_jira_number': "" # Inicializa memória do Jira
+        'last_jira_number': "" 
     }
     for key, default in defaults.items():
         if key not in st.session_state:
@@ -912,7 +917,6 @@ def update_status(status_text, change_to_available):
     old_status = st.session_state.status_texto.get(selected, '') or ('Bastão' if was_holder else 'Disponível')
     duration = datetime.now() - st.session_state.current_status_starts.get(selected, datetime.now())
     
-    # AQUI ESTÁ A CORREÇÃO DA ORDEM DE CHAMADA
     log_status_change(selected, old_status, status_text, duration)
     
     st.session_state.status_texto[selected] = status_text 
@@ -936,7 +940,12 @@ def open_atendimento_dialog():
     st.session_state.show_atendimento_dialog = True
     st.session_state.show_horas_extras_dialog = False
 
-# Handler para Horas Extras (usando callback no botão)
+def open_sessao_eproc_dialog():
+    st.session_state.show_sessao_eproc_dialog = True
+    st.session_state.show_activity_menu = False
+    st.session_state.show_sessao_dialog = False
+
+# Handler para Horas Extras
 def handle_horas_extras_submission(consultor_sel, data, inicio, tempo, motivo):
     if not consultor_sel or consultor_sel == "Selecione um nome":
         st.error("Selecione um consultor.")
@@ -950,7 +959,7 @@ def handle_horas_extras_submission(consultor_sel, data, inicio, tempo, motivo):
     else:
         st.error("Erro ao enviar. Verifique o Webhook.")
 
-# Handler para Atendimento (usando callback no botão)
+# Handler para Atendimento
 def handle_atendimento_submission(consultor, data, usuario, nome_setor, sistema, descricao, canal, desfecho, jira_opcional=""):
     if not consultor or consultor == "Selecione um nome":
         st.error("Selecione um consultor.")
@@ -975,17 +984,41 @@ st.components.v1.html("<script>window.scrollTo(0, 0);</script>", height=0)
 
 render_snow_effect()
 
-st.markdown(
-    f"""
-    <div style="display: flex; align-items: center; gap: 10px;">
-        <h1 style="margin-bottom: 0;">Controle Bastão Cesupe {BASTAO_EMOJI}</h1>
-        <img src="{PUGNOEL_URL}" alt="Pug Noel" style="width: 120px; height: auto;">
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+# --- REVISÃO: CABEÇALHO LADO A LADO ---
+# Aqui mudamos a estrutura para colocar os botões na mesma linha do título
+c_topo_esq, c_topo_dir = st.columns([5, 4])
 
-st.markdown("<hr style='border: 1px solid #D42426;'>", unsafe_allow_html=True) 
+with c_topo_esq:
+    # Título e Imagem juntos
+    st.markdown(
+        f"""
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <h1 style="margin: 0; padding: 0; font-size: 2.5rem;">Controle Bastão Cesupe {BASTAO_EMOJI}</h1>
+            <img src="{PUGNOEL_URL}" alt="Pug Noel" style="width: 80px; height: auto; border-radius: 5px;">
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+with c_topo_dir:
+    # Pequenos botões alinhados à direita do título
+    st.write("") # Espaçamento vertical para alinhar
+    st.write("")
+    c_nav1, c_nav2, c_nav3, c_nav4 = st.columns(4)
+    if c_nav1.button("📑 Checklist", help="Gerador de Checklist Eproc"):
+        open_sessao_eproc_dialog()
+        st.rerun()
+    if c_nav2.button("🆘 Chamados", help="Guia de Abertura de Chamados"):
+        st.session_state.chamado_guide_step = 1
+        st.rerun()
+    if c_nav3.button("📝 Atendimentos", help="Registrar Atendimento"):
+        open_atendimento_dialog()
+        st.rerun()
+    if c_nav4.button("⏰ H. Extras", help="Registrar Horas Extras"):
+        open_horas_extras_dialog()
+        st.rerun()
+
+st.markdown("<hr style='border: 1px solid #D42426; margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True) 
 
 # REFRESH TIME: Changed to 8 seconds for better sync
 gif_start_time = st.session_state.get('rotation_gif_start_time')
@@ -1021,26 +1054,6 @@ if lunch_warning_info and lunch_warning_info.get('start_time'):
         st.session_state.lunch_warning_info = None
         
 st_autorefresh(interval=refresh_interval, key='auto_rerun_key') 
-
-# --- MENU DE NAVEGAÇÃO RÁPIDA (TOPO) ---
-col_header_1, col_header_2 = st.columns([2, 3])
-
-# (Nota: As ações dos botões do topo apenas setam o estado e dão rerun)
-with col_header_2:
-    # Pequenos botões alinhados
-    c_nav1, c_nav2, c_nav3, c_nav4 = st.columns(4)
-    if c_nav1.button("📑 Checklist", help="Gerador de Checklist Eproc"):
-        open_sessao_eproc_dialog()
-        st.rerun()
-    if c_nav2.button("🆘 Chamados", help="Guia de Abertura de Chamados"):
-        st.session_state.chamado_guide_step = 1
-        st.rerun()
-    if c_nav3.button("📝 Atendimentos", help="Registrar Atendimento"):
-        open_atendimento_dialog()
-        st.rerun()
-    if c_nav4.button("⏰ Horas Extras", help="Registrar Horas Extras"):
-        open_horas_extras_dialog()
-        st.rerun()
 
 if st.session_state.get('play_sound', False):
     st.components.v1.html(play_sound_html(), height=0, width=0)
@@ -1167,11 +1180,6 @@ with col_principal:
         st.session_state.show_activity_menu = False
         st.session_state.show_sessao_eproc_dialog = False
     
-    def open_sessao_eproc_dialog():
-        st.session_state.show_sessao_eproc_dialog = True
-        st.session_state.show_activity_menu = False
-        st.session_state.show_sessao_dialog = False
-    
     c1, c2, c3, c4, c5, c6, c7 = st.columns(7) 
     c1.button('🎯 Passar', on_click=rotate_bastao, use_container_width=True, help='Passa o bastão.')
     c2.button('⏭️ Pular', on_click=toggle_skip, use_container_width=True, help='Pular vez.')
@@ -1188,8 +1196,6 @@ with col_principal:
         with st.container(border=True):
             st.markdown("### Selecione a Atividade")
             atividades_escolhidas = st.multiselect("Tipo:", OPCOES_ATIVIDADES_STATUS)
-            
-            # --- REMOVIDO: CAMPO JIRA (Volta para o formulário de atendimento) ---
             
             texto_extra = ""
             if "Outros" in atividades_escolhidas:
@@ -1249,22 +1255,23 @@ with col_principal:
     st.markdown("---")
     
     # --- NOVA SEÇÃO: SESSÃO EPROC (HTML) ---
-    st.header("Gerador de Checklist (Sessão Eproc)")
-    
-    if st.session_state.last_reg_status == "success_sessao":
-        st.success("Registro de Sessão enviado com sucesso!")
-        if st.session_state.get('html_download_ready') and st.session_state.get('html_content_cache'):
-            filename = st.session_state.get('html_filename', 'Checklist_Sessao.html')
-            st.download_button(label=f"⬇️ Baixar Formulário HTML ({filename})", data=st.session_state.html_content_cache, file_name=filename, mime="text/html")
-        if st.button("Limpar Mensagem"):
-            st.session_state.last_reg_status = None
-            st.rerun()
-    elif st.session_state.last_reg_status == "error_sessao":
-        st.error("Erro ao enviar registro de sessão. Verifique se preencheu a câmara e a data.")
-        st.session_state.last_reg_status = None
-
+    # Só renderiza se o diálogo estiver aberto
     if st.session_state.show_sessao_eproc_dialog:
         with st.container(border=True):
+            st.header("Gerador de Checklist (Sessão Eproc)")
+            
+            if st.session_state.last_reg_status == "success_sessao":
+                st.success("Registro de Sessão enviado com sucesso!")
+                if st.session_state.get('html_download_ready') and st.session_state.get('html_content_cache'):
+                    filename = st.session_state.get('html_filename', 'Checklist_Sessao.html')
+                    st.download_button(label=f"⬇️ Baixar Formulário HTML ({filename})", data=st.session_state.html_content_cache, file_name=filename, mime="text/html")
+                if st.button("Limpar Mensagem"):
+                    st.session_state.last_reg_status = None
+                    st.rerun()
+            elif st.session_state.last_reg_status == "error_sessao":
+                st.error("Erro ao enviar registro de sessão. Verifique se preencheu a câmara e a data.")
+                st.session_state.last_reg_status = None
+
             st.markdown("### Gerar HTML e Notificar")
             data_eproc = st.date_input("Data da Sessão:", format="DD/MM/YYYY", key='sessao_data_input')
             camara_eproc = st.selectbox("Selecione a Câmara:", CAMARAS_OPCOES, index=None, key='sessao_camara_select')
@@ -1275,8 +1282,8 @@ with col_principal:
                     consultor = st.session_state.consultor_selectbox
                     if consultor and consultor != 'Selecione um nome':
                         if handle_sessao_submission(consultor, camara_eproc, data_eproc):
-                            st.session_state.show_sessao_eproc_dialog = False
-                            st.rerun()
+                            # Mantém aberto para download
+                            pass 
                     else:
                         st.warning("Selecione um consultor no menu superior primeiro.")
             with c_eproc2:
@@ -1284,13 +1291,11 @@ with col_principal:
                     st.session_state.show_sessao_eproc_dialog = False
                     st.rerun()
 
-    st.markdown("---")
-
     # Chamados
     st.header("Padrão abertura de chamados / jiras")
     guide_step = st.session_state.get('chamado_guide_step', 0)
     if guide_step == 0:
-        pass # Hidden by default, triggered by top button
+        pass 
     else:
         with st.container(border=True):
             if guide_step == 1:
@@ -1330,7 +1335,6 @@ with col_principal:
             
             c_he1, c_he2 = st.columns(2)
             with c_he1:
-                # Usando lambda com chamada imperativa
                 if st.button("Enviar Registro HE", type="primary", use_container_width=True):
                     consultor = st.session_state.consultor_selectbox
                     if not consultor or consultor == "Selecione um nome":
@@ -1343,7 +1347,7 @@ with col_principal:
                     st.session_state.show_horas_extras_dialog = False
                     st.rerun()
 
-    # --- DIALOG ATENDIMENTO (RESTAURADO E ATUALIZADO) ---
+    # --- DIALOG ATENDIMENTO ---
     if st.session_state.show_atendimento_dialog:
         with st.container(border=True):
             st.markdown("### Registro de Atendimento")
@@ -1356,8 +1360,6 @@ with col_principal:
             at_canal = st.selectbox("Canal:", REG_CANAL_OPCOES, index=None, placeholder="Selecione...", key="at_channel")
             at_desfecho = st.selectbox("Desfecho:", REG_DESFECHO_OPCOES, index=None, placeholder="Selecione...", key="at_outcome")
             
-            # NOVO CAMPO JIRA NO FORMULÁRIO DE ATENDIMENTO
-            # Use o valor salvo na memória
             default_jira = st.session_state.get('last_jira_number', "")
             at_jira = st.text_input("Número do Jira:", value=default_jira, placeholder="Ex: 1234", key="at_jira_input")
             
@@ -1369,7 +1371,6 @@ with col_principal:
                     if not consultor or consultor == "Selecione um nome":
                         st.error("Selecione um consultor.")
                     else:
-                        # Salva o valor do Jira na memória
                         st.session_state['last_jira_number'] = at_jira
                         handle_atendimento_submission(consultor, at_data, at_usuario, at_nome_setor, at_sistema, at_descricao, at_canal, at_desfecho, at_jira)
             
@@ -1464,7 +1465,7 @@ with col_disponibilidade:
     render_section('Ausente', '👤', ui_lists['ausente'], 'violet') 
     render_section('Indisponível', '❌', ui_lists['indisponivel'], 'grey')
 
-# RELATÓRIO DIÁRIO (Lógica corrigida para UTC-3)
+# RELATÓRIO DIÁRIO
 now_utc = datetime.utcnow()
 now_br = now_utc - timedelta(hours=3) # Horário de Brasília
 last_run_date = st.session_state.report_last_run_date.date() if isinstance(st.session_state.report_last_run_date, datetime) else datetime.min.date()
