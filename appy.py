@@ -608,7 +608,6 @@ def init_session_state():
         'show_horas_extras_dialog': False,
         'show_atendimento_dialog': False,
         'last_jira_number': "",
-        'trigger_scroll': False
     }
     for key, default in defaults.items():
         if key not in st.session_state:
@@ -1150,10 +1149,6 @@ with col_principal:
         </div>
         ''', unsafe_allow_html=True)
 
-    # --- ÂNCORA PARA SCROLL ---
-    # Aqui inserimos um DIV invisível para ser o alvo do scroll
-    st.markdown('<div id="target_scrolldown"></div>', unsafe_allow_html=True)
-    
     st.markdown("###")
     st.header("**Consultor(a)**")
     
@@ -1182,6 +1177,23 @@ with col_principal:
         st.session_state.show_activity_menu = False
         st.session_state.show_sessao_eproc_dialog = False
         
+    # [MODIFICAÇÃO] BOTÕES DE FERRAMENTAS AGORA AQUI EMBAIXO
+    c_tool1, c_tool2, c_tool3, c_tool4 = st.columns(4)
+    if c_tool1.button("📑 Checklist", help="Gerador de Checklist Eproc", use_container_width=True):
+        open_sessao_eproc_dialog()
+        st.rerun()
+    if c_tool2.button("🆘 Chamados", help="Guia de Abertura de Chamados", use_container_width=True):
+        st.session_state.chamado_guide_step = 1
+        st.rerun()
+    if c_tool3.button("📝 Atendimentos", help="Registrar Atendimento", use_container_width=True):
+        open_atendimento_dialog()
+        st.rerun()
+    if c_tool4.button("⏰ H. Extras", help="Registrar Horas Extras", use_container_width=True):
+        open_horas_extras_dialog()
+        st.rerun()
+    
+    st.markdown("---")
+    
     c1, c2, c3, c4, c5, c6, c7 = st.columns(7) 
     c1.button('🎯 Passar', on_click=rotate_bastao, use_container_width=True, help='Passa o bastão.')
     c2.button('⏭️ Pular', on_click=toggle_skip, use_container_width=True, help='Pular vez.')
