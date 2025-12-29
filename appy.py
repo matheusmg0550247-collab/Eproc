@@ -945,8 +945,7 @@ render_fireworks()
 c_topo_esq, c_topo_dir = st.columns([2, 1], vertical_alignment="bottom")
 
 with c_topo_esq:
-    # LÓGICA DE CARREGAMENTO DA IMAGEM
-    # Convertemos o arquivo local para base64 para garantir exibição
+    # LÓGICA DE CARREGAMENTO DA IMAGEM LOCAL PARA BASE64
     img_data = get_img_as_base64(PUG2026_FILENAME)
     img_src = f"data:image/png;base64,{img_data}" if img_data else GIF_BASTAO_HOLDER
 
@@ -956,7 +955,7 @@ with c_topo_esq:
             <h1 style="margin: 0; padding: 0; font-size: 2.2rem; color: #FFD700; text-shadow: 1px 1px 2px #B8860B;">
                 Controle Bastão Cesupe 2026 {BASTAO_EMOJI}
             </h1>
-            <img src="{img_src}" alt="Pug 2026" style="width: 80px; height: 80px; border-radius: 50%; border: 3px solid #FFD700; object-fit: cover;">
+            <img src="{img_src}" alt="Pug 2026" style="width: 120px; height: 120px; border-radius: 50%; border: 3px solid #FFD700; object-fit: cover;">
         </div>
         """,
         unsafe_allow_html=True
