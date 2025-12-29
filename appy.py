@@ -49,7 +49,7 @@ def get_global_state_cache():
         'lunch_warning_info': None,
         'auxilio_ativo': False, 
         'daily_logs': [],
-        # --- NOVO: Ranking Global do Jogo ---
+        # --- Ranking Global do Jogo ---
         'simon_ranking': [] # Lista de dicts: {'nome': str, 'score': int}
     }
 
@@ -100,8 +100,8 @@ GIF_URL_LUNCH_WARNING = 'https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExMGZlb
 GIF_URL_NEDRY = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExMGNkMGx3YnNkcXQ2bHJmNTZtZThraHhuNmVoOTNmbG0wcDloOXAybiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/7kyWoqTue3po4/giphy.gif'
 SOUND_URL = "https://github.com/matheusmg0550247-collab/controle-bastao-eproc2/raw/main/doorbell-223669.mp3"
 
-# --- ALTERAÇÃO: PUG 2026 (ARQUIVO LOCAL) ---
-# Certifique-se de que o arquivo 'pug2026.png' está na mesma pasta que este script.
+# --- ARQUIVO LOCAL PUG 2026 ---
+# O arquivo 'pug2026.png' deve estar na raiz do projeto
 PUG2026_URL = "pug2026.png"
 
 # ============================================
@@ -133,7 +133,6 @@ def save_state():
         global_data['auxilio_ativo'] = st.session_state.get('auxilio_ativo', False) 
         global_data['daily_logs'] = json.loads(json.dumps(st.session_state.daily_logs, default=date_serializer))
         
-        # --- SALVAR RANKING SIMON ---
         if 'simon_ranking' in st.session_state:
             global_data['simon_ranking'] = st.session_state.simon_ranking.copy()
             
@@ -188,7 +187,7 @@ def format_time_duration(duration):
     s = int(duration.total_seconds()); h, s = divmod(s, 3600); m, s = divmod(s, 60)
     return f'{h:02}:{m:02}:{s:02}'
 
-# --- ENVIO ASSÍNCRONO DE MENSAGENS (THREADING) ---
+# --- ENVIO ASSÍNCRONO DE MENSAGENS ---
 def _send_webhook_thread(url, payload):
     try:
         requests.post(url, json=payload, timeout=5)
@@ -204,13 +203,11 @@ def send_chat_notification_internal(consultor, status):
         return True
     return False
 
-# --- FUNÇÕES PARA OS NOVOS BOTÕES (ATENDIMENTO E HE) ---
 def send_horas_extras_to_chat(consultor, data, inicio, tempo, motivo):
     if not GOOGLE_CHAT_WEBHOOK_HORAS_EXTRAS: return False
     
     data_formatada = data.strftime("%d/%m/%Y")
     inicio_formatado = inicio.strftime("%H:%M")
-    
     msg = (
         f"⏰ **Registro de Horas Extras**\n\n"
         f"👤 **Consultor:** {consultor}\n"
@@ -219,7 +216,6 @@ def send_horas_extras_to_chat(consultor, data, inicio, tempo, motivo):
         f"⏱️ **Tempo Total:** {tempo}\n"
         f"📝 **Motivo:** {motivo}"
     )
-    
     chat_message = {"text": msg}
     threading.Thread(target=_send_webhook_thread, args=(GOOGLE_CHAT_WEBHOOK_HORAS_EXTRAS, chat_message)).start()
     return True
@@ -228,9 +224,7 @@ def send_atendimento_to_chat(consultor, data, usuario, nome_setor, sistema, desc
     if not GOOGLE_CHAT_WEBHOOK_REGISTRO: return False
     
     data_formatada = data.strftime("%d/%m/%Y")
-    
     jira_str = f"\n🔢 **Jira:** CESUPE-{jira_opcional}" if jira_opcional else ""
-    
     msg = (
         f"📋 **Novo Registro de Atendimento**\n\n"
         f"👤 **Consultor:** {consultor}\n"
@@ -243,7 +237,6 @@ def send_atendimento_to_chat(consultor, data, usuario, nome_setor, sistema, desc
         f"✅ **Desfecho:** {desfecho}"
         f"{jira_str}"
     )
-    
     chat_message = {"text": msg}
     threading.Thread(target=_send_webhook_thread, args=(GOOGLE_CHAT_WEBHOOK_REGISTRO, chat_message)).start()
     return True
@@ -374,9 +367,6 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
     consultor_formatado = f"@{consultor_nome}" if not consultor_nome.startswith("@") else consultor_nome
     webhook_destino = GOOGLE_CHAT_WEBHOOK_CHECKLIST_HTML
     
-    primary_red = "#8B0000"
-    light_red_bg = "#FFEBEE"
-    
     html_template = f"""
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -390,7 +380,7 @@ def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
     <h2>Checklist Gerado para {camara_nome}</h2>
     <p>Responsável: {consultor_formatado}</p>
     <p>Data: {data_sessao_formatada}</p>
-    <p><em>(Versão simplificada para visualização no código Python. O HTML completo é gerado e baixado.)</em></p>
+    <p><em>(Versão simplificada para visualização.)</em></p>
 </div>
 </body>
 </html>
@@ -729,7 +719,6 @@ def set_chamado_step(step_num):
 def handle_chamado_submission():
     consultor = st.session_state.consultor_selectbox
     texto_chamado = st.session_state.get("chamado_textarea", "")
-    # Placeholder para envio
     st.toast("Chamado simulado com sucesso.", icon="✅")
     st.session_state.last_reg_status = "success_chamado" 
     st.session_state.chamado_guide_step = 0
@@ -852,7 +841,6 @@ def handle_simon_game():
     elif st.session_state.simon_status == 'playing':
         st.markdown(f"**Nível {st.session_state.simon_level}** - Clique na ordem:")
         
-        # Grid de botões
         c1, c2, c3, c4 = st.columns(4)
         pressed = None
         
@@ -880,7 +868,6 @@ def handle_simon_game():
                 st.session_state.simon_status = 'showing'
                 st.rerun()
         
-        # Mostrar o que já foi clicado
         if st.session_state.simon_user_input:
             st.markdown(f"Sua resposta: {' '.join(st.session_state.simon_user_input)}")
 
@@ -935,44 +922,6 @@ def handle_simon_game():
 st.set_page_config(page_title="Controle Bastão Cesupe 2026", layout="wide", page_icon="🥂")
 init_session_state()
 
-# --- INJEÇÃO DE CSS GLOBAL PARA TEMA PRETO E DOURADO ---
-st.markdown("""
-    <style>
-    /* Fundo Preto Global */
-    .stApp {
-        background-color: #000000;
-        color: #FFD700;
-    }
-    /* Texto Dourado Global */
-    h1, h2, h3, h4, h5, h6, p, div, span, label, .stMarkdown, .stCaption {
-        color: #FFD700 !important;
-    }
-    /* Botões */
-    .stButton button {
-        border: 1px solid #FFD700 !important;
-        color: #FFD700 !important;
-        background-color: #1a1a1a !important;
-    }
-    .stButton button:hover {
-        background-color: #333333 !important;
-        color: #FFFFFF !important;
-    }
-    /* Inputs e Selectboxes */
-    .stSelectbox div[data-baseweb="select"] > div,
-    .stTextInput div[data-baseweb="input"] > div,
-    .stDateInput div[data-baseweb="input"] > div,
-    .stTimeInput div[data-baseweb="input"] > div {
-        background-color: #1a1a1a !important;
-        color: #FFD700 !important;
-        border-color: #FFD700 !important;
-    }
-    /* Tabelas (Dataframes) */
-    .stDataFrame {
-        border: 1px solid #FFD700;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
 st.components.v1.html("<script>window.scrollTo(0, 0);</script>", height=0)
 
 # Renderizar Fogos de Artifício
@@ -982,11 +931,11 @@ render_fireworks()
 c_topo_esq, c_topo_dir = st.columns([2, 1], vertical_alignment="bottom")
 
 with c_topo_esq:
-    # Cabeçalho com cor Dourada (Gold) e sombra dourada
+    # Cabeçalho com cor Dourada (Gold)
     st.markdown(
         f"""
         <div style="display: flex; align-items: center; gap: 15px;">
-            <h1 style="margin: 0; padding: 0; font-size: 2.2rem; color: #FFD700; text-shadow: 1px 1px 2px #FFD700;">
+            <h1 style="margin: 0; padding: 0; font-size: 2.2rem; color: #FFD700; text-shadow: 1px 1px 2px #000;">
                 Controle Bastão Cesupe 2026 {BASTAO_EMOJI}
             </h1>
             <img src="{PUG2026_URL}" alt="Pug 2026" style="width: 80px; height: 80px; border-radius: 50%; border: 3px solid #FFD700;">
@@ -1088,10 +1037,10 @@ if proximo_index != -1:
 with col_principal:
     st.header("Responsável pelo Bastão")
     if responsavel:
-        # ESTILIZAÇÃO DO CARD: Fundo Preto, Texto e Borda Dourados
-        bg_color = "#000000"
+        # ESTILIZAÇÃO DO CARD: Borda Dourada, Fundo Suave Claro
+        bg_color = "linear-gradient(135deg, #FFF8DC 0%, #FFFFFF 100%)" # Cornsilk to White
         border_color = "#FFD700" # Gold
-        text_color = "#FFD700" # Gold
+        text_color = "#000080" # Navy Blue
         
         st.markdown(f"""
         <div style="
@@ -1107,7 +1056,7 @@ with col_principal:
                 <img src="{GIF_BASTAO_HOLDER}" style="width: 90px; height: 90px; border-radius: 50%; object-fit: cover; border: 2px solid {border_color};">
             </div>
             <div>
-                <span style="font-size: 14px; color: #FFD700; font-weight: bold; text-transform: uppercase; letter-spacing: 1.5px;">Atualmente com:</span><br>
+                <span style="font-size: 14px; color: #555; font-weight: bold; text-transform: uppercase; letter-spacing: 1.5px;">Atualmente com:</span><br>
                 <span style="font-size: 42px; font-weight: 800; color: {text_color}; line-height: 1.1; font-family: 'Segoe UI', sans-serif;">{responsavel}</span>
             </div>
         </div>
@@ -1142,8 +1091,8 @@ with col_principal:
         st.markdown(f'''
         <div style="margin-top: 15px;">
             <span style="color: #FFC107; font-weight: bold;">{titulo}</span><br>
-            <span style="color: #FFD700; font-weight: normal;">{skipped_text} {verbo_pular} o bastão!</span><br>
-            <span style="color: #FFD700; font-weight: normal;">{verbo_retornar} no próximo ciclo!</span>
+            <span style="color: black; font-weight: normal;">{skipped_text} {verbo_pular} o bastão!</span><br>
+            <span style="color: black; font-weight: normal;">{verbo_retornar} no próximo ciclo!</span>
         </div>
         ''', unsafe_allow_html=True)
 
