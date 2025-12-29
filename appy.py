@@ -55,13 +55,13 @@ def get_global_state_cache():
 
 # --- Constantes (Webhooks) ---
 # RECOMENDAÇÃO: Em produção, mova para st.secrets
-GOOGLE_CHAT_WEBHOOK_BACKUP = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU"
-CHAT_WEBHOOK_BASTAO = "https://chat.googleapis.com/v1/spaces/AAQA5CyNolU/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zolqmc0YfJ5bPzsqLrefwn8yBbNQLLfFBzLTwIkr7W4" 
-GOOGLE_CHAT_WEBHOOK_REGISTRO = "https://chat.googleapis.com/v1/spaces/AAQAVvsU4Lg/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=hSghjEZq8-1EmlfHdSoPRq_nTSpYc0usCs23RJOD-yk"
-GOOGLE_CHAT_WEBHOOK_CHAMADO = "https://chat.googleapis.com/v1/spaces/AAQAPPWlpW8/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=jMg2PkqtpIe3JbG_SZG_ZhcfuQQII9RXM0rZQienUZk"
-GOOGLE_CHAT_WEBHOOK_SESSAO = "https://chat.googleapis.com/v1/spaces/AAQAWs1zqNM/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=hIxKd9f35kKdJqWUNjttzRBfCsxomK0OJ3AkH9DJmxY"
-GOOGLE_CHAT_WEBHOOK_CHECKLIST_HTML = "https://chat.googleapis.com/v1/spaces/AAQAXbwpQHY/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=7AQaoGHiWIfv3eczQzVZ-fbQdBqSBOh1CyQ854o1f7k"
-GOOGLE_CHAT_WEBHOOK_HORAS_EXTRAS = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU"
+GOOGLE_CHAT_WEBHOOK_BACKUP = 
+CHAT_WEBHOOK_BASTAO = 
+GOOGLE_CHAT_WEBHOOK_REGISTRO = 
+GOOGLE_CHAT_WEBHOOK_CHAMADO = 
+GOOGLE_CHAT_WEBHOOK_SESSAO = 
+GOOGLE_CHAT_WEBHOOK_CHECKLIST_HTML = 
+GOOGLE_CHAT_WEBHOOK_HORAS_EXTRAS = 
 
 # Listas para o formulário de atendimento
 REG_USUARIO_OPCOES = ["Cartório", "Gabinete", "Externo"]
@@ -100,9 +100,9 @@ GIF_URL_LUNCH_WARNING = 'https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExMGZlb
 GIF_URL_NEDRY = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExMGNkMGx3YnNkcXQ2bHJmNTZtZThraHhuNmVoOTNmbG0wcDloOXAybiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/7kyWoqTue3po4/giphy.gif'
 SOUND_URL = "https://github.com/matheusmg0550247-collab/controle-bastao-eproc2/raw/main/doorbell-223669.mp3"
 
-# --- ALTERAÇÃO: PUG 2026 ---
-# URL de um Pug festivo para 2026
-PUG2026_URL = "https://i.pinimg.com/736x/87/42/4f/87424f11c7987258079df92a34493393.jpg"
+# --- ALTERAÇÃO: PUG 2026 (ARQUIVO LOCAL) ---
+# Certifique-se de que o arquivo 'pug2026.png' está na mesma pasta que este script.
+PUG2026_URL = "pug2026.png"
 
 # ============================================
 # 2. FUNÇÕES AUXILIARES GLOBAIS
@@ -935,20 +935,58 @@ def handle_simon_game():
 st.set_page_config(page_title="Controle Bastão Cesupe 2026", layout="wide", page_icon="🥂")
 init_session_state()
 
+# --- INJEÇÃO DE CSS GLOBAL PARA TEMA PRETO E DOURADO ---
+st.markdown("""
+    <style>
+    /* Fundo Preto Global */
+    .stApp {
+        background-color: #000000;
+        color: #FFD700;
+    }
+    /* Texto Dourado Global */
+    h1, h2, h3, h4, h5, h6, p, div, span, label, .stMarkdown, .stCaption {
+        color: #FFD700 !important;
+    }
+    /* Botões */
+    .stButton button {
+        border: 1px solid #FFD700 !important;
+        color: #FFD700 !important;
+        background-color: #1a1a1a !important;
+    }
+    .stButton button:hover {
+        background-color: #333333 !important;
+        color: #FFFFFF !important;
+    }
+    /* Inputs e Selectboxes */
+    .stSelectbox div[data-baseweb="select"] > div,
+    .stTextInput div[data-baseweb="input"] > div,
+    .stDateInput div[data-baseweb="input"] > div,
+    .stTimeInput div[data-baseweb="input"] > div {
+        background-color: #1a1a1a !important;
+        color: #FFD700 !important;
+        border-color: #FFD700 !important;
+    }
+    /* Tabelas (Dataframes) */
+    .stDataFrame {
+        border: 1px solid #FFD700;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
 st.components.v1.html("<script>window.scrollTo(0, 0);</script>", height=0)
 
-# Renderizar Fogos de Artifício (Novo Efeito)
+# Renderizar Fogos de Artifício
 render_fireworks()
 
 # --- CABEÇALHO LADO A LADO ---
 c_topo_esq, c_topo_dir = st.columns([2, 1], vertical_alignment="bottom")
 
 with c_topo_esq:
-    # Cabeçalho com cor Dourada (Gold) para o tema 2026
+    # Cabeçalho com cor Dourada (Gold) e sombra dourada
     st.markdown(
         f"""
         <div style="display: flex; align-items: center; gap: 15px;">
-            <h1 style="margin: 0; padding: 0; font-size: 2.2rem; color: #FFD700; text-shadow: 1px 1px 2px #000;">
+            <h1 style="margin: 0; padding: 0; font-size: 2.2rem; color: #FFD700; text-shadow: 1px 1px 2px #FFD700;">
                 Controle Bastão Cesupe 2026 {BASTAO_EMOJI}
             </h1>
             <img src="{PUG2026_URL}" alt="Pug 2026" style="width: 80px; height: 80px; border-radius: 50%; border: 3px solid #FFD700;">
@@ -1050,10 +1088,10 @@ if proximo_index != -1:
 with col_principal:
     st.header("Responsável pelo Bastão")
     if responsavel:
-        # ESTILIZAÇÃO DO CARD: Borda Dourada, Fundo Suave
-        bg_color = "linear-gradient(135deg, #FFF8DC 0%, #FFFFFF 100%)" # Cornsilk to White
+        # ESTILIZAÇÃO DO CARD: Fundo Preto, Texto e Borda Dourados
+        bg_color = "#000000"
         border_color = "#FFD700" # Gold
-        text_color = "#000080" # Navy Blue
+        text_color = "#FFD700" # Gold
         
         st.markdown(f"""
         <div style="
@@ -1069,7 +1107,7 @@ with col_principal:
                 <img src="{GIF_BASTAO_HOLDER}" style="width: 90px; height: 90px; border-radius: 50%; object-fit: cover; border: 2px solid {border_color};">
             </div>
             <div>
-                <span style="font-size: 14px; color: #555; font-weight: bold; text-transform: uppercase; letter-spacing: 1.5px;">Atualmente com:</span><br>
+                <span style="font-size: 14px; color: #FFD700; font-weight: bold; text-transform: uppercase; letter-spacing: 1.5px;">Atualmente com:</span><br>
                 <span style="font-size: 42px; font-weight: 800; color: {text_color}; line-height: 1.1; font-family: 'Segoe UI', sans-serif;">{responsavel}</span>
             </div>
         </div>
@@ -1104,8 +1142,8 @@ with col_principal:
         st.markdown(f'''
         <div style="margin-top: 15px;">
             <span style="color: #FFC107; font-weight: bold;">{titulo}</span><br>
-            <span style="color: black; font-weight: normal;">{skipped_text} {verbo_pular} o bastão!</span><br>
-            <span style="color: black; font-weight: normal;">{verbo_retornar} no próximo ciclo!</span>
+            <span style="color: #FFD700; font-weight: normal;">{skipped_text} {verbo_pular} o bastão!</span><br>
+            <span style="color: #FFD700; font-weight: normal;">{verbo_retornar} no próximo ciclo!</span>
         </div>
         ''', unsafe_allow_html=True)
 
