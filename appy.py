@@ -12,6 +12,7 @@ import json
 import re
 import threading
 import random
+import base64
 import os
 
 # --- Constantes de Consultores ---
@@ -55,7 +56,6 @@ def get_global_state_cache():
     }
 
 # --- Constantes (Webhooks) ---
-# RECOMENDAÇÃO: Em produção, mova para st.secrets
 GOOGLE_CHAT_WEBHOOK_BACKUP = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU"
 CHAT_WEBHOOK_BASTAO = "https://chat.googleapis.com/v1/spaces/AAQA5CyNolU/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zolqmc0YfJ5bPzsqLrefwn8yBbNQLLfFBzLTwIkr7W4" 
 GOOGLE_CHAT_WEBHOOK_REGISTRO = "https://chat.googleapis.com/v1/spaces/AAQAVvsU4Lg/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=hSghjEZq8-1EmlfHdSoPRq_nTSpYc0usCs23RJOD-yk"
@@ -108,6 +108,17 @@ PUG2026_FILENAME = "pug2026.png"
 # ============================================
 # 2. FUNÇÕES AUXILIARES GLOBAIS
 # ============================================
+
+# --- NOVA FUNÇÃO PARA CARREGAR IMAGEM LOCAL ---
+@st.cache_data
+def get_img_as_base64(file_path):
+    try:
+        with open(file_path, "rb") as f:
+            data = f.read()
+        return base64.b64encode(data).decode()
+    except Exception as e:
+        print(f"Erro ao ler imagem local {file_path}: {e}")
+        return None
 
 def load_logs():
     return st.session_state.daily_logs
@@ -245,7 +256,7 @@ def send_atendimento_to_chat(consultor, data, usuario, nome_setor, sistema, desc
 def play_sound_html(): return f'<audio autoplay="true"><source src="{SOUND_URL}" type="audio/mpeg"></audio>'
 
 # --- EFEITO FOGOS DE ARTIFÍCIO (CSS) ---
-# ALTERAÇÃO: Cores mudadas para apenas Vermelho e Dourado
+# ALTERAÇÃO: Cores apenas Vermelho e Dourado
 def render_fireworks():
     fireworks_css = """
     <style>
@@ -260,13 +271,13 @@ def render_fireworks():
       --initialSize: 0.5vmin;
       --finalSize: 45vmin;
       --particleSize: 0.2vmin;
-      /* CORES ALTERADAS PARA VERMELHO E DOURADO */
-      --color1: red;
-      --color2: gold;
-      --color3: crimson;
-      --color4: goldenrod;
-      --color5: firebrick;
-      --color6: #FFD700; /* Dourado Brilhante */
+      /* CORES EXCLUSIVAS: VERMELHO E DOURADO */
+      --color1: #ff0000;
+      --color2: #ffd700;
+      --color3: #b22222;
+      --color4: #daa520;
+      --color5: #ff4500;
+      --color6: #b8860b;
       --y: -30vmin;
       --x: -50%;
       --initialY: 60vmin;
@@ -330,13 +341,12 @@ def render_fireworks():
     .firework:nth-child(2),
     .firework:nth-child(2)::before,
     .firework:nth-child(2)::after {
-      /* VARIAÇÕES DE VERMELHO E DOURADO */
-      --color1: #ff4500; /* OrangeRed */
-      --color2: #B8860B; /* DarkGoldenRod */
-      --color3: red;
-      --color4: gold;
-      --color5: darkred;
-      --color6: khaki;
+      --color1: #ff0000;
+      --color2: #ffd700;
+      --color3: #8b0000;
+      --color4: #daa520;
+      --color5: #ff6347;
+      --color6: #f0e68c;  
       --finalSize: 40vmin;
       left: 30%;
       top: 60%;
@@ -349,13 +359,12 @@ def render_fireworks():
     .firework:nth-child(3),
     .firework:nth-child(3)::before,
     .firework:nth-child(3)::after {
-       /* VARIAÇÕES DE VERMELHO E DOURADO */
-      --color1: gold;
-      --color2: red;
-      --color3: orange;
-      --color4: crimson;
-      --color5: #FFD700;
-      --color6: firebrick;
+      --color1: #ffd700;
+      --color2: #ff4500;
+      --color3: #b8860b;
+      --color4: #cd5c5c;
+      --color5: #800000;
+      --color6: #ffa500;
       --finalSize: 35vmin;
       left: 70%;
       top: 60%;
@@ -936,34 +945,22 @@ render_fireworks()
 c_topo_esq, c_topo_dir = st.columns([2, 1], vertical_alignment="bottom")
 
 with c_topo_esq:
-    # Cabeçalho com cor Dourada (Gold) e sombra dourada
-    # Tenta carregar a imagem localmente. Se falhar, mostra um ícone.
-    try:
-        st.markdown(
-            f"""
-            <div style="display: flex; align-items: center; gap: 15px;">
-                <h1 style="margin: 0; padding: 0; font-size: 2.2rem; color: #FFD700; text-shadow: 1px 1px 2px #B8860B;">
-                    Controle Bastão Cesupe 2026 {BASTAO_EMOJI}
-                </h1>
-                <img src="{PUG2026_FILENAME}" alt="Pug 2026" style="width: 80px; height: 80px; border-radius: 50%; border: 3px solid #FFD700;">
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-    except Exception as e:
-         st.markdown(
-            f"""
-            <div style="display: flex; align-items: center; gap: 15px;">
-                <h1 style="margin: 0; padding: 0; font-size: 2.2rem; color: #FFD700; text-shadow: 1px 1px 2px #B8860B;">
-                    Controle Bastão Cesupe 2026 {BASTAO_EMOJI}
-                </h1>
-                <span style="font-size: 50px;">🐕</span>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-         print(f"Erro ao carregar imagem do pug: {e}")
+    # LÓGICA DE CARREGAMENTO DA IMAGEM
+    # Convertemos o arquivo local para base64 para garantir exibição
+    img_data = get_img_as_base64(PUG2026_FILENAME)
+    img_src = f"data:image/png;base64,{img_data}" if img_data else GIF_BASTAO_HOLDER
 
+    st.markdown(
+        f"""
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <h1 style="margin: 0; padding: 0; font-size: 2.2rem; color: #FFD700; text-shadow: 1px 1px 2px #B8860B;">
+                Controle Bastão Cesupe 2026 {BASTAO_EMOJI}
+            </h1>
+            <img src="{img_src}" alt="Pug 2026" style="width: 80px; height: 80px; border-radius: 50%; border: 3px solid #FFD700; object-fit: cover;">
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 with c_topo_dir:
     # --- MENU "ASSUMIR BASTÃO" ---
