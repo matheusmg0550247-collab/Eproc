@@ -12,6 +12,7 @@ import json
 import re
 import threading
 import random
+import os
 
 # --- Constantes de Consultores ---
 CONSULTORES = sorted([
@@ -101,8 +102,8 @@ GIF_URL_NEDRY = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExMGNkMGx3YnNkc
 SOUND_URL = "https://github.com/matheusmg0550247-collab/controle-bastao-eproc2/raw/main/doorbell-223669.mp3"
 
 # --- ARQUIVO LOCAL PUG 2026 ---
-# O arquivo 'pug2026.png' deve estar na raiz do projeto
-PUG2026_URL = "pug2026.png"
+# O arquivo 'pug2026.png' DEVE estar na mesma pasta que o arquivo app.py
+PUG2026_FILENAME = "pug2026.png"
 
 # ============================================
 # 2. FUNÇÕES AUXILIARES GLOBAIS
@@ -244,6 +245,7 @@ def send_atendimento_to_chat(consultor, data, usuario, nome_setor, sistema, desc
 def play_sound_html(): return f'<audio autoplay="true"><source src="{SOUND_URL}" type="audio/mpeg"></audio>'
 
 # --- EFEITO FOGOS DE ARTIFÍCIO (CSS) ---
+# ALTERAÇÃO: Cores mudadas para apenas Vermelho e Dourado
 def render_fireworks():
     fireworks_css = """
     <style>
@@ -258,12 +260,13 @@ def render_fireworks():
       --initialSize: 0.5vmin;
       --finalSize: 45vmin;
       --particleSize: 0.2vmin;
-      --color1: yellow;
-      --color2: khaki;
-      --color3: white;
-      --color4: lime;
-      --color5: gold;
-      --color6: mediumseagreen;
+      /* CORES ALTERADAS PARA VERMELHO E DOURADO */
+      --color1: red;
+      --color2: gold;
+      --color3: crimson;
+      --color4: goldenrod;
+      --color5: firebrick;
+      --color6: #FFD700; /* Dourado Brilhante */
       --y: -30vmin;
       --x: -50%;
       --initialY: 60vmin;
@@ -327,12 +330,13 @@ def render_fireworks():
     .firework:nth-child(2),
     .firework:nth-child(2)::before,
     .firework:nth-child(2)::after {
-      --color1: pink;
-      --color2: violet;
-      --color3: fuchsia;
-      --color4: orchid;
-      --color5: plum;
-      --color6: lavender;  
+      /* VARIAÇÕES DE VERMELHO E DOURADO */
+      --color1: #ff4500; /* OrangeRed */
+      --color2: #B8860B; /* DarkGoldenRod */
+      --color3: red;
+      --color4: gold;
+      --color5: darkred;
+      --color6: khaki;
       --finalSize: 40vmin;
       left: 30%;
       top: 60%;
@@ -345,12 +349,13 @@ def render_fireworks():
     .firework:nth-child(3),
     .firework:nth-child(3)::before,
     .firework:nth-child(3)::after {
-      --color1: cyan;
-      --color2: lightcyan;
-      --color3: lightblue;
-      --color4: palequoturquoise;
-      --color5: skyblue;
-      --color6: lavender;
+       /* VARIAÇÕES DE VERMELHO E DOURADO */
+      --color1: gold;
+      --color2: red;
+      --color3: orange;
+      --color4: crimson;
+      --color5: #FFD700;
+      --color6: firebrick;
       --finalSize: 35vmin;
       left: 70%;
       top: 60%;
@@ -931,18 +936,34 @@ render_fireworks()
 c_topo_esq, c_topo_dir = st.columns([2, 1], vertical_alignment="bottom")
 
 with c_topo_esq:
-    # Cabeçalho com cor Dourada (Gold)
-    st.markdown(
-        f"""
-        <div style="display: flex; align-items: center; gap: 15px;">
-            <h1 style="margin: 0; padding: 0; font-size: 2.2rem; color: #FFD700; text-shadow: 1px 1px 2px #000;">
-                Controle Bastão Cesupe 2026 {BASTAO_EMOJI}
-            </h1>
-            <img src="{PUG2026_URL}" alt="Pug 2026" style="width: 80px; height: 80px; border-radius: 50%; border: 3px solid #FFD700;">
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+    # Cabeçalho com cor Dourada (Gold) e sombra dourada
+    # Tenta carregar a imagem localmente. Se falhar, mostra um ícone.
+    try:
+        st.markdown(
+            f"""
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <h1 style="margin: 0; padding: 0; font-size: 2.2rem; color: #FFD700; text-shadow: 1px 1px 2px #B8860B;">
+                    Controle Bastão Cesupe 2026 {BASTAO_EMOJI}
+                </h1>
+                <img src="{PUG2026_FILENAME}" alt="Pug 2026" style="width: 80px; height: 80px; border-radius: 50%; border: 3px solid #FFD700;">
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    except Exception as e:
+         st.markdown(
+            f"""
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <h1 style="margin: 0; padding: 0; font-size: 2.2rem; color: #FFD700; text-shadow: 1px 1px 2px #B8860B;">
+                    Controle Bastão Cesupe 2026 {BASTAO_EMOJI}
+                </h1>
+                <span style="font-size: 50px;">🐕</span>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+         print(f"Erro ao carregar imagem do pug: {e}")
+
 
 with c_topo_dir:
     # --- MENU "ASSUMIR BASTÃO" ---
@@ -1037,7 +1058,7 @@ if proximo_index != -1:
 with col_principal:
     st.header("Responsável pelo Bastão")
     if responsavel:
-        # ESTILIZAÇÃO DO CARD: Borda Dourada, Fundo Suave Claro
+        # ESTILIZAÇÃO DO CARD: Borda Dourada, Fundo Suave Claro (Mantido o estilo 2026)
         bg_color = "linear-gradient(135deg, #FFF8DC 0%, #FFFFFF 100%)" # Cornsilk to White
         border_color = "#FFD700" # Gold
         text_color = "#000080" # Navy Blue
