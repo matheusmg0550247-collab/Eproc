@@ -88,8 +88,8 @@ def init_session_state():
     gd = get_global_state_cache()
     defaults = {
         'active_view': None, 'play_sound': False, 'gif_warning': False, 
-        'simon_status': 'start', 'simon_sequence': [], 'simon_user_input': [], 
-        'chamado_guide_step': 1, 'consultor_selectbox': 'Selecione um nome'
+        'simon_status': 'start', 'simon_sequence': [], 'simon_user_input': [],
+        'consultor_selectbox': 'Selecione um nome'
     }
     for k, v in defaults.items():
         if k not in st.session_state: st.session_state[k] = v
@@ -111,16 +111,17 @@ def find_next_eligible(curr_idx, q, skips):
 
 def check_and_assume_baton():
     q = st.session_state.bastao_queue
+    skips = st.session_state.skip_flags
     curr_holder = next((n for n, s in st.session_state.status_texto.items() if s == 'Bastão'), None)
     
     if curr_holder:
         if not st.session_state.get(f'check_{curr_holder}') or curr_holder not in q:
             dur = datetime.now() - (st.session_state.bastao_start_time or datetime.now())
-            log_status_change(curr_holder, 'Bastão', st.session_state.status_texto[curr_holder], dur)
+            log_status_change(curr_holder, 'Bastão', st.session_state.status_texto[curr_holder] or 'Ausente', dur)
             curr_holder = None
 
     if not curr_holder:
-        idx = find_next_eligible(-1, q, st.session_state.skip_flags)
+        idx = find_next_eligible(-1, q, skips)
         if idx != -1:
             nh = q[idx]
             st.session_state.status_texto[nh] = 'Bastão'
@@ -129,23 +130,24 @@ def check_and_assume_baton():
     save_state()
 
 def update_queue(name):
-    """Lógica solicitada: Desmarcar = Sair da fila e ir para Ausente"""
+    """Callback para o Checkbox - CORREÇÃO: Removido st.rerun() pois é callback"""
     is_checked = st.session_state[f'check_{name}']
     old_status = st.session_state.status_texto.get(name, 'Ausente')
     dur = datetime.now() - st.session_state.current_status_starts.get(name, datetime.now())
 
     if is_checked:
         st.session_state.status_texto[name] = ''
-        if name not in st.session_state.bastao_queue: st.session_state.bastao_queue.append(name)
+        if name not in st.session_state.bastao_queue: 
+            st.session_state.bastao_queue.append(name)
         log_status_change(name, old_status, '', dur)
     else:
         st.session_state.status_texto[name] = 'Ausente'
-        if name in st.session_state.bastao_queue: st.session_state.bastao_queue.remove(name)
+        if name in st.session_state.bastao_queue: 
+            st.session_state.bastao_queue.remove(name)
         st.session_state.skip_flags.pop(name, None)
         log_status_change(name, old_status, 'Ausente', dur)
     
     check_and_assume_baton()
-    st.rerun()
 
 def rotate_bastao():
     sel = st.session_state.consultor_selectbox
@@ -194,44 +196,50 @@ if rot_time and (datetime.now() - rot_time).total_seconds() < 20:
     refresh_ms = 2000
 
 if st.session_state.get('gif_warning'):
-    st.error("Ação Inválida! Apenas o dono do bastão pode passá-lo.")
+    st.error("Ação Inválida! Verifique as regras de rotação.")
     st.image(GIF_URL_WARNING, width=150)
     st.session_state.gif_warning = False
 
 st_autorefresh(interval=refresh_ms, key="ref_key")
 
-# --- Cabeçalho (Correção NameError: SRC) ---
-c_t1, c_t2 = st.columns([2, 1], vertical_alignment="bottom")
-with c_t1:
-    # Definindo a variável src explicitamente para evitar NameError
+# --- Cabeçalho (Painel Identico ao Primeiro Código) ---
+c_topo_esq, c_topo_dir = st.columns([2, 1], vertical_alignment="bottom")
+
+with c_topo_esq:
     b64_pug = get_img_as_base64("pug2026.png")
-    header_img_src = f"data:image/png;base64,{b64_pug}" if b64_pug else GIF_BASTAO_HOLDER
-    
+    header_img = f"data:image/png;base64,{b64_pug}" if b64_pug else GIF_BASTAO_HOLDER
     st.markdown(f'''
         <div style="display: flex; align-items: center; gap: 20px;">
             <h1 style="color: #FFD700; margin: 0;">Controle Bastão Cesupe 2026 {BASTAO_EMOJI}</h1>
-            <img src="{header_img_src}" style="width: 100px; height: 100px; border-radius: 50%; border: 3px solid #FFD700; object-fit: cover;">
+            <img src="{header_img}" style="width: 100px; height: 100px; border-radius: 50%; border: 3px solid #FFD700; object-fit: cover;">
         </div>
     ''', unsafe_allow_html=True)
 
-with c_t2:
-    if st.button("🚀 Assumir Bastão (Rápido)", use_container_width=True):
-        sel = st.session_state.get('consultor_selectbox')
-        if sel and sel != 'Selecione um nome':
-            st.session_state[f'check_{sel}'] = True
-            update_queue(sel)
+with c_topo_dir:
+    # --- MENU "ASSUMIR BASTÃO" IGUAL AO PRIMEIRO CÓDIGO ---
+    c_sub1, c_sub2 = st.columns([2, 1], vertical_alignment="bottom")
+    with c_sub1:
+        novo_responsavel = st.selectbox("Assumir Bastão (Rápido)", options=["Selecione"] + CONSULTORES, label_visibility="collapsed", key="quick_enter")
+    with c_sub2:
+        if st.button("🚀 Entrar", help="Ficar disponível na fila imediatamente"):
+            if novo_responsavel and novo_responsavel != "Selecione":
+                st.session_state[f'check_{novo_responsavel}'] = True
+                update_queue(novo_responsavel)
+                st.session_state.consultor_selectbox = novo_responsavel
+                st.success(f"{novo_responsavel} entrou!")
+                st.rerun()
 
 st.markdown("<hr style='border: 1px solid #FFD700;'>", unsafe_allow_html=True)
 
 col_main, col_side = st.columns([1.6, 1])
 
 with col_main:
-    # Card do Responsável com GIF
+    # Card do Responsável Atual
     resp_atual = next((n for n, s in st.session_state.status_texto.items() if s == 'Bastão'), None)
     st.header("Responsável Atual")
     if resp_atual:
         st.markdown(f'''
-            <div style="background: #FFF8DC; border: 4px solid #FFD700; padding: 25px; border-radius: 20px; display: flex; align-items: center;">
+            <div style="background: #FFF8DC; border: 4px solid #FFD700; padding: 25px; border-radius: 20px; display: flex; align-items: center; box-shadow: 4px 4px 12px rgba(0,0,0,0.1);">
                 <img src="{GIF_BASTAO_HOLDER}" style="width: 80px; height: 80px; margin-right: 25px; border-radius: 50%; object-fit: cover; border: 2px solid #FFD700;">
                 <div>
                     <span style="font-size: 14px; color: #666; font-weight: bold; text-transform: uppercase;">Atualmente com:</span><br>
@@ -241,29 +249,29 @@ with col_main:
         ''', unsafe_allow_html=True)
         dur_b = datetime.now() - (st.session_state.bastao_start_time or datetime.now())
         st.caption(f"⏱️ Tempo com o bastão: {format_time_duration(dur_b)}")
-    else: st.info("Fila vazia. Entre na fila para assumir.")
+    else: st.info("Ninguém com o bastão no momento.")
 
     st.subheader("Consultor(a)")
     st.selectbox("Selecione seu nome:", ["Selecione um nome"] + CONSULTORES, key="consultor_selectbox", label_visibility="collapsed")
     
     st.markdown("**Ações Rápidas:**")
     c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
-    def v(n): st.session_state.active_view = n if st.session_state.active_view != n else None
+    def v_toggle(name): st.session_state.active_view = name if st.session_state.active_view != name else None
     
     c1.button("🎯 Passar", on_click=rotate_bastao, use_container_width=True)
     c2.button("⏭️ Pular", on_click=lambda: st.session_state.skip_flags.update({st.session_state.consultor_selectbox: True}) or rotate_bastao(), use_container_width=True)
-    c3.button("📋 Atividades", on_click=lambda: v("atv"), use_container_width=True)
+    c3.button("📋 Atividades", on_click=lambda: v_toggle("atv"), use_container_width=True)
     c4.button("🍽️ Almoço", on_click=lambda: update_manual_status("Almoço"), use_container_width=True)
     c5.button("👤 Ausente", on_click=lambda: update_manual_status("Ausente"), use_container_width=True)
-    c6.button("🎙️ Sessão", on_click=lambda: v("ses"), use_container_width=True)
+    c6.button("🎙️ Sessão", on_click=lambda: v_toggle("ses"), use_container_width=True)
     c7.button("🚶 Saída", on_click=lambda: update_manual_status("Saída rápida"), use_container_width=True)
 
     if st.session_state.active_view == "atv":
         with st.container(border=True):
-            st.markdown("### Atividades")
-            esc = st.multiselect("Escolha:", OPCOES_ATIVIDADES_STATUS, placeholder="Selecione...")
+            st.markdown("### Registrar Atividades")
+            esc = st.multiselect("Escolha as opções:", OPCOES_ATIVIDADES_STATUS, placeholder="Escolha as opções")
             det = st.text_input("Tipo/Setor/Descrição (Obrigatório):") if any(x in ATIVIDADES_EXIGEM_DETALHE for x in esc) else ""
-            if st.button("Confirmar", type="primary"):
+            if st.button("Confirmar Atividade", type="primary"):
                 if esc and (not any(x in ATIVIDADES_EXIGEM_DETALHE for x in esc) or det.strip()):
                     update_manual_status(f"Atividade: {', '.join(esc)}" + (f" [{det}]" if det else ""))
                     st.session_state.active_view = None; st.rerun()
@@ -271,27 +279,25 @@ with col_main:
 
     if st.session_state.active_view == "ses":
         with st.container(border=True):
-            st.markdown("### Sessão")
-            setor_s = st.text_input("Setor da Sessão (Obrigatório):")
-            if st.button("Gravar", type="primary"):
-                if setor_s.strip():
-                    update_manual_status(f"Sessão: {setor_s}")
+            st.markdown("### Registrar Sessão")
+            s_setor = st.text_input("Setor da Sessão (Obrigatório):")
+            if st.button("Confirmar Sessão", type="primary"):
+                if s_setor.strip():
+                    update_manual_status(f"Sessão: {s_setor}")
                     st.session_state.active_view = None; st.rerun()
-                else: st.error("Informe o setor.")
+                else: st.error("O setor é obrigatório.")
 
     st.markdown("---")
-    # Ferramentas Inferiores
+    # Barra de Ferramentas
     t1, t2, t3, t4, t5 = st.columns(5)
-    t1.button("📑 Checklist", on_click=lambda: v("chk"), use_container_width=True)
-    t2.button("🆘 Chamados", on_click=lambda: v("cha"), use_container_width=True)
-    t3.button("📝 Atendimento", on_click=lambda: v("reg"), use_container_width=True)
-    t4.button("⏰ H. Extras", on_click=lambda: v("hex"), use_container_width=True)
-    t5.button("🧠 Descanso", on_click=lambda: v("sim"), use_container_width=True)
+    t1.button("📑 Checklist", on_click=lambda: v_toggle("chk"), use_container_width=True)
+    t2.button("🆘 Chamados", on_click=lambda: v_toggle("cha"), use_container_width=True)
+    t3.button("📝 Atendimento", on_click=lambda: v_toggle("reg"), use_container_width=True)
+    t4.button("⏰ H. Extras", on_click=lambda: v_toggle("hex"), use_container_width=True)
+    t5.button("🧠 Descanso", on_click=lambda: v_toggle("sim"), use_container_width=True)
 
     if st.session_state.active_view == "sim":
-        with st.container(border=True):
-            st.write("### Simon Game")
-            if st.button("Iniciar"): st.write("Iniciando sequência...")
+        with st.container(border=True): st.write("### Jogo Simon"); st.button("Iniciar Novo Jogo")
 
 with col_side:
     st.header("Status dos Consultores")
@@ -302,33 +308,32 @@ with col_side:
     st.markdown("---")
     ui = {'fila': [], 'atv': [], 'ses': [], 'alm': [], 'sai': [], 'aus': []}
     for n in CONSULTORES:
-        s = st.session_state.status_texto.get(n, 'Ausente')
-        if s in ['Bastão', '']: ui['fila'].append(n)
-        elif 'Atividade:' in s: ui['atv'].append((n, s.replace('Atividade: ', '')))
-        elif 'Sessão:' in s: ui['ses'].append((n, s.replace('Sessão: ', '')))
-        elif s == 'Almoço': ui['alm'].append(n)
-        elif s == 'Saída rápida': ui['sai'].append(n)
+        s_val = st.session_state.status_texto.get(n, 'Ausente')
+        if s_val in ['Bastão', '']: ui['fila'].append(n)
+        elif 'Atividade:' in s_val: ui['atv'].append((n, s_val.replace('Atividade: ', '')))
+        elif 'Sessão:' in s_val: ui['ses'].append((n, s_val.replace('Sessão: ', '')))
+        elif s_val == 'Almoço': ui['alm'].append(n)
+        elif s_val == 'Saída rápida': ui['sai'].append(n)
         else: ui['aus'].append(n)
 
-    def render_list(label, items, color, is_tup=False):
+    def render_cat(label, items, color, is_t=False):
         st.subheader(f"{label} ({len(items)})")
         if not items: st.caption(f"Ninguém em {label.lower()}.")
         for i in items:
-            name = i[0] if is_tup else i
-            info = i[1] if is_tup else label
+            name = i[0] if is_t else i
+            info = i[1] if is_t else label
             cn, cc = st.columns([0.7, 0.3])
-            # Checkbox gatilha update_queue
             cc.checkbox(" ", key=f"check_{name}", on_change=update_queue, args=(name,), label_visibility="collapsed")
             if name == resp_atual: cn.markdown(f"🥂 **{name}**")
             else: cn.markdown(f"**{name}** :{color}-background[{info}]", unsafe_allow_html=True)
         st.markdown("---")
 
-    render_list("Na Fila", ui['fila'], "blue")
-    render_list("Em Atividade", ui['atv'], "orange", True)
-    render_list("Sessão", ui['ses'], "green", True)
-    render_list("Almoço", ui['alm'], "red")
-    render_list("Ausente", ui['aus'], "grey")
+    render_cat("Na Fila", ui['fila'], "blue")
+    render_cat("Em Atividade", ui['atv'], "orange", True)
+    render_cat("Sessão", ui['ses'], "green", True)
+    render_cat("Almoço", ui['alm'], "red")
+    render_cat("Ausente", ui['aus'], "grey")
 
-# Relatório Automático 20h
+# Relatório 20h
 if datetime.now().hour >= 20 and datetime.now().date() > st.session_state.report_last_run_date:
     pass
