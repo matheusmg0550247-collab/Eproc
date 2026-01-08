@@ -40,7 +40,18 @@ RELATO DO ERRO/TESTE:
 RESULTADO: 
 OBSERVAÇÃO (SE TIVER): """
 
-EXEMPLO_TEXTO = """**TITULO** - Melhoria na Gestão das Procuradorias...""" # (Encurtado para brevidade)
+EXEMPLO_TEXTO = """**TITULO** - Melhoria na Gestão das Procuradorias
+**OBJETIVO**
+Permitir que os perfis de Procurador Chefe e Gerente de Procuradoria possam gerenciar os usuários das procuradorias, incluindo as ações de ativação e inativação de procuradores.
+**RELATO DO TESTE**
+Foram realizados testes no menu “Gerenciar Procuradores”, com o intuito de validar as funcionalidades de ativação e desativação de usuários vinculados à procuradoria.
+Durante os testes, foram observados os seguintes comportamentos do sistema:
+▪ No perfil Procurador-Chefe, não foi exibido o botão destinado à exclusão ou inativação de usuários;
+▪ No perfil Gerente de Procuradoria, a funcionalidade de cadastro de usuários apresentou mensagem de erro ao ser acionada.
+**RESULTADO**
+O teste não foi bem-sucedido, sendo identificadas as seguintes inconsistências:
+* Perfil Procurador-Chefe: o sistema não apresenta o botão de exclusão/inativação de usuário;
+* Perfil Gerente de Procuradoria: ao tentar cadastrar novos usuários, o sistema exibe mensagem de erro."""
 
 # ============================================
 # 2. INTEGRAÇÃO E UTILITÁRIOS
@@ -98,7 +109,6 @@ def registrar_mudanca(nome, novo_status):
     
     save_state()
 
-# ... (Funções save_state, get_global_state_cache permanecem as mesmas)
 @st.cache_resource(show_spinner=False)
 def get_global_state_cache():
     return {
@@ -139,7 +149,6 @@ def check_and_assume_baton():
                 save_state()
                 break
 
-# ... (Função update_queue_callback permanece a mesma)
 def update_queue_callback(nome):
     is_checked = st.session_state[f"chk_{nome}"]
     if is_checked:
@@ -165,13 +174,11 @@ if 'status_texto' not in st.session_state:
 
 st_autorefresh(interval=8000, key="global_refresh")
 
-# Cabeçalho
+# --- CABEÇALHO (MODIFICADO: GIF REMOVIDO DAQUI) ---
 c_esq, c_dir = st.columns([2, 1], vertical_alignment="bottom")
 with c_esq:
-    st.markdown(f'''<div style="display: flex; align-items: center; gap: 20px;">
-        <h1 style="color: #FFD700; margin: 0;">Controle Bastão Cesupe 2026 🥂</h1>
-        <img src="https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExa3Uwazd5cnNra2oxdDkydjZkcHdqcWN2cng0Y2N0cmNmN21vYXVzMiZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/3rXs5J0hZkXwTZjuvM/giphy.gif" style="width: 90px; height: 90px; border-radius: 50%; border: 3px solid #FFD700; object-fit: cover;">
-    </div>''', unsafe_allow_html=True)
+    # Apenas o título e o emoji, sem o GIF grande ao lado
+    st.markdown(f'<h1 style="color: #FFD700; margin: 0;">Controle Bastão Cesupe 2026 {BASTAO_EMOJI}</h1>', unsafe_allow_html=True)
 
 with c_dir:
     c_sub1, c_sub2 = st.columns([2, 1], vertical_alignment="bottom")
@@ -190,12 +197,14 @@ st.markdown("<hr style='border: 1px solid #FFD700; margin-top: 5px; margin-botto
 col_m, col_s = st.columns([1.6, 1])
 
 with col_m:
-    # Responsável Atual
+    # --- RESPONSÁVEL ATUAL (MODIFICADO: GIF GARANTIDO AQUI) ---
     dono = next((n for n, s in st.session_state.status_texto.items() if s == 'Bastão'), None)
     st.header("Responsável Atual")
     if dono:
+        # O GIF agora está explicitamente dentro deste bloco, ao lado do nome
         st.markdown(f'''<div style="background: #FFF8DC; border: 4px solid #FFD700; padding: 25px; border-radius: 20px; display: flex; align-items: center; box-shadow: 2px 2px 10px rgba(0,0,0,0.1);">
-            <span style="font-size: 36px; font-weight: bold; color: #000080;">🥂 {dono}</span>
+            <img src="{GIF_BASTAO_HOLDER}" style="width: 70px; height: 70px; margin-right: 20px; border-radius: 50%;">
+            <span style="font-size: 36px; font-weight: bold; color: #000080;">{dono}</span>
         </div>''', unsafe_allow_html=True)
         dur_b = datetime.now() - (st.session_state.bastao_start_time or datetime.now())
         st.caption(f"⏱️ Tempo: {format_dur(dur_b)}")
@@ -251,11 +260,17 @@ with col_m:
 
     if st.session_state.active_view == "err":
         with st.container(border=True):
-            tipo_rel = st.radio("Tipo:", ["Erro", "Novidade"], horizontal=True)
-            txt_rel = st.text_area("Descreva os detalhes:", height=200)
-            if st.button("Enviar para o Chat"):
-                if enviar_webhook_erro(tipo_rel, st.session_state.consultor_selectbox, txt_rel):
-                    st.success("Relato enviado!"); st.session_state.active_view = None; st.rerun()
+            t_f, t_e = st.tabs(["📝 Preencher", "📖 Exemplo de Modelo"])
+            with t_f:
+                tipo_rel = st.radio("Tipo:", ["Erro", "Novidade"], horizontal=True)
+                val_init = TEMPLATE_ERRO if tipo_rel == "Erro" else ""
+                txt_rel = st.text_area("Descreva os detalhes:", value=val_init, height=250)
+                if st.button("Enviar para o Chat"):
+                    if enviar_webhook_erro(tipo_rel, st.session_state.consultor_selectbox, txt_rel):
+                        st.success("Relato enviado!"); st.session_state.active_view = None; st.rerun()
+            with t_e:
+                st.info("Siga este padrão para relatos de ERRO:")
+                st.markdown(EXEMPLO_TEXTO)
 
     st.markdown("---")
     # Barra de Ferramentas com Webhooks
@@ -285,7 +300,6 @@ with col_s:
     aux = st.toggle("Auxílio Ativado", key="auxilio_ativo", on_change=save_state)
     st.markdown("---")
     
-    # ... (Lógica de render_section permanece a mesma)
     ui = {'fila': [], 'atv': [], 'ses': [], 'prj': [], 'alm': [], 'sai': [], 'aus': []}
     for n in CONSULTORES:
         s = st.session_state.status_texto.get(n, 'Ausente')
