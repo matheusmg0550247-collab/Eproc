@@ -215,7 +215,6 @@ with col_m:
     if btns[4].button("👤 Ausente", use_container_width=True): registrar_mudanca(st.session_state.consultor_selectbox, "Ausente"); st.rerun()
     if btns[5].button("🎙️ Sessão", use_container_width=True): st.session_state.active_view = "ses"
     if btns[6].button("🚶 Saída", use_container_width=True): registrar_mudanca(st.session_state.consultor_selectbox, "Saída rápida"); st.rerun()
-    # NOVO BOTÃO PROJETOS NAS AÇÕES
     if btns[7].button("📁 Projetos", use_container_width=True): st.session_state.active_view = "prj"
 
     # --- VIEWS DINÂMICAS ---
@@ -266,14 +265,15 @@ with col_m:
                 st.markdown(EXEMPLO_TEXTO)
 
     st.markdown("---")
-    # Barra de Ferramentas (ERRO/NOV MOVIDO PARA CÁ)
-    tool_cols = st.columns(6) # Aumentado para 6 colunas
+    # Barra de Ferramentas (ERRO/NOVIDADE COM NOME POR EXTENSO)
+    tool_cols = st.columns(6) 
     tool_cols[0].button("📑 Checklist", use_container_width=True)
     tool_cols[1].button("🆘 Chamados", use_container_width=True)
     tool_cols[2].button("📝 Atendimento", use_container_width=True)
     tool_cols[3].button("⏰ H. Extras", use_container_width=True)
     tool_cols[4].button("🧠 Descanso", use_container_width=True)
-    if tool_cols[5].button("⚠️ Erro/Nov", use_container_width=True): 
+    # BOTÃO RENOMEADO PARA ERRO/NOVIDADE
+    if tool_cols[5].button("⚠️ Erro/Novidade", use_container_width=True): 
         st.session_state.active_view = "err"
         st.rerun()
 
@@ -307,7 +307,7 @@ with col_s:
 
     render_section("Na Fila", ui['fila'], "blue")
     render_section("Em Atividade", ui['atv'], "orange", True)
-    render_section("Projetos", ui['prj'], "violet", True) # NOVA SEÇÃO PROJETOS
+    render_section("Projetos", ui['prj'], "violet", True) 
     render_section("Sessão", ui['ses'], "green", True)
     render_section("Almoço", ui['alm'], "red")
     render_section("Saída Rápida", ui['sai'], "red")
