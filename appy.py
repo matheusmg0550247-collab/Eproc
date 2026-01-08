@@ -11,9 +11,7 @@ import json
 import threading
 
 # --- URLS DE INTEGRAÇÃO ---
-# URL da Planilha (via Apps Script)
 URL_GOOGLE_SHEETS = "https://script.google.com/macros/s/AKfycbxRP77Ie-jbhjEDk3F6Za_QWxiIEcEqwRHQ0vQPk63ExLm0JCR24n_nqkWbqdVWT5lhJg/exec"
-# URL do Webhook para Erros/Novidades
 WEBHOOK_ERROS = "https://chat.googleapis.com/v1/spaces/AAQAp4gdyUE/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=vnI4C_jTeF0UQINXiVYpRrnEsYaO4-Nnvs8RC-PTj0k"
 
 CONSULTORES = sorted([
@@ -23,6 +21,11 @@ CONSULTORES = sorted([
     "Leandro Victor Catharino", "Luiz Henrique Barros Oliveira", "Marcelo dos Santos Dutra",
     "Marina Silva Marques", "Marina Torres do Amaral", "Vanessa Ligiane Pimenta Santos"
 ])
+
+LISTA_PROJETOS = [
+    "Projeto Soma", "Manuais Eproc", "Treinamentos Eproc", 
+    "IA nos Cartórios", "Notebook Lm"
+]
 
 # --- TEMPLATES DE TEXTO ---
 TEMPLATE_ERRO = """TITULO: 
@@ -63,7 +66,6 @@ def get_global_state_cache():
 # GIFs e Emojis
 BASTAO_EMOJI = "🥂"
 GIF_BASTAO_HOLDER = "https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExa3Uwazd5cnNra2oxdDkydjZkcHdqcWN2cng0Y2N0cmNmN21vYXVzMiZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/3rXs5J0hZkXwTZjuvM/giphy.gif"
-GIF_URL_ROTATION = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExdmx4azVxbGt4Mnk1cjMzZm5sMmp1YThteGJsMzcyYmhsdmFoczV0aSZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/JpkZEKWY0s9QI4DGvF/giphy.gif'
 GIF_URL_NEDRY = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExMGNkMGx3YnNkcXQ2bHJmNTZtZThraHhuNmVoOTNmbG0wcDloOXAybiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/7kyWoqTue3po4/giphy.gif'
 ATIVIDADES_DETALHE = ["Treinamento", "Homologação", "Redação Documentos", "Outros"]
 
@@ -145,7 +147,6 @@ def update_queue_callback(nome):
 
 st.set_page_config(page_title="Controle Bastão Cesupe 2026", layout="wide", page_icon="🥂")
 
-# Inicialização de Estado
 if 'status_texto' not in st.session_state:
     cache = get_global_state_cache()
     for k, v in cache.items(): st.session_state[k] = v
@@ -195,7 +196,7 @@ with col_m:
     st.selectbox("Selecione seu nome:", ["Selecione um nome"] + CONSULTORES, key="consultor_selectbox", label_visibility="collapsed")
     
     st.markdown("**Ações:**")
-    btns = st.columns(8) # Aumentado para 8 botões
+    btns = st.columns(8) 
     if btns[0].button("🎯 Passar", use_container_width=True):
         if st.session_state.consultor_selectbox == dono:
             registrar_mudanca(dono, "")
@@ -214,13 +215,13 @@ with col_m:
     if btns[4].button("👤 Ausente", use_container_width=True): registrar_mudanca(st.session_state.consultor_selectbox, "Ausente"); st.rerun()
     if btns[5].button("🎙️ Sessão", use_container_width=True): st.session_state.active_view = "ses"
     if btns[6].button("🚶 Saída", use_container_width=True): registrar_mudanca(st.session_state.consultor_selectbox, "Saída rápida"); st.rerun()
-    # Novo Botão Erro/Novidade
-    if btns[7].button("⚠️ Erro/Nov", use_container_width=True): st.session_state.active_view = "err"
+    # NOVO BOTÃO PROJETOS NAS AÇÕES
+    if btns[7].button("📁 Projetos", use_container_width=True): st.session_state.active_view = "prj"
 
     # --- VIEWS DINÂMICAS ---
     if st.session_state.active_view == "atv":
         with st.container(border=True):
-            esc = st.multiselect("Opções:", ["HP", "E-mail", "Whatsapp/Plantão", "Treinamento", "Homologação", "Redação Documentos", "Reunião", "Outros"])
+            esc = st.multiselect("Opções Atividade:", ["HP", "E-mail", "Whatsapp/Plantão", "Treinamento", "Homologação", "Redação Documentos", "Reunião", "Outros"])
             det = st.text_input("Detalhes:") if any(x in ATIVIDADES_DETALHE for x in esc) else ""
             if st.button("Confirmar"):
                 registrar_mudanca(st.session_state.consultor_selectbox, f"Atividade: {', '.join(esc)}" + (f" [{det}]" if det else ""))
@@ -228,10 +229,21 @@ with col_m:
 
     if st.session_state.active_view == "ses":
         with st.container(border=True):
-            setor = st.text_input("Setor:")
-            if st.button("Gravar"):
+            setor = st.text_input("Setor da Sessão:")
+            if st.button("Gravar Sessão"):
                 registrar_mudanca(st.session_state.consultor_selectbox, f"Sessão: {setor}")
                 st.session_state.active_view = None; st.rerun()
+
+    if st.session_state.active_view == "prj":
+        with st.container(border=True):
+            st.subheader("📁 Selecionar Projeto")
+            p_sel = st.selectbox("Escolha o projeto:", ["Selecione..."] + LISTA_PROJETOS)
+            p_obs = st.text_input("Observações (Opcional):")
+            if st.button("Confirmar Projeto"):
+                if p_sel != "Selecione...":
+                    registrar_mudanca(st.session_state.consultor_selectbox, f"Projeto: {p_sel}" + (f" [{p_obs}]" if p_obs else ""))
+                    st.session_state.active_view = None; st.rerun()
+                else: st.warning("Selecione um projeto válido.")
 
     if st.session_state.active_view == "err":
         with st.container(border=True):
@@ -254,13 +266,16 @@ with col_m:
                 st.markdown(EXEMPLO_TEXTO)
 
     st.markdown("---")
-    # Barra de Ferramentas
-    t1, t2, t3, t4, t5 = st.columns(5)
-    t1.button("📑 Checklist", use_container_width=True)
-    t2.button("🆘 Chamados", use_container_width=True)
-    t3.button("📝 Atendimento", use_container_width=True)
-    t4.button("⏰ H. Extras", use_container_width=True)
-    t5.button("🧠 Descanso", use_container_width=True)
+    # Barra de Ferramentas (ERRO/NOV MOVIDO PARA CÁ)
+    tool_cols = st.columns(6) # Aumentado para 6 colunas
+    tool_cols[0].button("📑 Checklist", use_container_width=True)
+    tool_cols[1].button("🆘 Chamados", use_container_width=True)
+    tool_cols[2].button("📝 Atendimento", use_container_width=True)
+    tool_cols[3].button("⏰ H. Extras", use_container_width=True)
+    tool_cols[4].button("🧠 Descanso", use_container_width=True)
+    if tool_cols[5].button("⚠️ Erro/Nov", use_container_width=True): 
+        st.session_state.active_view = "err"
+        st.rerun()
 
 with col_s:
     st.header("Status dos Consultores")
@@ -268,12 +283,13 @@ with col_s:
     if aux: st.warning("Auxílio Ativado!"); st.image(GIF_URL_NEDRY, width=220)
     
     st.markdown("---")
-    ui = {'fila': [], 'atv': [], 'ses': [], 'alm': [], 'sai': [], 'aus': []}
+    ui = {'fila': [], 'atv': [], 'ses': [], 'prj': [], 'alm': [], 'sai': [], 'aus': []}
     for n in CONSULTORES:
         s = st.session_state.status_texto.get(n, 'Ausente')
         if s in ['Bastão', '']: ui['fila'].append(n)
         elif 'Atividade:' in s: ui['atv'].append((n, s.replace('Atividade: ', '')))
         elif 'Sessão:' in s: ui['ses'].append((n, s.replace('Sessão: ', '')))
+        elif 'Projeto:' in s: ui['prj'].append((n, s.replace('Projeto: ', '')))
         elif s == 'Almoço': ui['alm'].append(n)
         elif s == 'Saída rápida': ui['sai'].append(n)
         else: ui['aus'].append(n)
@@ -291,12 +307,13 @@ with col_s:
 
     render_section("Na Fila", ui['fila'], "blue")
     render_section("Em Atividade", ui['atv'], "orange", True)
+    render_section("Projetos", ui['prj'], "violet", True) # NOVA SEÇÃO PROJETOS
     render_section("Sessão", ui['ses'], "green", True)
     render_section("Almoço", ui['alm'], "red")
     render_section("Saída Rápida", ui['sai'], "red")
     render_section("Ausente", ui['aus'], "grey")
 
-# TRIGGER DE RESET AUTOMÁTICO (Reset às 20:00)
+# TRIGGER DE RESET AUTOMÁTICO
 now = datetime.now()
 if now.hour >= 20 and st.session_state.report_last_run_date < date.today():
     st.session_state.status_texto = {nome: 'Ausente' for nome in CONSULTORES}
