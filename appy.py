@@ -9,11 +9,12 @@ from datetime import datetime, timedelta, date, time as dt_time
 from streamlit_autorefresh import st_autorefresh
 import json
 import threading
-import random
-import base64
 
-# --- URL DA SUA PLANILHA (Atualizada) ---
+# --- URLS DE INTEGRAÇÃO ---
+# URL da Planilha (via Apps Script)
 URL_GOOGLE_SHEETS = "https://script.google.com/macros/s/AKfycbxRP77Ie-jbhjEDk3F6Za_QWxiIEcEqwRHQ0vQPk63ExLm0JCR24n_nqkWbqdVWT5lhJg/exec"
+# URL do Webhook para Erros/Novidades
+WEBHOOK_ERROS = "https://chat.googleapis.com/v1/spaces/AAQAp4gdyUE/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=vnI4C_jTeF0UQINXiVYpRrnEsYaO4-Nnvs8RC-PTj0k"
 
 CONSULTORES = sorted([
     "Alex Paulo da Silva", "Dirceu Gonçalves Siqueira Neto", "Douglas de Souza Gonçalves",
@@ -22,6 +23,26 @@ CONSULTORES = sorted([
     "Leandro Victor Catharino", "Luiz Henrique Barros Oliveira", "Marcelo dos Santos Dutra",
     "Marina Silva Marques", "Marina Torres do Amaral", "Vanessa Ligiane Pimenta Santos"
 ])
+
+# --- TEMPLATES DE TEXTO ---
+TEMPLATE_ERRO = """TITULO: 
+OBJETIVO: 
+RELATO DO ERRO/TESTE: 
+RESULTADO: 
+OBSERVAÇÃO (SE TIVER): """
+
+EXEMPLO_TEXTO = """**TITULO** - Melhoria na Gestão das Procuradorias
+**OBJETIVO**
+Permitir que os perfis de Procurador Chefe e Gerente de Procuradoria possam gerenciar os usuários das procuradorias, incluindo as ações de ativação e inativação de procuradores.
+**RELATO DO TESTE**
+Foram realizados testes no menu “Gerenciar Procuradores”, com o intuito de validar as funcionalidades de ativação e desativação de usuários vinculados à procuradoria.
+Durante os testes, foram observados os seguintes comportamentos do sistema:
+▪ No perfil Procurador-Chefe, não foi exibido o botão destinado à exclusão ou inativação de usuários;
+▪ No perfil Gerente de Procuradoria, a funcionalidade de cadastro de usuários apresentou mensagem de erro ao ser acionada.
+**RESULTADO**
+O teste não foi bem-sucedido, sendo identificadas as seguintes inconsistências:
+* Perfil Procurador-Chefe: o sistema não apresenta o botão de exclusão/inativação de usuário;
+* Perfil Gerente de Procuradoria: ao tentar cadastrar novos usuários, o sistema exibe mensagem de erro."""
 
 # --- CACHE DE ESTADO GLOBAL ---
 @st.cache_resource(show_spinner=False)
@@ -36,8 +57,7 @@ def get_global_state_cache():
         'bastao_counts': {nome: 0 for nome in CONSULTORES},
         'rotation_gif_start_time': None,
         'auxilio_ativo': False, 
-        'daily_logs': [],
-        'simon_ranking': []
+        'daily_logs': []
     }
 
 # GIFs e Emojis
@@ -48,7 +68,7 @@ GIF_URL_NEDRY = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExMGNkMGx3YnNkc
 ATIVIDADES_DETALHE = ["Treinamento", "Homologação", "Redação Documentos", "Outros"]
 
 # ============================================
-# 2. INTEGRAÇÃO GOOGLE SHEETS E RESET
+# 2. INTEGRAÇÃO E UTILITÁRIOS
 # ============================================
 
 def log_to_google_sheets(consultor, status_antigo, status_novo, duracao):
@@ -59,6 +79,14 @@ def log_to_google_sheets(consultor, status_antigo, status_novo, duracao):
         "duration": duracao
     }
     threading.Thread(target=lambda: requests.post(URL_GOOGLE_SHEETS, json=payload, timeout=15)).start()
+
+def enviar_webhook_erro(tipo, consultor, conteudo):
+    payload = {"text": f"🚨 *NOVO RELATO: {tipo}*\n*Consultor:* {consultor}\n\n{conteudo}"}
+    try:
+        requests.post(WEBHOOK_ERROS, json=payload, timeout=10)
+        return True
+    except:
+        return False
 
 def format_dur(td):
     if not isinstance(td, timedelta): return "00:00:00"
@@ -77,25 +105,14 @@ def registrar_mudanca(nome, novo_status):
     log_to_google_sheets(nome, old_status, novo_status, dur_str)
     save_state()
 
-def reset_diario_sistema():
-    """Limpa a fila e status para o próximo dia no Streamlit"""
-    st.session_state.status_texto = {nome: 'Ausente' for nome in CONSULTORES}
-    st.session_state.bastao_queue = []
-    st.session_state.skip_flags = {}
-    st.session_state.bastao_counts = {nome: 0 for nome in CONSULTORES}
-    st.session_state.daily_logs = []
-    st.session_state.report_last_run_date = date.today()
-    save_state()
-    st.toast("Sistema resetado para o próximo dia!", icon="🧹")
-
-# ============================================
-# 3. LÓGICA DO BASTÃO
-# ============================================
-
 def save_state():
     cache = get_global_state_cache()
     for k in cache.keys():
         if k in st.session_state: cache[k] = st.session_state[k]
+
+# ============================================
+# 3. LÓGICA DO BASTÃO
+# ============================================
 
 def check_and_assume_baton():
     q = st.session_state.bastao_queue
@@ -123,11 +140,12 @@ def update_queue_callback(nome):
     check_and_assume_baton()
 
 # ============================================
-# 4. INTERFACE
+# 4. INTERFACE PRINCIPAL
 # ============================================
 
 st.set_page_config(page_title="Controle Bastão Cesupe 2026", layout="wide", page_icon="🥂")
 
+# Inicialização de Estado
 if 'status_texto' not in st.session_state:
     cache = get_global_state_cache()
     for k, v in cache.items(): st.session_state[k] = v
@@ -158,14 +176,10 @@ with c_dir:
 
 st.markdown("<hr style='border: 1px solid #FFD700; margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
 
-# Lógica de GIFs
-if st.session_state.get('rotation_gif_start_time'):
-    if (datetime.now() - st.session_state.rotation_gif_start_time).total_seconds() < 12:
-        st.image(GIF_URL_ROTATION, width=250)
-
 col_m, col_s = st.columns([1.6, 1])
 
 with col_m:
+    # Responsável Atual
     dono = next((n for n, s in st.session_state.status_texto.items() if s == 'Bastão'), None)
     st.header("Responsável Atual")
     if dono:
@@ -181,7 +195,7 @@ with col_m:
     st.selectbox("Selecione seu nome:", ["Selecione um nome"] + CONSULTORES, key="consultor_selectbox", label_visibility="collapsed")
     
     st.markdown("**Ações:**")
-    btns = st.columns(7)
+    btns = st.columns(8) # Aumentado para 8 botões
     if btns[0].button("🎯 Passar", use_container_width=True):
         if st.session_state.consultor_selectbox == dono:
             registrar_mudanca(dono, "")
@@ -200,7 +214,10 @@ with col_m:
     if btns[4].button("👤 Ausente", use_container_width=True): registrar_mudanca(st.session_state.consultor_selectbox, "Ausente"); st.rerun()
     if btns[5].button("🎙️ Sessão", use_container_width=True): st.session_state.active_view = "ses"
     if btns[6].button("🚶 Saída", use_container_width=True): registrar_mudanca(st.session_state.consultor_selectbox, "Saída rápida"); st.rerun()
+    # Novo Botão Erro/Novidade
+    if btns[7].button("⚠️ Erro/Nov", use_container_width=True): st.session_state.active_view = "err"
 
+    # --- VIEWS DINÂMICAS ---
     if st.session_state.active_view == "atv":
         with st.container(border=True):
             esc = st.multiselect("Opções:", ["HP", "E-mail", "Whatsapp/Plantão", "Treinamento", "Homologação", "Redação Documentos", "Reunião", "Outros"])
@@ -216,6 +233,26 @@ with col_m:
                 registrar_mudanca(st.session_state.consultor_selectbox, f"Sessão: {setor}")
                 st.session_state.active_view = None; st.rerun()
 
+    if st.session_state.active_view == "err":
+        with st.container(border=True):
+            st.subheader("⚠️ Relatar Erro ou Novidade")
+            t_f, t_e = st.tabs(["📝 Preencher", "📖 Exemplo de Modelo"])
+            with t_f:
+                tipo_rel = st.radio("Tipo:", ["Erro", "Novidade"], horizontal=True)
+                val_init = TEMPLATE_ERRO if tipo_rel == "Erro" else ""
+                txt_rel = st.text_area("Descreva os detalhes:", value=val_init, height=250)
+                c1, c2 = st.columns(2)
+                if c1.button("Enviar para o Chat", use_container_width=True):
+                    if st.session_state.consultor_selectbox != "Selecione um nome":
+                        if enviar_webhook_erro(tipo_rel, st.session_state.consultor_selectbox, txt_rel):
+                            st.success("Relato enviado!"); time.sleep(2); st.session_state.active_view = None; st.rerun()
+                        else: st.error("Falha na conexão.")
+                    else: st.warning("Selecione seu nome.")
+                if c2.button("Cancelar", use_container_width=True): st.session_state.active_view = None; st.rerun()
+            with t_e:
+                st.info("Siga este padrão para relatos de ERRO:")
+                st.markdown(EXEMPLO_TEXTO)
+
     st.markdown("---")
     # Barra de Ferramentas
     t1, t2, t3, t4, t5 = st.columns(5)
@@ -228,8 +265,7 @@ with col_m:
 with col_s:
     st.header("Status dos Consultores")
     aux = st.toggle("Auxílio HP/Emails/Whatsapp", key="auxilio_ativo", on_change=save_state)
-    if aux:
-        st.warning("Auxílio Ativado!"); st.image(GIF_URL_NEDRY, width=220)
+    if aux: st.warning("Auxílio Ativado!"); st.image(GIF_URL_NEDRY, width=220)
     
     st.markdown("---")
     ui = {'fila': [], 'atv': [], 'ses': [], 'alm': [], 'sai': [], 'aus': []}
@@ -244,7 +280,7 @@ with col_s:
 
     def render_section(label, items, color, is_tup=False):
         st.subheader(f"{label} ({len(items)})")
-        if not items: st.caption(f"Ninguém.")
+        if not items: st.caption("Ninguém.")
         for i in items:
             name = i[0] if is_tup else i; info = i[1] if is_tup else label
             cn, cc = st.columns([0.7, 0.3])
@@ -260,7 +296,10 @@ with col_s:
     render_section("Saída Rápida", ui['sai'], "red")
     render_section("Ausente", ui['aus'], "grey")
 
-# TRIGGER DE RESET AUTOMÁTICO (Reset às 20:00 se ainda não foi feito hoje)
+# TRIGGER DE RESET AUTOMÁTICO (Reset às 20:00)
 now = datetime.now()
 if now.hour >= 20 and st.session_state.report_last_run_date < date.today():
-    reset_diario_sistema()
+    st.session_state.status_texto = {nome: 'Ausente' for nome in CONSULTORES}
+    st.session_state.bastao_queue = []; st.session_state.skip_flags = {}
+    st.session_state.report_last_run_date = date.today(); save_state()
+    st.rerun()
