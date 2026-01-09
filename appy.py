@@ -51,6 +51,8 @@ GOOGLE_CHAT_WEBHOOK_CHECKLIST_HTML = "https://chat.googleapis.com/v1/spaces/AAQA
 GOOGLE_CHAT_WEBHOOK_HORAS_EXTRAS = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU"
 # --- NOVO WEBHOOK PARA ERRO/NOVIDADE ---
 GOOGLE_CHAT_WEBHOOK_ERRO_NOVIDADE = "https://chat.googleapis.com/v1/spaces/AAQAp4gdyUE/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=vnI4C_jTeF0UQINXiVYpRrnEsYaO4-Nnvs8RC-PTj0k"
+# --- WEBHOOK GOOGLE SHEETS (LOG DE STATUS) ---
+SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxRP77Ie-jbhjEDk3F6Za_QWxiIEcEqwRHQ0vQPk63ExLm0JCR24n_nqkWbqdVWT5lhJg/exec"
 
 # Listas para o formulário de atendimento
 REG_USUARIO_OPCOES = ["Cartório", "Gabinete", "Externo"]
@@ -170,6 +172,28 @@ def load_state():
     loaded_data['daily_logs'] = final_logs
     return loaded_data
 
+# --- ENVIO ASSÍNCRONO DE MENSAGENS ---
+def _send_webhook_thread(url, payload):
+    try:
+        requests.post(url, json=payload, timeout=5)
+    except Exception as e:
+        print(f"Erro no envio assíncrono: {e}")
+
+# --- FUNÇÃO PARA ENVIAR LOGS AO GOOGLE SHEETS ---
+def send_log_to_sheets(timestamp_str, consultor, old_status, new_status, duration_str):
+    if not SHEETS_WEBHOOK_URL: return
+    
+    payload = {
+        "data_hora": timestamp_str,
+        "consultor": consultor,
+        "status_anterior": old_status,
+        "status_atual": new_status,
+        "tempo_anterior": duration_str
+    }
+    
+    # Envio via thread para não travar o app
+    threading.Thread(target=_send_webhook_thread, args=(SHEETS_WEBHOOK_URL, payload)).start()
+
 # --- FUNÇÕES DE LOG E TEMPO ---
 def log_status_change(consultor, old_status, new_status, duration):
     print(f'LOG: {consultor} de "{old_status or "-"}" para "{new_status or "-"}" após {duration}')
@@ -185,6 +209,12 @@ def log_status_change(consultor, old_status, new_status, duration):
     }
     st.session_state.daily_logs.append(entry)
     
+    # --- NOVO: ENVIA PARA O GOOGLE SHEETS ---
+    timestamp_str = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    duration_str = format_time_duration(duration)
+    send_log_to_sheets(timestamp_str, consultor, old_status, new_status, duration_str)
+    # ----------------------------------------
+    
     if consultor not in st.session_state.current_status_starts:
         st.session_state.current_status_starts[consultor] = datetime.now()
     st.session_state.current_status_starts[consultor] = datetime.now()
@@ -193,13 +223,6 @@ def format_time_duration(duration):
     if not isinstance(duration, timedelta): return '--:--:--'
     s = int(duration.total_seconds()); h, s = divmod(s, 3600); m, s = divmod(s, 60)
     return f'{h:02}:{m:02}:{s:02}'
-
-# --- ENVIO ASSÍNCRONO DE MENSAGENS ---
-def _send_webhook_thread(url, payload):
-    try:
-        requests.post(url, json=payload, timeout=5)
-    except Exception as e:
-        print(f"Erro no envio assíncrono: {e}")
 
 def send_chat_notification_internal(consultor, status):
     if CHAT_WEBHOOK_BASTAO and status == 'Bastão':
@@ -252,8 +275,12 @@ def handle_erro_novidade_submission(consultor, titulo, objetivo, relato, resulta
     # Alterado para usar o novo Webhook dedicado
     if not GOOGLE_CHAT_WEBHOOK_ERRO_NOVIDADE: return False
     
+    # Adicionando Data e Hora ao Relato
+    data_envio = datetime.now().strftime("%d/%m/%Y %H:%M")
+    
     msg = (
-        f"🐛 **Novo Relato de Erro/Novidade**\n\n"
+        f"🐛 **Novo Relato de Erro/Novidade**\n"
+        f"📅 **Data:** {data_envio}\n\n"
         f"👤 **Autor:** {consultor}\n"
         f"📌 **Título:** {titulo}\n\n"
         f"🎯 **Objetivo:**\n{objetivo}\n\n"
