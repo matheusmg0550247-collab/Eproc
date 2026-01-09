@@ -1,3 +1,6 @@
+# ============================================
+# 1. IMPORTS E DEFINIÇÕES GLOBAIS
+# ============================================
 import streamlit as st
 import pandas as pd
 import requests
@@ -6,101 +9,327 @@ from datetime import datetime, timedelta, date, time as dt_time
 from streamlit_autorefresh import st_autorefresh
 import json
 import threading
-import base64
-import plotly.express as px
 
-# 1. CONFIGURAÇÕES E ESTILIZAÇÃO (Visual do Dashboard + Pug)
-st.set_page_config(page_title="Gestão Cesupe 2026", layout="wide", page_icon="🥂")
-
-# Carregamento do Pug
-PUG_FILENAME = "pug2026.png"
-@st.cache_data
-def get_img_as_base64(file_path):
-    try:
-        with open(file_path, "rb") as f:
-            return base64.b64encode(f.read()).decode()
-    except: return None
-
-st.markdown("""
-    <style>
-    .title-card { padding: 8px; border-radius: 5px; color: white; font-weight: bold; text-align: center; width: 100%; margin-bottom: 10px; text-transform: uppercase; font-size: 14px; }
-    .bg-bastao { background-color: #D4AF37; } .bg-atividade { background-color: #0056b3; }
-    .bg-projeto { background-color: #8b5cf6; } .bg-sessao { background-color: #6f42c1; }
-    .bg-almoco { background-color: #d9534f; } .bg-ausente { background-color: #6c757d; }
-    .stPopover { display: flex; justify-content: center; margin-bottom: 5px; }
-    div[data-testid="stPopoverBody"] { min-width: 800px !important; }
-    .stPopover button { width: 220px !important; font-size: 11px !important; border: 1px solid #ddd !important; }
-    </style>
-    """, unsafe_allow_html=True)
-
-# 2. CONSTANTES E WEBHOOKS
-CONSULTORES = sorted(["Barbara Mara", "Bruno Glaicon", "Claudia Luiza", "Douglas Paiva", "Fábio Alves", "Glayce Torres", "Isabela Dias", "Isac Candido", "Ivana Guimarães", "Leonardo Damaceno", "Marcelo PenaGuerra", "Michael Douglas", "Morôni", "Pablo Victor Lenti Mol", "Ranyer Segal", "Sarah Leal", "Victoria Lisboa"])
-LISTA_PROJETOS = ["Projeto Soma", "Manuais Eproc", "Treinamentos Eproc", "IA nos Cartórios", "Notebook Lm"]
+# --- URLS DE INTEGRAÇÃO (WEBHOOKS) ---
+URL_GOOGLE_SHEETS = "https://script.google.com/macros/s/AKfycbxRP77Ie-jbhjEDk3F6Za_QWxiIEcEqwRHQ0vQPk63ExLm0JCR24n_nqkWbqdVWT5lhJg/exec"
 WEBHOOK_ERROS = "https://chat.googleapis.com/v1/spaces/AAQAp4gdyUE/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=vnI4C_jTeF0UQINXiVYpRrnEsYaO4-Nnvs8RC-PTj0k"
-CHAT_WEBHOOK_BASTAO = ""
 
-# 3. LÓGICA DE ESTADO
-@st.cache_resource
-def get_global_state():
-    return {'status_texto': {n: 'Ausente' for n in CONSULTORES}, 'bastao_queue': [], 'starts': {n: datetime.now() for n in CONSULTORES}, 'last_run': date.min}
+# Webhooks Adicionais Integrados
+GOOGLE_CHAT_WEBHOOK_BACKUP = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU"
+CHAT_WEBHOOK_BASTAO = ""
+GOOGLE_CHAT_WEBHOOK_REGISTRO = ""
+GOOGLE_CHAT_WEBHOOK_CHAMADO = "https://chat.googleapis.com/v1/spaces/AAQAPPWlpW8/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=jMg2PkqtpIe3JbG_SZG_ZhcfuQQII9RXM0rZQienUZk"
+GOOGLE_CHAT_WEBHOOK_SESSAO = "https://chat.googleapis.com/v1/spaces/AAQAWs1zqNM/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=hIxKd9f35kKdJqWUNjttzRBfCsxomK0OJ3AkH9DJmxY"
+GOOGLE_CHAT_WEBHOOK_CHECKLIST_HTML = "https://chat.googleapis.com/v1/spaces/AAQAXbwpQHY/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=7AQaoGHiWIfv3eczQzVZ-fbQdBqSBOh1CyQ854o1f7k"
+GOOGLE_CHAT_WEBHOOK_HORAS_EXTRAS = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU"
+
+# --- CONFIGURAÇÕES DE UI ---
+BASTAO_EMOJI = "🥂"
+GIF_BASTAO_HOLDER = "https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExa3Uwazd5cnNra2oxdDkydjZkcHdqcWN2cng0Y2N0cmNmN21vYXVzMiZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/3rXs5J0hZkXwTZjuvM/giphy.gif"
+GIF_URL_ROTATION = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExdmx4azVxbGt4Mnk1cjMzZm5sMmp1YThteGJsMzcyYmhsdmFoczV0aSZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/JpkZEKWY0s9QI4DGvF/giphy.gif'
+GIF_URL_NEDRY = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExMGNkMGx3YnNkcXQ2bHJmNTZtZThraHhuNmVoOTNmbG0wcDloOXAybiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/7kyWoqTue3po4/giphy.gif'
+
+CONSULTORES = sorted([
+    "Alex Paulo da Silva", "Dirceu Gonçalves Siqueira Neto", "Douglas de Souza Gonçalves",
+    "Farley Leandro de Oliveira Juliano", "Gleis da Silva Rodrigues", "Hugo Leonardo Murta",
+    "Igor Dayrell Gonçalves Correa", "Jerry Marcos dos Santos Neto", "Jonatas Gomes Saraiva",
+    "Leandro Victor Catharino", "Luiz Henrique Barros Oliveira", "Marcelo dos Santos Dutra",
+    "Marina Silva Marques", "Marina Torres do Amaral", "Vanessa Ligiane Pimenta Santos"
+])
+
+LISTA_PROJETOS = ["Projeto Soma", "Manuais Eproc", "Treinamentos Eproc", "IA nos Cartórios", "Notebook Lm"]
+ATIVIDADES_DETALHE = ["Treinamento", "Homologação", "Redação Documentos", "Outros"]
+
+# --- TEMPLATES DE TEXTO ---
+TEMPLATE_ERRO = """TITULO: 
+OBJETIVO: 
+RELATO DO ERRO/TESTE: 
+RESULTADO: 
+OBSERVAÇÃO (SE TIVER): """
+
+EXEMPLO_TEXTO = """**TITULO** - Melhoria na Gestão das Procuradorias
+**OBJETIVO**
+Permitir que os perfis de Procurador Chefe e Gerente de Procuradoria possam gerenciar os usuários das procuradorias, incluindo as ações de ativação e inativação de procuradores.
+**RELATO DO TESTE**
+Foram realizados testes no menu “Gerenciar Procuradores”, com o intuito de validar as funcionalidades de ativação e desativação de usuários vinculados à procuradoria.
+Durante os testes, foram observados os seguintes comportamentos do sistema:
+▪ No perfil Procurador-Chefe, não foi exibido o botão destinado à exclusão ou inativação de usuários;
+▪ No perfil Gerente de Procuradoria, a funcionalidade de cadastro de usuários apresentou mensagem de erro ao ser acionada.
+**RESULTADO**
+O teste não foi bem-sucedido, sendo identificadas as seguintes inconsistências:
+* Perfil Procurador-Chefe: o sistema não apresenta o botão de exclusão/inativação de usuário;
+* Perfil Gerente de Procuradoria: ao tentar cadastrar novos usuários, o sistema exibe mensagem de erro."""
+
+# ============================================
+# 2. INTEGRAÇÃO E UTILITÁRIOS
+# ============================================
+
+def disparar_chat(webhook_url, mensagem):
+    """Envia mensagens ao Google Chat em segundo plano."""
+    def send():
+        try:
+            requests.post(webhook_url, json={"text": mensagem}, timeout=10)
+        except Exception:
+            pass
+    threading.Thread(target=send).start()
+
+def log_to_google_sheets(consultor, status_antigo, status_novo, duracao):
+    payload = {
+        "consultor": consultor,
+        "old_status": status_antigo if status_antigo else "Disponível",
+        "new_status": status_novo if status_novo else "Disponível",
+        "duration": duracao
+    }
+    threading.Thread(target=lambda: requests.post(URL_GOOGLE_SHEETS, json=payload, timeout=15)).start()
+    
+    # Webhook de Registro Geral
+    msg_reg = f"📝 *Registro de Status*\n👤 {consultor}\n⬅️ {status_antigo}\n➡️ {status_novo}\n⏱️ Duração: {duracao}"
+    disparar_chat(GOOGLE_CHAT_WEBHOOK_REGISTRO, msg_reg)
+
+def enviar_webhook_erro(tipo, consultor, conteudo):
+    payload = {"text": f"🚨 *NOVO RELATO: {tipo}*\n*Consultor:* {consultor}\n\n{conteudo}"}
+    try:
+        requests.post(WEBHOOK_ERROS, json=payload, timeout=10)
+        return True
+    except Exception:
+        return False
+
+def format_dur(td):
+    if not isinstance(td, timedelta): return "00:00:00"
+    s = int(td.total_seconds()); h, s = divmod(s, 3600); m, s = divmod(s, 60)
+    return f"{h:02}:{m:02}:{s:02}"
+
+def registrar_mudanca(nome, novo_status):
+    if nome == "Selecione um nome" or not nome: return
+    old_status = st.session_state.status_texto.get(nome, "Ausente")
+    start_time = st.session_state.current_status_starts.get(nome, datetime.now())
+    duracao = datetime.now() - start_time
+    dur_str = format_dur(duracao)
+
+    st.session_state.status_texto[nome] = novo_status
+    st.session_state.current_status_starts[nome] = datetime.now()
+    log_to_google_sheets(nome, old_status, novo_status, dur_str)
+    
+    if "Sessão:" in novo_status:
+        disparar_chat(GOOGLE_CHAT_WEBHOOK_SESSAO, f"🎙️ *Nova Sessão*\n👤 {nome}\n📍 {novo_status}")
+    save_state()
+
+# --- ESTADO GLOBAL ---
+@st.cache_resource(show_spinner=False)
+def get_global_state_cache():
+    return {
+        'status_texto': {nome: 'Ausente' for nome in CONSULTORES},
+        'bastao_queue': [],
+        'skip_flags': {},
+        'bastao_start_time': None,
+        'current_status_starts': {nome: datetime.now() for nome in CONSULTORES},
+        'report_last_run_date': date.min,
+        'bastao_counts': {nome: 0 for nome in CONSULTORES},
+        'rotation_gif_start_time': None,
+        'auxilio_ativo': False, 
+        'daily_logs': []
+    }
+
+def save_state():
+    cache = get_global_state_cache()
+    for k in cache.keys():
+        if k in st.session_state: cache[k] = st.session_state[k]
+
+# ============================================
+# 3. LÓGICA DO BASTÃO
+# ============================================
+
+def check_and_assume_baton():
+    q = st.session_state.bastao_queue
+    curr = next((n for n, s in st.session_state.status_texto.items() if s == 'Bastão'), None)
+    if curr and (curr not in q or st.session_state.status_texto[curr] == 'Ausente'):
+        registrar_mudanca(curr, 'Ausente')
+        curr = None
+    if not curr and q:
+        for nome in q:
+            if not st.session_state.skip_flags.get(nome):
+                st.session_state.status_texto[nome] = 'Bastão'
+                st.session_state.bastao_start_time = datetime.now()
+                disparar_chat(CHAT_WEBHOOK_BASTAO, f"🥂 *Novo Responsável*\n👤 {nome}")
+                save_state()
+                break
+
+def update_queue_callback(nome):
+    is_checked = st.session_state[f"chk_{nome}"]
+    if is_checked:
+        if nome not in st.session_state.bastao_queue: st.session_state.bastao_queue.append(nome)
+        registrar_mudanca(nome, "")
+    else:
+        if nome in st.session_state.bastao_queue: st.session_state.bastao_queue.remove(nome)
+        st.session_state.skip_flags.pop(nome, None)
+        registrar_mudanca(nome, "Ausente")
+    check_and_assume_baton()
+
+# ============================================
+# 4. INTERFACE PRINCIPAL
+# ============================================
+
+st.set_page_config(page_title="Controle Bastão Cesupe 2026", layout="wide", page_icon="🥂")
 
 if 'status_texto' not in st.session_state:
-    for k, v in get_global_state().items(): st.session_state[k] = v
+    cache = get_global_state_cache()
+    for k, v in cache.items(): st.session_state[k] = v
     st.session_state.active_view = None
+    st.session_state.consultor_selectbox = "Selecione um nome"
 
-st_autorefresh(interval=10000, key="global_refresh")
+st_autorefresh(interval=8000, key="global_refresh")
 
-# 4. CABEÇALHO (Pug + Título)
-c_pug, c_enter = st.columns([2, 1])
-with c_pug:
-    img_data = get_img_as_base64(PUG_FILENAME)
-    pug_src = f"data:image/png;base64,{img_data}" if img_data else ""
-    st.markdown(f'<div style="display: flex; align-items: center; gap: 20px;"><h1 style="color: #FFD700; margin: 0;">Controle Bastão Cesupe 2026 🥂</h1><img src="{pug_src}" style="width: 80px; height: 80px; border-radius: 50%; border: 3px solid #FFD700;"></div>', unsafe_allow_html=True)
+# Cabeçalho
+c_esq, c_dir = st.columns([2, 1], vertical_alignment="bottom")
+with c_esq:
+    st.markdown(f'<h1 style="color: #FFD700; margin: 0;">Controle Bastão Cesupe 2026 {BASTAO_EMOJI}</h1>', unsafe_allow_html=True)
 
-# 5. ÁREA DE AÇÃO (Banner + Botões)
-st.divider()
-col_act, col_chart = st.columns([1.8, 1.2])
+with c_dir:
+    c_sub1, c_sub2 = st.columns([2, 1], vertical_alignment="bottom")
+    with c_sub1:
+        n_resp = st.selectbox("Assumir Bastão (Rápido)", options=["Selecione"] + CONSULTORES, label_visibility="collapsed", key="quick_enter")
+    with c_sub2:
+        if st.button("🚀 Entrar"):
+            if n_resp != "Selecione":
+                st.session_state[f"chk_{n_resp}"] = True
+                update_queue_callback(n_resp)
+                st.session_state.consultor_selectbox = n_resp
+                st.rerun()
 
-with col_act:
-    responsavel = next((c for c, s in st.session_state.status_texto.items() if s == 'Bastão'), None)
-    if responsavel:
-        st.markdown(f'<div style="background: #FFF8DC; border: 3px solid #FFD700; padding: 15px; border-radius: 12px; display: flex; align-items: center;"><img src="{pug_src}" style="width: 45px; height: 45px; margin-right: 15px; border-radius: 50%;"><span style="font-size: 24px; font-weight: bold; color: #000080;">{responsavel}</span></div>', unsafe_allow_html=True)
+st.markdown("<hr style='border: 1px solid #FFD700; margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
+
+# Animação de Rotação
+if st.session_state.get('rotation_gif_start_time'):
+    if (datetime.now() - st.session_state.rotation_gif_start_time).total_seconds() < 12:
+        st.image(GIF_URL_ROTATION, width=250)
+
+col_m, col_s = st.columns([1.6, 1])
+
+with col_m:
+    # --- RESPONSÁVEL ATUAL (GIF AO LADO DO NOME) ---
+    dono = next((n for n, s in st.session_state.status_texto.items() if s == 'Bastão'), None)
+    st.header("Responsável Atual")
+    if dono:
+        st.markdown(f'''<div style="background: #FFF8DC; border: 4px solid #FFD700; padding: 25px; border-radius: 20px; display: flex; align-items: center; box-shadow: 2px 2px 10px rgba(0,0,0,0.1);">
+            <img src="{GIF_BASTAO_HOLDER}" style="width: 70px; height: 70px; margin-right: 20px; border-radius: 50%;">
+            <span style="font-size: 36px; font-weight: bold; color: #000080;">{dono}</span>
+        </div>''', unsafe_allow_html=True)
+        dur_b = datetime.now() - (st.session_state.bastao_start_time or datetime.now())
+        st.caption(f"⏱️ Tempo: {format_dur(dur_b)}")
+    else: st.warning("Ninguém com o bastão.")
+
+    st.subheader("Consultor(a)")
+    st.selectbox("Selecione seu nome:", ["Selecione um nome"] + CONSULTORES, key="consultor_selectbox", label_visibility="collapsed")
     
-    sel_user = st.selectbox("Selecione seu nome:", ["Selecione..."] + CONSULTORES, key="main_user")
+    st.markdown("**Ações:**")
+    btns = st.columns(8) 
+    if btns[0].button("🎯 Passar", use_container_width=True):
+        if st.session_state.consultor_selectbox == dono:
+            registrar_mudanca(dono, "")
+            st.session_state.rotation_gif_start_time = datetime.now()
+            check_and_assume_baton(); st.rerun()
+    if btns[1].button("⏭️ Pular", use_container_width=True):
+        sel = st.session_state.consultor_selectbox
+        if sel != "Selecione um nome":
+            st.session_state.skip_flags[sel] = True
+            if sel == dono: registrar_mudanca(sel, "")
+            check_and_assume_baton(); st.rerun()
+    if btns[2].button("📋 Atividades", use_container_width=True): st.session_state.active_view = "atv"
+    if btns[3].button("🍽️ Almoço", use_container_width=True): registrar_mudanca(st.session_state.consultor_selectbox, "Almoço"); st.rerun()
+    if btns[4].button("👤 Ausente", use_container_width=True): registrar_mudanca(st.session_state.consultor_selectbox, "Ausente"); st.rerun()
+    if btns[5].button("🎙️ Sessão", use_container_width=True): st.session_state.active_view = "ses"
+    if btns[6].button("🚶 Saída", use_container_width=True): registrar_mudanca(st.session_state.consultor_selectbox, "Saída rápida"); st.rerun()
+    if btns[7].button("📁 Projetos", use_container_width=True): st.session_state.active_view = "prj"
+
+    # --- VIEWS DINÂMICAS ---
+    if st.session_state.active_view == "atv":
+        with st.container(border=True):
+            esc = st.multiselect("Opções:", ["HP", "E-mail", "Whatsapp/Plantão", "Treinamento", "Homologação", "Redação Documentos", "Reunião", "Outros"])
+            det = st.text_input("Detalhes:")
+            if st.button("Confirmar"):
+                registrar_mudanca(st.session_state.consultor_selectbox, f"Atividade: {', '.join(esc)}" + (f" [{det}]" if det else ""))
+                st.session_state.active_view = None; st.rerun()
+
+    if st.session_state.active_view == "prj":
+        with st.container(border=True):
+            p_sel = st.selectbox("Escolha o projeto:", ["Selecione..."] + LISTA_PROJETOS)
+            p_obs = st.text_input("Observações:")
+            if st.button("Confirmar Projeto"):
+                registrar_mudanca(st.session_state.consultor_selectbox, f"Projeto: {p_sel} [{p_obs}]")
+                st.session_state.active_view = None; st.rerun()
+
+    if st.session_state.active_view == "ses":
+        with st.container(border=True):
+            setor = st.text_input("Setor da Sessão:")
+            if st.button("Gravar Sessão"):
+                registrar_mudanca(st.session_state.consultor_selectbox, f"Sessão: {setor}")
+                st.session_state.active_view = None; st.rerun()
+
+    if st.session_state.active_view == "err":
+        with st.container(border=True):
+            st.subheader("⚠️ Relatar Erro ou Novidade")
+            t_f, t_e = st.tabs(["📝 Preencher", "📖 Exemplo de Modelo"])
+            with t_f:
+                tipo_rel = st.radio("Tipo:", ["Erro", "Novidade"], horizontal=True)
+                val_init = TEMPLATE_ERRO if tipo_rel == "Erro" else ""
+                txt_rel = st.text_area("Descreva os detalhes:", value=val_init, height=250)
+                if st.button("Enviar para o Chat"):
+                    if enviar_webhook_erro(tipo_rel, st.session_state.consultor_selectbox, txt_rel):
+                        st.success("Relato enviado!"); st.session_state.active_view = None; st.rerun()
+
+    st.markdown("---")
+    # Barra de Ferramentas
+    tool_cols = st.columns(6) 
+    if tool_cols[0].button("📑 Checklist", use_container_width=True):
+        disparar_chat(GOOGLE_CHAT_WEBHOOK_CHECKLIST_HTML, f"📑 *Checklist*\n👤 {st.session_state.consultor_selectbox}"); st.toast("Checklist enviado!")
+    if tool_cols[1].button("🆘 Chamados", use_container_width=True):
+        disparar_chat(GOOGLE_CHAT_WEBHOOK_CHAMADO, f"🆘 *CHAMADO*\n👤 {st.session_state.consultor_selectbox}"); st.toast("Chamado disparado!")
+    tool_cols[2].button("📝 Atendimento", use_container_width=True)
+    if tool_cols[3].button("⏰ H. Extras", use_container_width=True):
+        disparar_chat(GOOGLE_CHAT_WEBHOOK_HORAS_EXTRAS, f"⏰ *Hora Extra*\n👤 {st.session_state.consultor_selectbox}"); st.toast("Extras registradas!")
+    tool_cols[4].button("🧠 Descanso", use_container_width=True)
+    if tool_cols[5].button("⚠️ Erro/Novidade", use_container_width=True): 
+        st.session_state.active_view = "err"; st.rerun()
+
+with col_s:
+    st.header("Status dos Consultores")
+    aux = st.toggle("Auxílio Ativado", key="auxilio_ativo", on_change=save_state)
+    if aux: st.warning("Auxílio Ativado!"); st.image(GIF_URL_NEDRY, width=220)
+    st.markdown("---")
     
-    # Duas linhas de botões
-    b1, b2, b3, b4, b5 = st.columns(5)
-    if b1.button("🎯 Passar", use_container_width=True): st.balloons() # Fogos
-    b2.button("📋 Atividades", use_container_width=True)
-    b3.button("🎙️ Sessão", use_container_width=True)
-    b4.button("📁 Projetos", use_container_width=True)
-    b5.button("👤 Ausente", use_container_width=True)
-    
-    t1, t2, t3, t4, t5, t6 = st.columns(6)
-    t1.button("📑 Checklist", use_container_width=True)
-    t2.button("🆘 Chamados", use_container_width=True)
-    t3.button("📝 Atendimento", use_container_width=True)
-    t4.button("⏰ H. Extras", use_container_width=True)
-    t5.button("🧠 Descanso", use_container_width=True)
-    t6.button("⚠️ Erro/Novidade", use_container_width=True)
+    ui = {'fila': [], 'atv': [], 'ses': [], 'prj': [], 'alm': [], 'sai': [], 'aus': []}
+    for n in CONSULTORES:
+        s = st.session_state.status_texto.get(n, 'Ausente')
+        if s in ['Bastão', '']: ui['fila'].append(n)
+        elif 'Atividade:' in s: ui['atv'].append((n, s.replace('Atividade: ', '')))
+        elif 'Sessão:' in s: ui['ses'].append((n, s.replace('Sessão: ', '')))
+        elif 'Projeto:' in s: ui['prj'].append((n, s.replace('Projeto: ', '')))
+        elif s == 'Almoço': ui['alm'].append(n)
+        elif s == 'Saída rápida': ui['sai'].append(n)
+        else: ui['aus'].append(n)
 
-with col_chart:
-    # Gráfico Donut
-    status_counts = pd.Series(st.session_state.status_texto).value_counts().reset_index()
-    fig = px.pie(status_counts, values='count', names='index', hole=.4, height=220, color_discrete_sequence=px.colors.qualitative.Pastel)
-    fig.update_layout(showlegend=False, margin=dict(t=0, b=0, l=0, r=0))
-    st.plotly_chart(fig, use_container_width=True)
+    def render_section(label, items, color, is_tup=False):
+        st.subheader(f"{label} ({len(items)})")
+        for i in items:
+            name = i[0] if is_tup else i; info = i[1] if is_tup else label
+            cn, cc = st.columns([0.7, 0.3])
+            cc.checkbox(" ", key=f"chk_{name}", value=(st.session_state.status_texto[name] in ['Bastão', '']), on_change=update_queue_callback, args=(name,))
+            if name == dono: cn.markdown(f"🥂 **{name}**")
+            else: cn.markdown(f"**{name}** :{color}-background[{info}]", unsafe_allow_html=True)
+        st.markdown("---")
 
-# 6. GRID DE STATUS (O Visual das 6 Colunas)
-st.divider()
-cols = st.columns(6)
-cats = [("Bastão", "bg-bastao"), ("Atividade", "bg-atividade"), ("Projeto", "bg-projeto"), ("Sessão", "bg-sessao"), ("Almoço", "bg-almoco"), ("Ausente", "bg-ausente")]
+    render_section("Na Fila", ui['fila'], "blue")
+    render_section("Em Atividade", ui['atv'], "orange", True)
+    render_section("Projetos", ui['prj'], "violet", True) 
+    render_section("Sessão", ui['ses'], "green", True)
+    render_section("Almoço", ui['alm'], "red")
+    render_section("Saída Rápida", ui['sai'], "red")
+    render_section("Ausente", ui['aus'], "grey")
 
-for i, (name, css) in enumerate(cats):
-    with cols[i]:
-        st.markdown(f'<div class="title-card {css}">{name}</div>', unsafe_allow_html=True)
-        # Filtra e exibe os consultores conforme o grid do dashboard
-        for consultor, status in st.session_state.status_texto.items():
-            if (name == "Bastão" and status == "Bastão") or (name != "Bastão" and name.lower() in status.lower()):
-                with st.popover(consultor, use_container_width=True):
-                    st.write(f"Histórico de {consultor}") # Popover amplo
+# RESET DIÁRIO
+now = datetime.now()
+if now.hour >= 20 and st.session_state.report_last_run_date < date.today():
+    st.session_state.status_texto = {nome: 'Ausente' for nome in CONSULTORES}
+    st.session_state.bastao_queue = []; st.session_state.skip_flags = {}
+    st.session_state.report_last_run_date = date.today(); save_state()
+    disparar_chat(GOOGLE_CHAT_WEBHOOK_BACKUP, "🧹 *Sistema Resetado*"); st.rerun()
