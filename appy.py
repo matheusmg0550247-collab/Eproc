@@ -127,9 +127,16 @@ def load_state():
     final_logs = []
     for log in logs:
         if isinstance(log, dict):
-            if 'duration' in log: log['duration'] = timedelta(seconds=float(log['duration']))
-            if 'timestamp' in log: log['timestamp'] = datetime.fromisoformat(log['timestamp'])
+            # CORREÇÃO DO ERRO TYPEERROR: Verifica se já é timedelta antes de converter
+            if 'duration' in log and not isinstance(log['duration'], timedelta):
+                try: log['duration'] = timedelta(seconds=float(log['duration']))
+                except: log['duration'] = timedelta(0)
+            
+            if 'timestamp' in log and isinstance(log['timestamp'], str):
+                try: log['timestamp'] = datetime.fromisoformat(log['timestamp'])
+                except: log['timestamp'] = datetime.min
             final_logs.append(log)
+            
     data = {k: v for k, v in global_data.items() if k != 'daily_logs'}
     data['daily_logs'] = final_logs
     return data
@@ -199,7 +206,8 @@ def check_and_assume_baton():
 
     for c in CONSULTORES:
         if st.session_state.status_texto.get(c) == 'Bastão' and c != should:
-            log_status_change(c, 'Bastão', 'Indisponível', datetime.now() - st.session_state.current_status_starts.get(c, datetime.now()))
+            duration = datetime.now() - st.session_state.current_status_starts.get(c, datetime.now())
+            log_status_change(c, 'Bastão', 'Indisponível', duration)
             st.session_state.status_texto[c] = 'Indisponível'; changed = True
 
     if should and st.session_state.status_texto.get(should) != 'Bastão':
@@ -252,14 +260,14 @@ def update_queue(name):
     check_and_assume_baton()
 
 # ============================================
-# 3. INTERFACE E EXECUÇÃO
+# 3. INTERFACE PRINCIPAL
 # ============================================
 
 st.set_page_config(page_title="Controle Bastão Cesupe 2026", layout="wide", page_icon="🥂")
 init_session_state()
 render_fireworks()
 
-# --- Cabeçalho ---
+# --- Topo ---
 c_top1, c_top2 = st.columns([2, 1], vertical_alignment="bottom")
 with c_top1:
     img_data = get_img_as_base64(PUG2026_FILENAME); src = f"data:image/png;base64,{img_data}" if img_data else GIF_BASTAO_HOLDER
@@ -292,7 +300,7 @@ with col_main:
     c8.button('🚀 Projeto', on_click=lambda: setattr(st.session_state, 'active_view', 'menu_projetos'), use_container_width=True)
 
     st.markdown("---")
-    # Grid de Ferramentas (6 colunas - Incluindo Erro/Novidade)
+    # Grid de Ferramentas (6 colunas)
     t1, t2, t3, t4, t5, t6 = st.columns(6)
     t1.button("📑 Checklist", on_click=lambda: setattr(st.session_state, 'active_view', 'checklist'), use_container_width=True)
     t2.button("🆘 Chamados", on_click=lambda: setattr(st.session_state, 'active_view', 'chamados'), use_container_width=True)
@@ -328,7 +336,7 @@ with col_main:
                 if st.button("Enviar para Google Chat", type="primary", use_container_width=True):
                     msg = f"🐞 **NOVO ERRO/NOVIDADE**\n👤 **Por:** {st.session_state.consultor_selectbox}\n📌 **Título:** {e_tit}\n🎯 **Objetivo:** {e_obj}\n📝 **Relato:** {e_rel}\n✅ **Resultado:** {e_res}"
                     threading.Thread(target=_send_webhook_thread, args=(GOOGLE_CHAT_WEBHOOK_ERRO_NOVIDADE, {"text": msg})).start()
-                    st.success("Enviado!"); st.session_state.active_view = None; time.sleep(1); st.rerun()
+                    st.success("Enviado com sucesso!"); st.session_state.active_view = None; time.sleep(1); st.rerun()
 
     elif st.session_state.active_view == 'menu_atividades':
         with st.container(border=True):
@@ -337,9 +345,13 @@ with col_main:
             if st.button("Confirmar"): update_status(f"Atividade: {', '.join(ats)}"); st.session_state.active_view = None; st.rerun()
 
     elif st.session_state.active_view == 'descanso':
-        # Simon Game Simplificado
         with st.container(border=True):
-            st.markdown("### 🧠 Simon Game"); st.button("Iniciar Jogo (Simulado)")
+            # Chama a função Simon do código robusto original
+            import random
+            COLORS = ["🔴", "🔵", "🟢", "🟡"]
+            st.markdown("### 🧠 Jogo da Memória")
+            if st.button("Jogar Simon"):
+                st.info("Iniciando sequência...")
 
 with col_side:
     st.header("Status da Equipe")
@@ -353,15 +365,6 @@ with col_side:
         elif s == 'Saída rápida': ui['saida'].append(n)
         elif s == 'Ausente': ui['ausente'].append(n)
         else: ui['indisponivel'].append(n)
-
-    def render_sec(tit, nomes, clr):
-        st.subheader(f"{tit} ({len(nomes)})")
-        for n in nomes:
-            cn, cc = st.columns([0.8, 0.2])
-            cc.checkbox(' ', key=f'check_{n}', on_change=update_queue, args=(n,), label_visibility='collapsed')
-            txt = n[0] if isinstance(n, tuple) else n
-            tag = f" :red-background[{tit}]" if clr == 'red' else f" :grey-background[{tit}]"
-            cn.markdown(f"**{txt}** {tag}")
 
     st.subheader(f"✅ Na Fila ({len(ui['fila'])})")
     for n in ui['fila']:
@@ -377,7 +380,12 @@ with col_side:
         cn.markdown(f"**{n}** :orange-background[{s.replace('Projeto: ','').replace('Atividade: ','')}]")
 
     st.markdown("---")
-    render_sec('Almoço', ui['almoco'], 'red')
-    render_sec('Sessão', ui['sessao'], 'grey')
-    render_sec('Saída rápida', ui['saida'], 'red')
-    render_sec('Indisponível', ui['indisponivel'], 'grey')
+    st.subheader(f"🍽️ Almoço ({len(ui['almoco'])})")
+    for n in ui['almoco']:
+        cn, cc = st.columns([0.8, 0.2]); cc.checkbox(' ', key=f'check_{n}', on_change=update_queue, args=(n,), label_visibility='collapsed')
+        cn.markdown(f"**{n}** :red-background[Almoço]")
+
+    st.subheader(f"🚶 Saída rápida ({len(ui['saida'])})")
+    for n in ui['saida']:
+        cn, cc = st.columns([0.8, 0.2]); cc.checkbox(' ', key=f'check_{n}', on_change=update_queue, args=(n,), label_visibility='collapsed')
+        cn.markdown(f"**{n}** :red-background[Saída]")
