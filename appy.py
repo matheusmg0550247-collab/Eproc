@@ -43,7 +43,7 @@ def get_global_state_cache():
 
 # --- Constantes (Webhooks) ---
 GOOGLE_CHAT_WEBHOOK_BACKUP = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU"
-CHAT_WEBHOOK_BASTAO = "" 
+CHAT_WEBHOOK_BASTAO = "https://chat.googleapis.com/v1/spaces/AAQAXbwpQHY/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=7AQaoGHiWIfv3eczQzVZ-fbQdBqSBOh1CyQ854o1f7k" 
 GOOGLE_CHAT_WEBHOOK_REGISTRO = "https://chat.googleapis.com/v1/spaces/AAQAVvsU4Lg/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=hSghjEZq8-1EmlfHdSoPRq_nTSpYc0usCs23RJOD-yk"
 GOOGLE_CHAT_WEBHOOK_CHAMADO = "https://chat.googleapis.com/v1/spaces/AAQAPPWlpW8/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=jMg2PkqtpIe3JbG_SZG_ZhcfuQQII9RXM0rZQienUZk"
 GOOGLE_CHAT_WEBHOOK_SESSAO = "https://chat.googleapis.com/v1/spaces/AAQAWs1zqNM/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=hIxKd9f35kKdJqWUNjttzRBfCsxomK0OJ3AkH9DJmxY"
@@ -201,21 +201,50 @@ def log_status_change(consultor, old_status, new_status, duration):
     print(f'LOG: {consultor} de "{old_status or "-"}" para "{new_status or "-"}" após {duration}')
     if not isinstance(duration, timedelta): duration = timedelta(0)
 
+    # ===============================================================
+    # 1. REGRA DO HORÁRIO: Início às 08:00
+    # ===============================================================
+    # Pega o horário real que o status anterior começou
+    start_t = st.session_state.current_status_starts.get(consultor, datetime.now())
+    now = datetime.now()
+    
+    # Define as 08:00 de hoje
+    today_8am = now.replace(hour=8, minute=0, second=0, microsecond=0)
+    
+    # Se o status começou antes das 08:00 e agora já passou das 08:00
+    # Considera que o tempo conta a partir das 08:00 de hoje.
+    final_duration = duration
+    if start_t < today_8am and now >= today_8am:
+         final_duration = now - today_8am
+         # Garante que não fique negativo (caso edge de segundos)
+         if final_duration.total_seconds() < 0:
+             final_duration = timedelta(0)
+    
+    # ===============================================================
+    # 2. REGRA DO RÓTULO: Status vazio = "Fila"
+    # ===============================================================
+    old_lbl = old_status
+    if old_lbl == '' or old_lbl is None: old_lbl = 'Fila'
+    
+    new_lbl = new_status
+    if new_lbl == '' or new_lbl is None: new_lbl = 'Fila'
+
     entry = {
         'timestamp': datetime.now(),
         'consultor': consultor,
-        'old_status': old_status, 
-        'new_status': new_status,
-        'duration': duration,
-        'duration_s': duration.total_seconds()
+        'old_status': old_lbl, 
+        'new_status': new_lbl,
+        'duration': final_duration,
+        'duration_s': final_duration.total_seconds()
     }
     st.session_state.daily_logs.append(entry)
     
-    # --- NOVO: ENVIA PARA O GOOGLE SHEETS ---
+    # --- ENVIA PARA O GOOGLE SHEETS COM AS NOVAS REGRAS ---
     timestamp_str = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-    duration_str = format_time_duration(duration)
-    send_log_to_sheets(timestamp_str, consultor, old_status, new_status, duration_str)
-    # ----------------------------------------
+    duration_str = format_time_duration(final_duration)
+    
+    send_log_to_sheets(timestamp_str, consultor, old_lbl, new_lbl, duration_str)
+    # ------------------------------------------------------
     
     if consultor not in st.session_state.current_status_starts:
         st.session_state.current_status_starts[consultor] = datetime.now()
