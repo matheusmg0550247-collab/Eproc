@@ -46,7 +46,7 @@ def get_global_state_cache():
 
 # --- Constantes (Webhooks) ---
 GOOGLE_CHAT_WEBHOOK_BACKUP = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU"
-CHAT_WEBHOOK_BASTAO = "https://chat.googleapis.com/v1/spaces/AAQAXbwpQHY/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=7AQaoGHiWIfv3eczQzVZ-fbQdBqSBOh1CyQ854o1f7k" 
+CHAT_WEBHOOK_BASTAO = "" 
 GOOGLE_CHAT_WEBHOOK_REGISTRO = "https://chat.googleapis.com/v1/spaces/AAQAVvsU4Lg/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=hSghjEZq8-1EmlfHdSoPRq_nTSpYc0usCs23RJOD-yk"
 GOOGLE_CHAT_WEBHOOK_CHAMADO = "https://chat.googleapis.com/v1/spaces/AAQAPPWlpW8/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=jMg2PkqtpIe3JbG_SZG_ZhcfuQQII9RXM0rZQienUZk"
 GOOGLE_CHAT_WEBHOOK_SESSAO = "https://chat.googleapis.com/v1/spaces/AAQAWs1zqNM/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=hIxKd9f35kKdJqWUNjttzRBfCsxomK0OJ3AkH9DJmxY"
@@ -114,19 +114,15 @@ def load_state():
     global_data = get_global_state_cache()
     logs = global_data.get('daily_logs', [])
     final_logs = []
-    
-    # Tratamento para evitar conversão duplicada (Correção do TypeError)
     for log in logs:
         if isinstance(log, dict):
             if 'duration' in log and not isinstance(log['duration'], timedelta):
                 try: log['duration'] = timedelta(seconds=float(log['duration']))
                 except: log['duration'] = timedelta(0)
-            
             if 'timestamp' in log and isinstance(log['timestamp'], str):
                 try: log['timestamp'] = datetime.fromisoformat(log['timestamp'])
                 except: log['timestamp'] = datetime.min
             final_logs.append(log)
-            
     data = {k: v for k, v in global_data.items() if k != 'daily_logs'}
     data['daily_logs'] = final_logs
     return data
@@ -305,7 +301,7 @@ with col_main:
     st.header("Ações do Consultor")
     st.selectbox('Selecione seu nome:', ['Selecione um nome'] + CONSULTORES, key='consultor_selectbox', label_visibility='collapsed')
     
-    # Grid de Ações (8 colunas - INCLUINDO PROJETOS)
+    # Grid de Ações (8 colunas)
     c1, c2, c3, c4, c5, c6, c7, c8 = st.columns(8)
     c1.button('🎯 Passar', on_click=rotate_bastao, use_container_width=True)
     c2.button('⏭️ Pular', on_click=lambda: setattr(st.session_state, 'skip_flags', {**st.session_state.skip_flags, st.session_state.consultor_selectbox: True}), use_container_width=True)
@@ -317,7 +313,7 @@ with col_main:
     c8.button('🚀 Projeto', on_click=lambda: setattr(st.session_state, 'active_view', 'menu_projetos'), use_container_width=True)
 
     st.markdown("---")
-    # Grid de Ferramentas (5 colunas - SEM Erro/Novidade)
+    # Grid de Ferramentas (5 colunas)
     t1, t2, t3, t4, t5 = st.columns(5)
     t1.button("📑 Checklist", on_click=lambda: setattr(st.session_state, 'active_view', 'checklist'), use_container_width=True)
     t2.button("🆘 Chamados", on_click=lambda: setattr(st.session_state, 'active_view', 'chamados'), use_container_width=True)
@@ -340,7 +336,6 @@ with col_main:
 
     elif st.session_state.active_view == 'descanso':
         with st.container(border=True):
-            # SIMON GAME
             COLORS = ["🔴", "🔵", "🟢", "🟡"]
             st.markdown("### 🧠 Simon Game"); st.caption("Repita a sequência!")
             if st.session_state.simon_status == 'start':
@@ -383,7 +378,6 @@ with col_main:
         with st.container(border=True):
             st.header("Gerador Checklist"); data_ep = st.date_input("Data Sessão:"); cam_ep = st.selectbox("Câmara:", CAMARAS_OPCOES)
             if st.button("Gerar/Enviar"):
-                # Simplificação da função handle_sessao para caber no bloco
                 if st.session_state.consultor_selectbox != 'Selecione um nome':
                      df = data_ep.strftime("%d/%m/%Y"); dfa = data_ep.strftime("%d-%m-%Y")
                      msg = f"Sessão {cam_ep} dia {df}."
@@ -417,21 +411,31 @@ with col_side:
 
     st.subheader(f"✅ Fila ({len(ui['fila'])})")
     for n in ui['fila']:
-        cn, cc = st.columns([0.8, 0.2]); cc.checkbox(' ', key=f'check_{n}', on_change=update_queue, args=(n,), label_visibility='collapsed')
+        cn, cc = st.columns([0.8, 0.2])
+        cc.checkbox(' ', key=f'check_{n}', on_change=update_queue, args=(n,), label_visibility='collapsed')
         if st.session_state.status_texto.get(n) == 'Bastão': cn.markdown(f"🥂 **{n}**")
         else: cn.markdown(n)
 
     st.markdown("---")
     st.subheader(f"🚀 Projetos ({len(ui['projeto'])})")
-    for n, p in ui['projeto']: st.markdown(f"**{n}** :blue-background[{p}]")
+    for n, p in ui['projeto']:
+        cn, cc = st.columns([0.8, 0.2])
+        cc.checkbox(' ', key=f'check_{n}', on_change=update_queue, args=(n,), label_visibility='collapsed')
+        cn.markdown(f"**{n}** :blue-background[{p}]")
 
     st.markdown("---")
     st.subheader(f"📋 Atividades ({len(ui['atividade'])})")
-    for n, a in ui['atividade']: st.markdown(f"**{n}** :orange-background[{a}]")
+    for n, a in ui['atividade']:
+        cn, cc = st.columns([0.8, 0.2])
+        cc.checkbox(' ', key=f'check_{n}', on_change=update_queue, args=(n,), label_visibility='collapsed')
+        cn.markdown(f"**{n}** :orange-background[{a}]")
     
     st.markdown("---")
     st.subheader(f"📌 Outros ({len(ui['outros'])})")
-    for n, s in ui['outros']: st.markdown(f"**{n}** :grey-background[{s}]")
+    for n, s in ui['outros']:
+        cn, cc = st.columns([0.8, 0.2])
+        cc.checkbox(' ', key=f'check_{n}', on_change=update_queue, args=(n,), label_visibility='collapsed')
+        cn.markdown(f"**{n}** :grey-background[{s}]")
 
 now_br = datetime.utcnow() - timedelta(hours=3)
 if now_br.hour >= 20 and now_br.date() > (st.session_state.report_last_run_date.date() if isinstance(st.session_state.report_last_run_date, datetime) else datetime.min.date()):
