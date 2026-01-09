@@ -20,13 +20,21 @@ CONSULTORES = sorted([
   "Barbara Mara", "Bruno Glaicon", "Claudia Luiza", "Douglas Paiva", "Fábio Alves", "Glayce Torres", "Isabela Dias", "Isac Candido", "Ivana Guimarães", "Leonardo Damaceno", "Marcelo PenaGuerra", "Michael Douglas", "Morôni", "Pablo Victor Lenti Mol", "Ranyer Segal", "Sarah Leal", "Victoria Lisboa"
 ])
 
-# --- NOVAS CONSTANTES PARA PROJETOS E ERROS ---
+# --- NOVAS CONSTANTES SOLICITADAS ---
 LISTA_PROJETOS = ["Projeto Soma", "Manuais Eproc", "Treinamentos Eproc", "IA nos Cartórios", "Notebook Lm"]
 TEMPLATE_ERRO = """TITULO: 
 OBJETIVO: 
 RELATO DO ERRO/TESTE: 
 RESULTADO: 
 OBSERVAÇÃO (SE TIVER): """
+
+EXEMPLO_TEXTO = """**TITULO** - Melhoria na Gestão das Procuradorias
+**OBJETIVO**
+Permitir que os perfis de Procurador Chefe e Gerente de Procuradoria possam gerenciar os usuários das procuradorias...
+**RELATO DO TESTE**
+Foram realizados testes no menu “Gerenciar Procuradores”...
+**RESULTADO**
+Inconsistências identificadas: o sistema não apresenta o botão de exclusão."""
 
 # --- FUNÇÃO DE CACHE GLOBAL ---
 @st.cache_resource(show_spinner=False)
@@ -45,7 +53,7 @@ def get_global_state_cache():
         'lunch_warning_info': None,
         'auxilio_ativo': False, 
         'daily_logs': [],
-        'simon_ranking': []
+        'simon_ranking': [] 
     }
 
 # --- Constantes (Webhooks) ---
@@ -94,7 +102,6 @@ GIF_URL_ROTATION = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExdmx4azVxbG
 GIF_URL_LUNCH_WARNING = 'https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExMGZlbHN1azB3b2drdTI1eG10cDEzeWpmcmtwenZxNTV0bnc2OWgzZSYlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/bNlqpmBJRDMpxulfFB/giphy.gif'
 GIF_URL_NEDRY = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExMGNkMGx3YnNkcXQ2bHJmNTZtZThraHhuNmVoOTNmbG0wcDloOXAybiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/7kyWoqTue3po4/giphy.gif'
 SOUND_URL = "https://github.com/matheusmg0550247-collab/controle-bastao-eproc2/raw/main/doorbell-223669.mp3"
-
 PUG2026_FILENAME = "pug2026.png"
 
 # ============================================
@@ -167,7 +174,9 @@ def load_state():
     return loaded_data
 
 def log_status_change(consultor, old_status, new_status, duration):
+    print(f'LOG: {consultor} de "{old_status or "-"}" para "{new_status or "-"}" após {duration}')
     if not isinstance(duration, timedelta): duration = timedelta(0)
+
     entry = {
         'timestamp': datetime.now(),
         'consultor': consultor,
@@ -177,6 +186,7 @@ def log_status_change(consultor, old_status, new_status, duration):
         'duration_s': duration.total_seconds()
     }
     st.session_state.daily_logs.append(entry)
+    
     if consultor not in st.session_state.current_status_starts:
         st.session_state.current_status_starts[consultor] = datetime.now()
     st.session_state.current_status_starts[consultor] = datetime.now()
@@ -194,21 +204,27 @@ def _send_webhook_thread(url, payload):
 
 def send_chat_notification_internal(consultor, status):
     if CHAT_WEBHOOK_BASTAO and status == 'Bastão':
-        message_text = f"🎉 **BASTÃO GIRADO!** 🎉 \n\n- **Novo(a) Responsável:** {consultor}\n- **Acesse o Painel:** {APP_URL_CLOUD}" 
-        threading.Thread(target=_send_webhook_thread, args=(CHAT_WEBHOOK_BASTAO, {"text": message_text})).start()
+        message_template = "🎉 **BASTÃO GIRADO!** 🎉 \n\n- **Novo(a) Responsável:** {consultor}\n- **Acesse o Painel:** {app_url}"
+        message_text = message_template.format(consultor=consultor, app_url=APP_URL_CLOUD) 
+        chat_message = {"text": message_text}
+        threading.Thread(target=_send_webhook_thread, args=(CHAT_WEBHOOK_BASTAO, chat_message)).start()
         return True
     return False
 
 def send_horas_extras_to_chat(consultor, data, inicio, tempo, motivo):
     if not GOOGLE_CHAT_WEBHOOK_HORAS_EXTRAS: return False
-    msg = f"⏰ **Registro de Horas Extras**\n👤 {consultor}\n📅 {data.strftime('%d/%m/%Y')}\n🕐 {inicio.strftime('%H:%M')}\n⏱️ {tempo}\n📝 {motivo}"
-    threading.Thread(target=_send_webhook_thread, args=(GOOGLE_CHAT_WEBHOOK_HORAS_EXTRAS, {"text": msg})).start()
+    data_formatada = data.strftime("%d/%m/%Y")
+    inicio_formatado = inicio.strftime("%H:%M")
+    msg = (f"⏰ **Registro de Horas Extras**\n👤 {consultor}\n📅 {data_formatada}\n🕐 {inicio_formatado}\n⏱️ {tempo}\n📝 {motivo}")
+    chat_message = {"text": msg}
+    threading.Thread(target=_send_webhook_thread, args=(GOOGLE_CHAT_WEBHOOK_HORAS_EXTRAS, chat_message)).start()
     return True
 
 def send_atendimento_to_chat(consultor, data, usuario, nome_setor, sistema, descricao, canal, desfecho, jira_opcional=""):
     if not GOOGLE_CHAT_WEBHOOK_REGISTRO: return False
-    msg = f"📋 **Atendimento**\n👤 {consultor}\n🏢 {nome_setor}\n💻 {sistema}\n✅ {desfecho}"
-    threading.Thread(target=_send_webhook_thread, args=(GOOGLE_CHAT_WEBHOOK_REGISTRO, {"text": msg})).start()
+    msg = (f"📋 **Novo Registro de Atendimento**\n👤 {consultor}\n🏢 {nome_setor}\n💻 {sistema}\n📞 {canal}")
+    chat_message = {"text": msg}
+    threading.Thread(target=_send_webhook_thread, args=(GOOGLE_CHAT_WEBHOOK_REGISTRO, chat_message)).start()
     return True
 
 def play_sound_html(): return f'<audio autoplay="true"><source src="{SOUND_URL}" type="audio/mpeg"></audio>'
@@ -217,14 +233,15 @@ def render_fireworks():
     fireworks_css = """
     <style>
     @keyframes firework { 0% { transform: translate(var(--x), var(--initialY)); width: var(--initialSize); opacity: 1; } 50% { width: 0.5vmin; opacity: 1; } 100% { width: var(--finalSize); opacity: 0; } }
-    .firework, .firework::before, .firework::after { --initialSize: 0.5vmin; --finalSize: 45vmin; --particleSize: 0.2vmin; --color1: #ff0000; --color2: #ffd700; content: ""; animation: firework 2s infinite; position: absolute; top: 50%; left: 50%; width: var(--initialSize); aspect-ratio: 1; background: radial-gradient(circle, var(--color1) var(--particleSize), #0000 0) 50% 0%, radial-gradient(circle, var(--color2) var(--particleSize), #0000 0) 100% 50%, radial-gradient(circle, var(--color1) var(--particleSize), #0000 0) 50% 100%, radial-gradient(circle, var(--color2) var(--particleSize), #0000 0) 0% 50%; background-size: var(--initialSize) var(--initialSize); background-repeat: no-repeat; }
+    .firework, .firework::before, .firework::after { --initialSize: 0.5vmin; --finalSize: 45vmin; --particleSize: 0.2vmin; --color1: #ff0000; --color2: #ffd700; --color3: #b22222; --color4: #daa520; --color5: #ff4500; --color6: #b8860b; --y: -30vmin; --x: -50%; --initialY: 60vmin; content: ""; animation: firework 2s infinite; position: absolute; top: 50%; left: 50%; transform: translate(-50%, var(--y)); width: var(--initialSize); aspect-ratio: 1; background: radial-gradient(circle, var(--color1) var(--particleSize), #0000 0) 50% 0%, radial-gradient(circle, var(--color2) var(--particleSize), #0000 0) 100% 50%, radial-gradient(circle, var(--color3) var(--particleSize), #0000 0) 50% 100%, radial-gradient(circle, var(--color4) var(--particleSize), #0000 0) 0% 50%; background-size: var(--initialSize) var(--initialSize); background-repeat: no-repeat; }
     </style>
-    <div class="firework"></div>
+    <div class="firework"></div><div class="firework"></div><div class="firework"></div>
     """
     st.markdown(fireworks_css, unsafe_allow_html=True)
 
 def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
-    return f"<html><body>Checklist para {camara_nome} por {consultor_nome}</body></html>"
+    html_template = f"<html><body><h2>Checklist Gerado para {camara_nome}</h2><p>Responsável: {consultor_nome}</p></body></html>"
+    return html_template
 
 def send_sessao_to_chat(consultor, texto_mensagem):
     if not GOOGLE_CHAT_WEBHOOK_SESSAO: return False
@@ -239,8 +256,8 @@ def init_session_state():
     persisted_state = load_state()
     defaults = {
         'bastao_start_time': None, 'report_last_run_date': datetime.min, 'rotation_gif_start_time': None,
-        'play_sound': False, 'gif_warning': False, 'lunch_warning_info': None, 'last_reg_status': None,
-        'chamado_guide_step': 0, 'sessao_msg_preview': "", 'html_download_ready': False, 'html_content_cache': "",
+        'play_sound': False, 'gif_warning': False, 'lunch_warning_info': None, 'last_reg_status': None, 
+        'chamado_guide_step': 0, 'sessao_msg_preview': "", 'html_download_ready': False, 'html_content_cache': "", 
         'auxilio_ativo': False, 'active_view': None, 'last_jira_number': "",
         'simon_sequence': [], 'simon_user_input': [], 'simon_status': 'start', 'simon_level': 1
     }
@@ -248,13 +265,17 @@ def init_session_state():
         if key not in st.session_state: st.session_state[key] = persisted_state.get(key, default)
 
     st.session_state['bastao_queue'] = persisted_state.get('bastao_queue', []).copy()
+    st.session_state['priority_return_queue'] = persisted_state.get('priority_return_queue', []).copy()
+    st.session_state['bastao_counts'] = persisted_state.get('bastao_counts', {}).copy()
     st.session_state['skip_flags'] = persisted_state.get('skip_flags', {}).copy()
     st.session_state['status_texto'] = persisted_state.get('status_texto', {}).copy()
     st.session_state['current_status_starts'] = persisted_state.get('current_status_starts', {}).copy()
     st.session_state['daily_logs'] = persisted_state.get('daily_logs', []).copy() 
     st.session_state['auxilio_ativo'] = persisted_state.get('auxilio_ativo', False)
+    st.session_state['simon_ranking'] = persisted_state.get('simon_ranking', [])
 
     for nome in CONSULTORES:
+        st.session_state.bastao_counts.setdefault(nome, 0)
         st.session_state.skip_flags.setdefault(nome, False)
         current_status = st.session_state.status_texto.get(nome, 'Indisponível') 
         st.session_state[f'check_{nome}'] = (current_status == 'Bastão' or current_status == '')
@@ -268,8 +289,8 @@ def find_next_holder_index(current_index, queue, skips):
     next_idx = (current_index + 1) % num
     attempts = 0
     while attempts < num:
-        consultor = queue[next_idx]
-        if not skips.get(consultor, False) and st.session_state.get(f'check_{consultor}'): return next_idx
+        c = queue[next_idx]
+        if not skips.get(c, False) and st.session_state.get(f'check_{c}'): return next_idx
         next_idx = (next_idx + 1) % num
         attempts += 1
     return -1
@@ -279,10 +300,10 @@ def check_and_assume_baton():
     skips = st.session_state.skip_flags
     current_holder = next((c for c, s in st.session_state.status_texto.items() if s == 'Bastão'), None)
     is_current_valid = (current_holder and current_holder in queue and st.session_state.get(f'check_{current_holder}'))
-    next_idx = find_next_holder_index(-1, queue, skips)
-    first_eligible = queue[next_idx] if next_idx != -1 else None
+    idx = find_next_holder_index(-1, queue, skips)
+    eligible = queue[idx] if idx != -1 else None
     
-    should_have_baton = current_holder if is_current_valid else first_eligible
+    should_have_baton = current_holder if is_current_valid else eligible
     changed = False
 
     for c in CONSULTORES:
@@ -291,7 +312,6 @@ def check_and_assume_baton():
             changed = True
 
     if should_have_baton and st.session_state.status_texto.get(should_have_baton) != 'Bastão':
-        log_status_change(should_have_baton, st.session_state.status_texto.get(should_have_baton, ''), 'Bastão', timedelta(0))
         st.session_state.status_texto[should_have_baton] = 'Bastão'
         st.session_state.bastao_start_time = datetime.now()
         send_chat_notification_internal(should_have_baton, 'Bastão') 
@@ -306,10 +326,11 @@ def update_queue(consultor):
     dur = datetime.now() - st.session_state.current_status_starts.get(consultor, datetime.now())
 
     if is_checked: 
+        log_status_change(consultor, old_s, '', dur)
         st.session_state.status_texto[consultor] = '' 
         if consultor not in st.session_state.bastao_queue: st.session_state.bastao_queue.append(consultor) 
     else: 
-        if old_s not in STATUSES_DE_SAIDA and old_s != 'Bastão': st.session_state.status_texto[consultor] = 'Indisponível' 
+        if old_s not in STATUSES_DE_SAIDA and old_s != 'Bastão': log_status_change(consultor, old_s, 'Indisponível', dur); st.session_state.status_texto[consultor] = 'Indisponível' 
         if consultor in st.session_state.bastao_queue: st.session_state.bastao_queue.remove(consultor)
         
     check_and_assume_baton()
@@ -339,9 +360,6 @@ def toggle_skip():
     st.session_state.skip_flags[selected] = not st.session_state.skip_flags.get(selected, False)
     save_state() 
 
-def manual_rerun(): st.rerun() 
-def on_auxilio_change(): save_state()
-
 def update_status(status_text): 
     selected = st.session_state.consultor_selectbox
     if not selected or selected == 'Selecione um nome': return
@@ -354,13 +372,16 @@ def update_status(status_text):
     check_and_assume_baton()
     save_state()
 
-# --- JOGO SIMON ---
 def handle_simon_game():
-    st.markdown("### 🧠 Simon Game")
+    st.markdown("### 🧠 Jogo Simon")
     if st.button("Iniciar"): st.session_state.simon_status = 'playing'; st.rerun()
 
+def manual_rerun(): st.rerun() 
+def on_auxilio_change(): save_state()
+def set_chamado_step(step): st.session_state.chamado_guide_step = step
+
 # ============================================
-# 4. EXECUÇÃO PRINCIPAL
+# 3. EXECUÇÃO PRINCIPAL
 # ============================================
 
 st.set_page_config(page_title="Controle Bastão Cesupe 2026", layout="wide", page_icon="🥂")
@@ -375,7 +396,7 @@ with c_topo_esq:
 
 with c_topo_dir:
     c_sub1, c_sub2 = st.columns([2, 1], vertical_alignment="bottom")
-    with c_sub1: nv_resp = st.selectbox("Assumir Bastão", options=["Selecione"] + CONSULTORES, label_visibility="collapsed")
+    with c_sub1: nv_resp = st.selectbox("Assumir Bastão (Rápido)", options=["Selecione"] + CONSULTORES, label_visibility="collapsed")
     with c_sub2:
         if st.button("🚀 Entrar"):
             if nv_resp != "Selecione":
@@ -383,11 +404,13 @@ with c_topo_dir:
                 update_queue(nv_resp); st.rerun()
 
 st.markdown("<hr style='border: 1px solid #FFD700; margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True) 
-st_autorefresh(interval=8000, key='refresh')
+st_autorefresh(interval=8000, key='auto_rerun')
+render_fireworks()
 
-col_principal, col_disponibilidade = st.columns([1.5, 1])
+col_p, col_d = st.columns([1.5, 1])
 
-with col_principal:
+with col_p:
+    # Responsável
     responsavel = next((c for c, s in st.session_state.status_texto.items() if s == 'Bastão'), None)
     st.header("Responsável pelo Bastão")
     if responsavel:
@@ -397,7 +420,8 @@ with col_principal:
     st.selectbox('Selecione seu nome:', options=['Selecione um nome'] + CONSULTORES, key='consultor_selectbox', label_visibility='collapsed')
     
     st.markdown("**Ações:**")
-    c1, c2, c3, c4, c5, c6, c7, c8 = st.columns(8) # Ampliado para 8 colunas
+    # Ampliado para 8 colunas para Projetos
+    c1, c2, c3, c4, c5, c6, c7, c8 = st.columns(8) 
     c1.button('🎯 Passar', on_click=rotate_bastao, use_container_width=True)
     c2.button('⏭️ Pular', on_click=toggle_skip, use_container_width=True)
     c3.button('📋 Atividades', on_click=lambda: st.session_state.update({'active_view':'menu_atividades'}), use_container_width=True)
@@ -405,7 +429,7 @@ with col_principal:
     c5.button('👤 Ausente', on_click=lambda: update_status('Ausente'), use_container_width=True)
     c6.button('🎙️ Sessão', on_click=lambda: update_status("Sessão"), use_container_width=True)
     c7.button('🚶 Saída', on_click=lambda: update_status('Saída rápida'), use_container_width=True)
-    if c8.button('📁 Projetos', use_container_width=True): st.session_state.active_view = 'projetos' # BOTÃO SOLICITADO
+    if c8.button('📁 Projetos', use_container_width=True): st.session_state.active_view = 'projetos'
 
     # --- VIEWS DINÂMICAS SOLICITADAS ---
     if st.session_state.active_view == 'projetos':
@@ -422,22 +446,22 @@ with col_principal:
                 tipo = st.radio("Tipo:", ["Erro", "Novidade"], horizontal=True)
                 txt = st.text_area("Descreva:", value=(TEMPLATE_ERRO if tipo=="Erro" else ""), height=200)
                 if st.button("Enviar para o Chat"):
-                    disparar_chat(WEBHOOK_ERROS, {"text": f"🚨 {tipo} por {st.session_state.consultor_selectbox}\n{txt}"})
+                    threading.Thread(target=_send_webhook_thread, args=(WEBHOOK_ERROS, {"text": f"🚨 {tipo} por {st.session_state.consultor_selectbox}\n{txt}"})).start()
                     st.success("Enviado!"); st.session_state.active_view = None; st.rerun()
             with t2: st.markdown(EXEMPLO_TEXTO)
 
     st.markdown("---")
-    # BARRA DE FERRAMENTAS (6 Colunas)
-    t_tool = st.columns(6)
-    t_tool[0].button("📑 Checklist", use_container_width=True)
-    t_tool[1].button("🆘 Chamados", use_container_width=True)
-    t_tool[2].button("📝 Atendimento", use_container_width=True)
-    t_tool[3].button("⏰ H. Extras", use_container_width=True)
-    t_tool[4].button("🧠 Descanso", use_container_width=True)
-    if t_tool[5].button("⚠️ Erro/Novidade", use_container_width=True): st.session_state.active_view = 'erro_novidade'; st.rerun()
+    # FERRAMENTAS INFERIORES (6 Colunas)
+    tcols = st.columns(6)
+    tcols[0].button("📑 Checklist", use_container_width=True)
+    tcols[1].button("🆘 Chamados", use_container_width=True)
+    tcols[2].button("📝 Atendimento", use_container_width=True)
+    tcols[3].button("⏰ H. Extras", use_container_width=True)
+    tcols[4].button("🧠 Descanso", on_click=lambda: st.session_state.update({'active_view':'descanso'}), use_container_width=True)
+    if tcols[5].button("⚠️ Erro/Novidade", use_container_width=True): st.session_state.active_view = 'erro_novidade'; st.rerun()
 
-with col_disponibilidade:
-    st.toggle("Auxílio HP/Emails/Whatsapp", key='aux_atv')
+with col_d:
+    st.toggle("Auxílio HP/Emails/Whatsapp", key='auxilio_ativo', on_change=on_auxilio_change)
     st.markdown("---")
     st.header('Status da Equipe')
     
@@ -449,7 +473,7 @@ with col_disponibilidade:
         elif s.startswith('Atividade:'): ui['demanda'].append(n)
         else: ui['outros'].append(n)
 
-    # ✅ NA FILA (ESTRUTURA ORIGINAL PRESERVADA)
+    # ✅ NA FILA (CHECKBOXES PRESERVADOS)
     st.subheader(f'✅ Na Fila ({len(ui["fila"])})')
     for n in ui['fila']:
         cn, cc = st.columns([0.8, 0.2])
@@ -457,7 +481,7 @@ with col_disponibilidade:
         if n == responsavel: cn.markdown(f'<span style="background-color:#FFD700;padding:2px 5px;border-radius:5px;">🥂 {n}</span>', unsafe_allow_html=True)
         else: cn.write(f"**{n}** :blue-background[Aguardando]")
 
-    # 📁 PROJETOS (NOVA SEÇÃO SOLICITADA)
+    # 📁 EM PROJETO (VIOLET)
     st.divider()
     st.subheader(f'📁 Em Projeto ({len(ui["projetos"])})')
     for n, p in ui['projetos']:
@@ -468,8 +492,10 @@ with col_disponibilidade:
     st.divider()
     st.subheader(f'📋 Demanda/Outros ({len(ui["demanda"])+len(ui["outros"])})')
     for n in ui['demanda'] + ui['outros']:
-        st.caption(f"• {n}: {st.session_state.status_texto[n]}")
+        cn, cc = st.columns([0.8, 0.2])
+        cc.checkbox(' ', key=f'check_{n}', value=False, on_change=update_queue, args=(n,), label_visibility='collapsed')
+        cn.caption(f"{n}: {st.session_state.status_texto[n]}")
 
-# RESET DIÁRIO (Trigger 20h)
+# RESET DIÁRIO 20H
 if datetime.now().hour >= 20 and st.session_state.report_last_run_date.date() < date.today():
     send_daily_report()
