@@ -43,7 +43,7 @@ def get_global_state_cache():
 
 # --- Constantes (Webhooks) ---
 GOOGLE_CHAT_WEBHOOK_BACKUP = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU"
-CHAT_WEBHOOK_BASTAO = "https://chat.googleapis.com/v1/spaces/AAQAXbwpQHY/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=7AQaoGHiWIfv3eczQzVZ-fbQdBqSBOh1CyQ854o1f7k" 
+CHAT_WEBHOOK_BASTAO = "" 
 GOOGLE_CHAT_WEBHOOK_REGISTRO = "https://chat.googleapis.com/v1/spaces/AAQAVvsU4Lg/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=hSghjEZq8-1EmlfHdSoPRq_nTSpYc0usCs23RJOD-yk"
 GOOGLE_CHAT_WEBHOOK_CHAMADO = "https://chat.googleapis.com/v1/spaces/AAQAPPWlpW8/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=jMg2PkqtpIe3JbG_SZG_ZhcfuQQII9RXM0rZQienUZk"
 GOOGLE_CHAT_WEBHOOK_SESSAO = "https://chat.googleapis.com/v1/spaces/AAQAWs1zqNM/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=hIxKd9f35kKdJqWUNjttzRBfCsxomK0OJ3AkH9DJmxY"
@@ -77,6 +77,13 @@ OPCOES_ATIVIDADES_STATUS = [
     "HP", "E-mail", "WhatsApp Plantão", 
     "Treinamento", "Homologação", "Redação Documentos", "Reunião", "Outros"
 ]
+
+# --- NOVAS OPÇÕES DE PROJETOS ---
+OPCOES_PROJETOS = [
+    "Soma", "Treinamentos Eproc", "Manuais Eproc", 
+    "Cartilhas Gabinetes", "Notebook Lm", "Inteligência artifical cartórios"
+]
+
 GIF_BASTAO_HOLDER = "https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExa3Uwazd5cnNra2oxdDkydjZkcHdqcWN2cng0Y2N0cmNmN21vYXVzMiZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/3rXs5J0hZkXwTZjuvM/giphy.gif"
 BASTAO_EMOJI = "🥂" 
 APP_URL_CLOUD = 'https://controle-bastao-cesupe.streamlit.app'
@@ -1117,7 +1124,8 @@ with col_principal:
             if view_name == 'chamados':
                 st.session_state.chamado_guide_step = 1
 
-    c1, c2, c3, c4, c5, c6, c7 = st.columns(7) 
+    # --- INSERIDO: BOTÃO PROJETO (COLUNA C8) ---
+    c1, c2, c3, c4, c5, c6, c7, c8 = st.columns(8) 
     c1.button('🎯 Passar', on_click=rotate_bastao, use_container_width=True, help='Passa o bastão.')
     c2.button('⏭️ Pular', on_click=toggle_skip, use_container_width=True, help='Pular vez.')
     c3.button('📋 Atividades', on_click=toggle_view, args=('menu_atividades',), use_container_width=True)
@@ -1125,6 +1133,7 @@ with col_principal:
     c5.button('👤 Ausente', on_click=update_status, args=('Ausente', False,), use_container_width=True)
     c6.button('🎙️ Sessão', on_click=lambda: update_status("Sessão", False), use_container_width=True)
     c7.button('🚶 Saída', on_click=update_status, args=('Saída rápida', False,), use_container_width=True)
+    c8.button('🏗️ Projeto', on_click=toggle_view, args=('menu_projetos',), use_container_width=True)
     
     # MENU ATIVIDADES
     if st.session_state.active_view == 'menu_atividades':
@@ -1151,6 +1160,24 @@ with col_principal:
                         st.warning("Selecione pelo menos uma atividade.")
             with col_confirm_2:
                 if st.button("Cancelar", use_container_width=True, key='cancel_act'):
+                    st.session_state.active_view = None
+                    st.rerun()
+
+    # --- INSERIDO: MENU PROJETOS ---
+    if st.session_state.active_view == 'menu_projetos':
+        with st.container(border=True):
+            st.markdown("### Selecione o Projeto")
+            projeto_escolhido = st.selectbox("Projeto:", OPCOES_PROJETOS)
+            
+            col_p1, col_p2 = st.columns(2)
+            with col_p1:
+                if st.button("Confirmar Projeto", type="primary", use_container_width=True):
+                    status_final = f"Projeto: {projeto_escolhido}"
+                    update_status(status_final, False)
+                    st.session_state.active_view = None
+                    st.rerun()
+            with col_p2:
+                if st.button("Cancelar", use_container_width=True, key='cancel_proj'):
                     st.session_state.active_view = None
                     st.rerun()
     
@@ -1271,7 +1298,8 @@ with col_disponibilidade:
     st.header('Status dos(as) Consultores(as)')
     st.markdown('Marque/Desmarque para entrar/sair.')
     
-    ui_lists = {'fila': [], 'almoco': [], 'saida': [], 'ausente': [], 'atividade_especifica': [], 'sessao_especifica': [], 'indisponivel': []} 
+    # --- INSERIDO: Lista projeto_especifico ---
+    ui_lists = {'fila': [], 'almoco': [], 'saida': [], 'ausente': [], 'atividade_especifica': [], 'sessao_especifica': [], 'projeto_especifico': [], 'indisponivel': []} 
     for nome in CONSULTORES:
         is_checked = st.session_state.get(f'check_{nome}', False)
         status = st.session_state.status_texto.get(nome, 'Indisponível')
@@ -1283,6 +1311,9 @@ with col_disponibilidade:
         elif status.startswith('Sessão'):
             clean_status = status.replace('Sessão: ', '')
             ui_lists['sessao_especifica'].append((nome, clean_status))
+        elif status.startswith('Projeto'): # --- LÓGICA DE PROJETO ---
+            clean_status = status.replace('Projeto: ', '')
+            ui_lists['projeto_especifico'].append((nome, clean_status))
         elif status.startswith('Atividade') or status == 'Atendimento': 
             if status == 'Atendimento':
                 ui_lists['atividade_especifica'].append((nome, "Atendimento"))
@@ -1342,6 +1373,18 @@ with col_disponibilidade:
             col_check.checkbox(' ', key=f'check_{nome}', value=False, on_change=update_queue, args=(nome,), label_visibility='collapsed')
             col_nome.markdown(f'**{nome}** :green-background[{status_desc}]', unsafe_allow_html=True)
     st.markdown('---')
+
+    # --- INSERIDO: RENDERIZAÇÃO DA SEÇÃO PROJETOS ---
+    st.subheader(f'🏗️ Em Projetos ({len(ui_lists["projeto_especifico"])})')
+    if not ui_lists['projeto_especifico']: 
+        st.markdown('_Ninguém em projeto._')
+    else:
+        for nome, status_desc in sorted(ui_lists['projeto_especifico'], key=lambda x: x[0]):
+            col_nome, col_check = st.columns([0.8, 0.2])
+            col_check.checkbox(' ', key=f'check_{nome}', value=False, on_change=update_queue, args=(nome,), label_visibility='collapsed')
+            col_nome.markdown(f'**{nome}** :blue-background[{status_desc}]', unsafe_allow_html=True)
+    st.markdown('---')
+    # ------------------------------------------------
 
     render_section('Saída rápida', '🚶', ui_lists['saida'], 'red')
     render_section('Ausente', '👤', ui_lists['ausente'], 'violet') 
