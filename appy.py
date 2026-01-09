@@ -43,13 +43,14 @@ def get_global_state_cache():
 
 # --- Constantes (Webhooks) ---
 GOOGLE_CHAT_WEBHOOK_BACKUP = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU"
-CHAT_WEBHOOK_BASTAO = "" 
+CHAT_WEBHOOK_BASTAO = "https://chat.googleapis.com/v1/spaces/AAQAXbwpQHY/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=7AQaoGHiWIfv3eczQzVZ-fbQdBqSBOh1CyQ854o1f7k" 
 GOOGLE_CHAT_WEBHOOK_REGISTRO = "https://chat.googleapis.com/v1/spaces/AAQAVvsU4Lg/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=hSghjEZq8-1EmlfHdSoPRq_nTSpYc0usCs23RJOD-yk"
 GOOGLE_CHAT_WEBHOOK_CHAMADO = "https://chat.googleapis.com/v1/spaces/AAQAPPWlpW8/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=jMg2PkqtpIe3JbG_SZG_ZhcfuQQII9RXM0rZQienUZk"
 GOOGLE_CHAT_WEBHOOK_SESSAO = "https://chat.googleapis.com/v1/spaces/AAQAWs1zqNM/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=hIxKd9f35kKdJqWUNjttzRBfCsxomK0OJ3AkH9DJmxY"
 GOOGLE_CHAT_WEBHOOK_CHECKLIST_HTML = "https://chat.googleapis.com/v1/spaces/AAQAXbwpQHY/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=7AQaoGHiWIfv3eczQzVZ-fbQdBqSBOh1CyQ854o1f7k"
 GOOGLE_CHAT_WEBHOOK_HORAS_EXTRAS = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU"
-
+# --- NOVO WEBHOOK PARA ERRO/NOVIDADE ---
+GOOGLE_CHAT_WEBHOOK_ERRO_NOVIDADE = "https://chat.googleapis.com/v1/spaces/AAQAp4gdyUE/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=vnI4C_jTeF0UQINXiVYpRrnEsYaO4-Nnvs8RC-PTj0k"
 
 # Listas para o formulário de atendimento
 REG_USUARIO_OPCOES = ["Cartório", "Gabinete", "Externo"]
@@ -248,20 +249,19 @@ def send_atendimento_to_chat(consultor, data, usuario, nome_setor, sistema, desc
     return True
 
 def handle_erro_novidade_submission(consultor, titulo, objetivo, relato, resultado):
-    # Enviar para o mesmo Webhook de Registro ou apenas notificar no console/toast
-    # Para consistência, vamos formatar e enviar se houver webhook, ou apenas exibir sucesso.
-    if not GOOGLE_CHAT_WEBHOOK_REGISTRO: return False
+    # Alterado para usar o novo Webhook dedicado
+    if not GOOGLE_CHAT_WEBHOOK_ERRO_NOVIDADE: return False
     
     msg = (
         f"🐛 **Novo Relato de Erro/Novidade**\n\n"
         f"👤 **Autor:** {consultor}\n"
         f"📌 **Título:** {titulo}\n\n"
         f"🎯 **Objetivo:**\n{objetivo}\n\n"
-        f"🧪 **Relato do Teste:**\n{relato}\n\n"
+        f"🧪 **Relato:**\n{relato}\n\n"
         f"🏁 **Resultado:**\n{resultado}"
     )
     chat_message = {"text": msg}
-    threading.Thread(target=_send_webhook_thread, args=(GOOGLE_CHAT_WEBHOOK_REGISTRO, chat_message)).start()
+    threading.Thread(target=_send_webhook_thread, args=(GOOGLE_CHAT_WEBHOOK_ERRO_NOVIDADE, chat_message)).start()
     return True
 
 def play_sound_html(): return f'<audio autoplay="true"><source src="{SOUND_URL}" type="audio/mpeg"></audio>'
@@ -1312,14 +1312,28 @@ with col_principal:
         with st.container(border=True):
             st.markdown("### 🐛 Registro de Erro ou Novidade")
             
-            # Campos preenchidos com o exemplo fornecido
-            en_titulo = st.text_input("Título:", value="Melhoria na Gestão das Procuradorias")
+            # --- EXPANDER COM EXEMPLO ---
+            with st.expander("📝 Ver Exemplo de Preenchimento"):
+                st.markdown("""
+                **Título:** Melhoria na Gestão das Procuradorias
+                
+                **Objetivo:** Permitir que os perfis de Procurador Chefe e Gerente de Procuradoria possam gerenciar os usuários das procuradorias, incluindo as ações de ativação e inativação de procuradores.
+                
+                **Relato:** Foram realizados testes no menu “Gerenciar Procuradores”, com o intuito de validar as funcionalidades de ativação e desativação de usuários vinculados à procuradoria.
+                Durante os testes, foram observados os seguintes comportamentos do sistema:
+                ▪ No perfil Procurador-Chefe, não foi exibido o botão destinado à exclusão ou inativação de usuários;
+                ▪ No perfil Gerente de Procuradoria, a funcionalidade de cadastro de usuários apresentou mensagem de erro ao ser acionada.
+                
+                **Resultado:** O teste não foi bem-sucedido, sendo identificadas as seguintes inconsistências:
+                * Perfil Procurador-Chefe: o sistema não apresenta o botão de exclusão/inativação de usuário, impossibilitando a execução dessa ação por este perfil;
+                * Perfil Gerente de Procuradoria: ao tentar cadastrar novos usuários, o sistema exibe mensagem de erro, impedindo a conclusão do procedimento.
+                """)
             
-            en_objetivo = st.text_area("Objetivo:", height=100, value="Permitir que os perfis de Procurador Chefe e Gerente de Procuradoria possam gerenciar os usuários das procuradorias, incluindo as ações de ativação e inativação de procuradores.")
-            
-            en_relato = st.text_area("Relato do Teste:", height=200, value="Foram realizados testes no menu “Gerenciar Procuradores”, com o intuito de validar as funcionalidades de ativação e desativação de usuários vinculados à procuradoria.\n\nDurante os testes, foram observados os seguintes comportamentos do sistema:\n▪ No perfil Procurador-Chefe, não foi exibido o botão destinado à exclusão ou inativação de usuários;\n▪ No perfil Gerente de Procuradoria, a funcionalidade de cadastro de usuários apresentou mensagem de erro ao ser acionada.")
-            
-            en_resultado = st.text_area("Resultado:", height=150, value="O teste não foi bem-sucedido, sendo identificadas as seguintes inconsistências:\n* Perfil Procurador-Chefe: o sistema não apresenta o botão de exclusão/inativação de usuário, impossibilitando a execução dessa ação por este perfil;\n* Perfil Gerente de Procuradoria: ao tentar cadastrar novos usuários, o sistema exibe mensagem de erro, impedindo a conclusão do procedimento.")
+            # Campos vazios
+            en_titulo = st.text_input("Título:")
+            en_objetivo = st.text_area("Objetivo:", height=100)
+            en_relato = st.text_area("Relato:", height=200) # Alterado de "Relato do Teste" para "Relato"
+            en_resultado = st.text_area("Resultado:", height=150)
             
             if st.button("Enviar Relato", type="primary", use_container_width=True):
                 consultor = st.session_state.consultor_selectbox
