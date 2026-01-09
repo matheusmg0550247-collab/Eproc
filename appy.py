@@ -53,9 +53,6 @@ GOOGLE_CHAT_WEBHOOK_SESSAO = "https://chat.googleapis.com/v1/spaces/AAQAWs1zqNM/
 GOOGLE_CHAT_WEBHOOK_CHECKLIST_HTML = "https://chat.googleapis.com/v1/spaces/AAQAXbwpQHY/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=7AQaoGHiWIfv3eczQzVZ-fbQdBqSBOh1CyQ854o1f7k"
 GOOGLE_CHAT_WEBHOOK_HORAS_EXTRAS = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU"
 
-# Webhook Erro/Novidade
-GOOGLE_CHAT_WEBHOOK_ERRO_NOVIDADE = "https://chat.googleapis.com/v1/spaces/AAQAp4gdyUE/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=vnI4C_jTeF0UQINXiVYpRrnEsYaO4-Nnvs8RC-PTj0k"
-
 # Listas para o formulário de atendimento
 REG_USUARIO_OPCOES = ["Cartório", "Gabinete", "Externo"]
 REG_SISTEMA_OPCOES = ["Conveniados", "Outros", "Eproc", "Themis", "JPE", "SIAP"]
@@ -108,26 +105,19 @@ def date_serializer(obj):
 def save_state():
     global_data = get_global_state_cache()
     try:
-        global_data['status_texto'] = st.session_state.status_texto.copy()
-        global_data['bastao_queue'] = st.session_state.bastao_queue.copy()
-        global_data['skip_flags'] = st.session_state.skip_flags.copy()
-        global_data['current_status_starts'] = st.session_state.current_status_starts.copy()
-        global_data['bastao_counts'] = st.session_state.bastao_counts.copy()
-        global_data['priority_return_queue'] = st.session_state.priority_return_queue.copy()
-        global_data['bastao_start_time'] = st.session_state.bastao_start_time
-        global_data['report_last_run_date'] = st.session_state.report_last_run_date
-        global_data['auxilio_ativo'] = st.session_state.get('auxilio_ativo', False) 
+        for k in ['status_texto', 'bastao_queue', 'skip_flags', 'current_status_starts', 'bastao_counts', 'priority_return_queue', 'bastao_start_time', 'report_last_run_date', 'auxilio_ativo', 'simon_ranking']:
+            if k in st.session_state: global_data[k] = st.session_state[k]
         global_data['daily_logs'] = json.loads(json.dumps(st.session_state.daily_logs, default=date_serializer))
-        global_data['simon_ranking'] = st.session_state.get('simon_ranking', [])
     except Exception as e: print(f'Erro ao salvar estado: {e}')
 
 def load_state():
     global_data = get_global_state_cache()
     logs = global_data.get('daily_logs', [])
     final_logs = []
+    
+    # Tratamento para evitar conversão duplicada (Correção do TypeError)
     for log in logs:
         if isinstance(log, dict):
-            # CORREÇÃO DO ERRO TYPEERROR: Verifica se já é timedelta antes de converter
             if 'duration' in log and not isinstance(log['duration'], timedelta):
                 try: log['duration'] = timedelta(seconds=float(log['duration']))
                 except: log['duration'] = timedelta(0)
@@ -168,6 +158,19 @@ def send_chat_notification_internal(consultor, status):
         threading.Thread(target=_send_webhook_thread, args=(CHAT_WEBHOOK_BASTAO, msg)).start()
         return True
     return False
+
+def send_horas_extras_to_chat(consultor, data, inicio, tempo, motivo):
+    if not GOOGLE_CHAT_WEBHOOK_HORAS_EXTRAS: return False
+    msg = f"⏰ **Registro de Horas Extras**\n\n👤 **Consultor:** {consultor}\n📅 **Data:** {data.strftime('%d/%m/%Y')}\n🕐 **Início:** {inicio.strftime('%H:%M')}\n⏱️ **Tempo:** {tempo}\n📝 **Motivo:** {motivo}"
+    threading.Thread(target=_send_webhook_thread, args=(GOOGLE_CHAT_WEBHOOK_HORAS_EXTRAS, {"text": msg})).start()
+    return True
+
+def send_atendimento_to_chat(consultor, data, usuario, nome_setor, sistema, descricao, canal, desfecho, jira=""):
+    if not GOOGLE_CHAT_WEBHOOK_REGISTRO: return False
+    j_str = f"\n🔢 **Jira:** CESUPE-{jira}" if jira else ""
+    msg = f"📋 **Novo Registro de Atendimento**\n\n👤 **Consultor:** {consultor}\n📅 **Data:** {data.strftime('%d/%m/%Y')}\n👥 **Usuário:** {usuario}\n🏢 **Setor:** {nome_setor}\n💻 **Sistema:** {sistema}\n📝 **Descrição:** {descricao}\n📞 **Canal:** {canal}\n✅ **Desfecho:** {desfecho}{j_str}"
+    threading.Thread(target=_send_webhook_thread, args=(GOOGLE_CHAT_WEBHOOK_REGISTRO, {"text": msg})).start()
+    return True
 
 def render_fireworks():
     fireworks_css = """<style>@keyframes firework {0% { transform: translate(var(--x), var(--initialY)); width: var(--initialSize); opacity: 1; } 50% { width: 0.5vmin; opacity: 1; } 100% { width: var(--finalSize); opacity: 0; }} .firework, .firework::before, .firework::after { --initialSize: 0.5vmin; --finalSize: 45vmin; --particleSize: 0.2vmin; --color1: #ff0000; --color2: #ffd700; --y: -30vmin; --x: -50%; --initialY: 60vmin; content: ""; animation: firework 2s infinite; position: absolute; top: 50%; left: 50%; transform: translate(-50%, var(--y)); width: var(--initialSize); aspect-ratio: 1; background: radial-gradient(circle, var(--color1) var(--particleSize), #0000 0) 50% 0%, radial-gradient(circle, var(--color2) var(--particleSize), #0000 0) 100% 50%; background-size: var(--initialSize) var(--initialSize); background-repeat: no-repeat; } .firework:nth-child(2) { --x: 30vmin; left: 30%; top: 60%; } .firework:nth-child(3) { --x: -30vmin; left: 70%; top: 60%; }</style><div class="firework"></div><div class="firework"></div><div class="firework"></div>"""
@@ -273,8 +276,22 @@ with c_top1:
     img_data = get_img_as_base64(PUG2026_FILENAME); src = f"data:image/png;base64,{img_data}" if img_data else GIF_BASTAO_HOLDER
     st.markdown(f'<div style="display: flex; align-items: center; gap: 15px;"><h1 style="color: #FFD700;">Controle Bastão Cesupe 2026 {BASTAO_EMOJI}</h1><img src="{src}" style="width: 100px; height: 100px; border-radius: 50%; border: 3px solid #FFD700; object-fit: cover;"></div>', unsafe_allow_html=True)
 
+with c_top2:
+    # Botão rápido de entrada
+    c_sub1, c_sub2 = st.columns([2, 1], vertical_alignment="bottom")
+    with c_sub1: novo_responsavel = st.selectbox("Assumir Bastão (Rápido)", options=["Selecione"] + CONSULTORES, label_visibility="collapsed", key="quick_enter")
+    with c_sub2:
+        if st.button("🚀 Entrar"):
+            if novo_responsavel and novo_responsavel != "Selecione":
+                st.session_state[f'check_{novo_responsavel}'] = True; update_queue(novo_responsavel); st.session_state.consultor_selectbox = novo_responsavel; st.success("Na fila!"); st.rerun()
+
+st.markdown("<hr style='border: 1px solid #FFD700; margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
+
 st_autorefresh(interval=8000, key='refresh')
 if st.session_state.get('play_sound'): st.components.v1.html(play_sound_html(), height=0); st.session_state.play_sound = False
+if st.session_state.get('rotation_gif_start_time') and (datetime.now() - st.session_state.rotation_gif_start_time).total_seconds() < 20:
+    st.image(GIF_URL_ROTATION, width=200, caption='Bastão Passado!')
+if st.session_state.get('gif_warning'): st.error('🚫 Ação inválida!'); st.image(GIF_URL_WARNING, width=150)
 
 col_main, col_side = st.columns([1.5, 1])
 
@@ -288,7 +305,7 @@ with col_main:
     st.header("Ações do Consultor")
     st.selectbox('Selecione seu nome:', ['Selecione um nome'] + CONSULTORES, key='consultor_selectbox', label_visibility='collapsed')
     
-    # Grid de Ações (8 colunas)
+    # Grid de Ações (8 colunas - INCLUINDO PROJETOS)
     c1, c2, c3, c4, c5, c6, c7, c8 = st.columns(8)
     c1.button('🎯 Passar', on_click=rotate_bastao, use_container_width=True)
     c2.button('⏭️ Pular', on_click=lambda: setattr(st.session_state, 'skip_flags', {**st.session_state.skip_flags, st.session_state.consultor_selectbox: True}), use_container_width=True)
@@ -300,43 +317,20 @@ with col_main:
     c8.button('🚀 Projeto', on_click=lambda: setattr(st.session_state, 'active_view', 'menu_projetos'), use_container_width=True)
 
     st.markdown("---")
-    # Grid de Ferramentas (6 colunas)
-    t1, t2, t3, t4, t5, t6 = st.columns(6)
+    # Grid de Ferramentas (5 colunas - SEM Erro/Novidade)
+    t1, t2, t3, t4, t5 = st.columns(5)
     t1.button("📑 Checklist", on_click=lambda: setattr(st.session_state, 'active_view', 'checklist'), use_container_width=True)
     t2.button("🆘 Chamados", on_click=lambda: setattr(st.session_state, 'active_view', 'chamados'), use_container_width=True)
     t3.button("📝 Atend.", on_click=lambda: setattr(st.session_state, 'active_view', 'atendimentos'), use_container_width=True)
     t4.button("⏰ H.Extras", on_click=lambda: setattr(st.session_state, 'active_view', 'hextras'), use_container_width=True)
     t5.button("🧠 Descanso", on_click=lambda: setattr(st.session_state, 'active_view', 'descanso'), use_container_width=True)
-    t6.button("🐞 Erro/Novid", on_click=lambda: setattr(st.session_state, 'active_view', 'erro_novidade'), use_container_width=True)
 
-    # --- Renderização das Telas ---
+    # --- RENDERIZAÇÃO DAS TELAS ---
     if st.session_state.active_view == 'menu_projetos':
         with st.container(border=True):
             st.subheader("🚀 Projetos")
             p_sel = st.selectbox("Selecione o Projeto:", PROJETOS_OPCOES)
             if st.button("Confirmar Projeto"): update_status(f"Projeto: {p_sel}"); st.session_state.active_view = None; st.rerun()
-
-    elif st.session_state.active_view == 'erro_novidade':
-        with st.container(border=True):
-            st.subheader("🐞 Erro/Novidade")
-            ce1, ce2 = st.columns([1, 1.2])
-            with ce1:
-                st.markdown("""
-                **EXEMPLO:**
-                **TITULO:** Melhoria na Gestão das Procuradorias
-                **OBJETIVO:** Permitir que perfis Chefes gerenciem usuários.
-                **RELATO:** No perfil Procurador-Chefe, não foi exibido o botão de inativação.
-                **RESULTADO:** Inconsistência identificada.
-                """)
-            with ce2:
-                e_tit = st.text_input("Título:")
-                e_obj = st.text_area("Objetivo:")
-                e_rel = st.text_area("Relato do Teste:")
-                e_res = st.text_area("Resultado:")
-                if st.button("Enviar para Google Chat", type="primary", use_container_width=True):
-                    msg = f"🐞 **NOVO ERRO/NOVIDADE**\n👤 **Por:** {st.session_state.consultor_selectbox}\n📌 **Título:** {e_tit}\n🎯 **Objetivo:** {e_obj}\n📝 **Relato:** {e_rel}\n✅ **Resultado:** {e_res}"
-                    threading.Thread(target=_send_webhook_thread, args=(GOOGLE_CHAT_WEBHOOK_ERRO_NOVIDADE, {"text": msg})).start()
-                    st.success("Enviado com sucesso!"); st.session_state.active_view = None; time.sleep(1); st.rerun()
 
     elif st.session_state.active_view == 'menu_atividades':
         with st.container(border=True):
@@ -346,46 +340,99 @@ with col_main:
 
     elif st.session_state.active_view == 'descanso':
         with st.container(border=True):
-            # Chama a função Simon do código robusto original
-            import random
+            # SIMON GAME
             COLORS = ["🔴", "🔵", "🟢", "🟡"]
-            st.markdown("### 🧠 Jogo da Memória")
-            if st.button("Jogar Simon"):
-                st.info("Iniciando sequência...")
+            st.markdown("### 🧠 Simon Game"); st.caption("Repita a sequência!")
+            if st.session_state.simon_status == 'start':
+                if st.button("▶️ Iniciar Jogo", use_container_width=True):
+                    st.session_state.simon_sequence = [random.choice(COLORS)]; st.session_state.simon_user_input = []; st.session_state.simon_level = 1; st.session_state.simon_status = 'showing'; st.rerun()
+            elif st.session_state.simon_status == 'showing':
+                st.info(f"Nível {st.session_state.simon_level}: Memorize!"); cols = st.columns(len(st.session_state.simon_sequence))
+                for i, color in enumerate(st.session_state.simon_sequence):
+                    with cols[i]: st.markdown(f"<h1 style='text-align: center;'>{color}</h1>", unsafe_allow_html=True)
+                if st.button("🙈 Responder", type="primary", use_container_width=True): st.session_state.simon_status = 'playing'; st.rerun()
+            elif st.session_state.simon_status == 'playing':
+                st.markdown(f"**Nível {st.session_state.simon_level}**"); c1, c2, c3, c4 = st.columns(4); pressed = None
+                if c1.button("🔴", use_container_width=True): pressed = "🔴"
+                if c2.button("🔵", use_container_width=True): pressed = "🔵"
+                if c3.button("🟢", use_container_width=True): pressed = "🟢"
+                if c4.button("🟡", use_container_width=True): pressed = "🟡"
+                if pressed:
+                    st.session_state.simon_user_input.append(pressed); current_idx = len(st.session_state.simon_user_input) - 1
+                    if st.session_state.simon_user_input[current_idx] != st.session_state.simon_sequence[current_idx]: st.session_state.simon_status = 'lost'; st.rerun()
+                    elif len(st.session_state.simon_user_input) == len(st.session_state.simon_sequence):
+                        st.success("Correto!"); time.sleep(0.5); st.session_state.simon_sequence.append(random.choice(COLORS)); st.session_state.simon_user_input = []; st.session_state.simon_level += 1; st.session_state.simon_status = 'showing'; st.rerun()
+                if st.session_state.simon_user_input: st.markdown(f"Resposta: {' '.join(st.session_state.simon_user_input)}")
+            elif st.session_state.simon_status == 'lost':
+                st.error(f"❌ Nível {st.session_state.simon_level}"); st.markdown(f"Correto: {' '.join(st.session_state.simon_sequence)}")
+                consultor = st.session_state.consultor_selectbox
+                if consultor and consultor != 'Selecione um nome':
+                    score = st.session_state.simon_level; ranking = st.session_state.simon_ranking; found = False
+                    for entry in ranking:
+                        if entry['nome'] == consultor:
+                            if score > entry['score']: entry['score'] = score
+                            found = True; break
+                    if not found: ranking.append({'nome': consultor, 'score': score})
+                    st.session_state.simon_ranking = sorted(ranking, key=lambda x: x['score'], reverse=True)[:5]; save_state()
+                if st.button("Tentar Novamente"): st.session_state.simon_status = 'start'; st.rerun()
+            st.markdown("---"); st.subheader("🏆 Ranking Global"); ranking = st.session_state.simon_ranking
+            if not ranking: st.markdown("_Sem recordes._")
+            else: st.table(pd.DataFrame(ranking))
+
+    elif st.session_state.active_view == 'checklist':
+        with st.container(border=True):
+            st.header("Gerador Checklist"); data_ep = st.date_input("Data Sessão:"); cam_ep = st.selectbox("Câmara:", CAMARAS_OPCOES)
+            if st.button("Gerar/Enviar"):
+                # Simplificação da função handle_sessao para caber no bloco
+                if st.session_state.consultor_selectbox != 'Selecione um nome':
+                     df = data_ep.strftime("%d/%m/%Y"); dfa = data_ep.strftime("%d-%m-%Y")
+                     msg = f"Sessão {cam_ep} dia {df}."
+                     threading.Thread(target=_send_webhook_thread, args=(GOOGLE_CHAT_WEBHOOK_SESSAO, {'text': msg})).start()
+                     st.session_state.html_content_cache = f"<html>Checklist {df}</html>"; st.session_state.html_download_ready = True
+                     st.download_button("Baixar HTML", st.session_state.html_content_cache, f"Checklist_{dfa}.html", "text/html")
+
+    elif st.session_state.active_view == 'chamados':
+        with st.container(border=True):
+             st.subheader("Guia Chamados"); st.info("Siga os passos padronizados."); st.text_area("Rascunho:"); st.button("Simular Envio")
+             
+    elif st.session_state.active_view == 'atendimentos':
+        with st.container(border=True):
+            st.markdown("### Novo Atendimento"); at_u = st.selectbox("Usuário:", REG_USUARIO_OPCOES); at_s = st.text_input("Setor:"); at_sys = st.selectbox("Sistema:", REG_SISTEMA_OPCOES); at_desc = st.text_input("Descrição:"); at_c = st.selectbox("Canal:", REG_CANAL_OPCOES); at_d = st.selectbox("Desfecho:", REG_DESFECHO_OPCOES); at_j = st.text_input("Jira:")
+            if st.button("Enviar"): send_atendimento_to_chat(st.session_state.consultor_selectbox, date.today(), at_u, at_s, at_sys, at_desc, at_c, at_d, at_j); st.success("Enviado!"); st.session_state.active_view=None; st.rerun()
+
+    elif st.session_state.active_view == 'hextras':
+        with st.container(border=True):
+            st.markdown("### Horas Extras"); he_d = st.date_input("Data:"); he_i = st.time_input("Início:"); he_t = st.text_input("Tempo Total:"); he_m = st.text_input("Motivo:")
+            if st.button("Enviar"): send_horas_extras_to_chat(st.session_state.consultor_selectbox, he_d, he_i, he_t, he_m); st.success("Enviado!"); st.session_state.active_view=None; st.rerun()
 
 with col_side:
     st.header("Status da Equipe")
-    ui = {'fila': [], 'demanda': [], 'almoco': [], 'sessao': [], 'saida': [], 'ausente': [], 'indisponivel': []}
+    ui = {'fila': [], 'projeto': [], 'atividade': [], 'outros': []}
     for n in CONSULTORES:
         s = st.session_state.status_texto.get(n, 'Indisponível')
         if s in ['', 'Bastão']: ui['fila'].append(n)
-        elif 'Projeto:' in s or 'Atividade:' in s or s == 'Atendimento': ui['demanda'].append((n, s))
-        elif s == 'Almoço': ui['almoco'].append(n)
-        elif s == 'Sessão': ui['sessao'].append(n)
-        elif s == 'Saída rápida': ui['saida'].append(n)
-        elif s == 'Ausente': ui['ausente'].append(n)
-        else: ui['indisponivel'].append(n)
+        elif 'Projeto:' in s: ui['projeto'].append((n, s.replace('Projeto: ', '')))
+        elif 'Atividade:' in s: ui['atividade'].append((n, s.replace('Atividade: ', '')))
+        else: ui['outros'].append((n, s))
 
-    st.subheader(f"✅ Na Fila ({len(ui['fila'])})")
+    st.subheader(f"✅ Fila ({len(ui['fila'])})")
     for n in ui['fila']:
-        cn, cc = st.columns([0.8, 0.2])
-        cc.checkbox(' ', key=f'check_{n}', on_change=update_queue, args=(n,), label_visibility='collapsed')
+        cn, cc = st.columns([0.8, 0.2]); cc.checkbox(' ', key=f'check_{n}', on_change=update_queue, args=(n,), label_visibility='collapsed')
         if st.session_state.status_texto.get(n) == 'Bastão': cn.markdown(f"🥂 **{n}**")
         else: cn.markdown(n)
+
+    st.markdown("---")
+    st.subheader(f"🚀 Projetos ({len(ui['projeto'])})")
+    for n, p in ui['projeto']: st.markdown(f"**{n}** :blue-background[{p}]")
+
+    st.markdown("---")
+    st.subheader(f"📋 Atividades ({len(ui['atividade'])})")
+    for n, a in ui['atividade']: st.markdown(f"**{n}** :orange-background[{a}]")
     
     st.markdown("---")
-    st.subheader(f"📋 Em Demanda/Projeto ({len(ui['demanda'])})")
-    for n, s in ui['demanda']:
-        cn, cc = st.columns([0.8, 0.2]); cc.checkbox(' ', key=f'check_{n}', on_change=update_queue, args=(n,), label_visibility='collapsed')
-        cn.markdown(f"**{n}** :orange-background[{s.replace('Projeto: ','').replace('Atividade: ','')}]")
+    st.subheader(f"📌 Outros ({len(ui['outros'])})")
+    for n, s in ui['outros']: st.markdown(f"**{n}** :grey-background[{s}]")
 
-    st.markdown("---")
-    st.subheader(f"🍽️ Almoço ({len(ui['almoco'])})")
-    for n in ui['almoco']:
-        cn, cc = st.columns([0.8, 0.2]); cc.checkbox(' ', key=f'check_{n}', on_change=update_queue, args=(n,), label_visibility='collapsed')
-        cn.markdown(f"**{n}** :red-background[Almoço]")
-
-    st.subheader(f"🚶 Saída rápida ({len(ui['saida'])})")
-    for n in ui['saida']:
-        cn, cc = st.columns([0.8, 0.2]); cc.checkbox(' ', key=f'check_{n}', on_change=update_queue, args=(n,), label_visibility='collapsed')
-        cn.markdown(f"**{n}** :red-background[Saída]")
+now_br = datetime.utcnow() - timedelta(hours=3)
+if now_br.hour >= 20 and now_br.date() > (st.session_state.report_last_run_date.date() if isinstance(st.session_state.report_last_run_date, datetime) else datetime.min.date()):
+    send_daily_report()
