@@ -14,18 +14,19 @@ import threading
 URL_GOOGLE_SHEETS = "https://script.google.com/macros/s/AKfycbxRP77Ie-jbhjEDk3F6Za_QWxiIEcEqwRHQ0vQPk63ExLm0JCR24n_nqkWbqdVWT5lhJg/exec"
 WEBHOOK_ERROS = "https://chat.googleapis.com/v1/spaces/AAQAp4gdyUE/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=vnI4C_jTeF0UQINXiVYpRrnEsYaO4-Nnvs8RC-PTj0k"
 
-# Webhooks Adicionais
+# Webhooks Adicionais Integrados
 GOOGLE_CHAT_WEBHOOK_BACKUP = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU"
-CHAT_WEBHOOK_BASTAO = ""
-GOOGLE_CHAT_WEBHOOK_REGISTRO = ""
+CHAT_WEBHOOK_BASTAO = "https://chat.googleapis.com/v1/spaces/AAQAXbwpQHY/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=7AQaoGHiWIfv3eczQzVZ-fbQdBqSBOh1CyQ854o1f7k"
+GOOGLE_CHAT_WEBHOOK_REGISTRO = "https://chat.googleapis.com/v1/spaces/AAQAVvsU4Lg/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=hSghjEZq8-1EmlfHdSoPRq_nTSpYc0usCs23RJOD-yk"
 GOOGLE_CHAT_WEBHOOK_CHAMADO = "https://chat.googleapis.com/v1/spaces/AAQAPPWlpW8/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=jMg2PkqtpIe3JbG_SZG_ZhcfuQQII9RXM0rZQienUZk"
 GOOGLE_CHAT_WEBHOOK_SESSAO = "https://chat.googleapis.com/v1/spaces/AAQAWs1zqNM/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=hIxKd9f35kKdJqWUNjttzRBfCsxomK0OJ3AkH9DJmxY"
 GOOGLE_CHAT_WEBHOOK_CHECKLIST_HTML = "https://chat.googleapis.com/v1/spaces/AAQAXbwpQHY/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=7AQaoGHiWIfv3eczQzVZ-fbQdBqSBOh1CyQ854o1f7k"
 GOOGLE_CHAT_WEBHOOK_HORAS_EXTRAS = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU"
 
 # --- CONFIGURAÇÕES DE UI ---
-BASTAO_EMOJI = "🥂" # Definição global para evitar NameError
+BASTAO_EMOJI = "🥂"
 GIF_BASTAO_HOLDER = "https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExa3Uwazd5cnNra2oxdDkydjZkcHdqcWN2cng0Y2N0cmNmN21vYXVzMiZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/3rXs5J0hZkXwTZjuvM/giphy.gif"
+GIF_URL_ROTATION = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExdmx4azVxbGt4Mnk1cjMzZm5sMmp1YThteGJsMzcyYmhsdmFoczV0aSZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/JpkZEKWY0s9QI4DGvF/giphy.gif'
 GIF_URL_NEDRY = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExMGNkMGx3YnNkcXQ2bHJmNTZtZThraHhuNmVoOTNmbG0wcDloOXAybiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/7kyWoqTue3po4/giphy.gif'
 
 CONSULTORES = sorted([
@@ -46,7 +47,18 @@ RELATO DO ERRO/TESTE:
 RESULTADO: 
 OBSERVAÇÃO (SE TIVER): """
 
-EXEMPLO_TEXTO = """**TITULO** - Melhoria na Gestão das Procuradorias..."""
+EXEMPLO_TEXTO = """**TITULO** - Melhoria na Gestão das Procuradorias
+**OBJETIVO**
+Permitir que os perfis de Procurador Chefe e Gerente de Procuradoria possam gerenciar os usuários das procuradorias, incluindo as ações de ativação e inativação de procuradores.
+**RELATO DO TESTE**
+Foram realizados testes no menu “Gerenciar Procuradores”, com o intuito de validar as funcionalidades de ativação e desativação de usuários vinculados à procuradoria.
+Durante os testes, foram observados os seguintes comportamentos do sistema:
+▪ No perfil Procurador-Chefe, não foi exibido o botão destinado à exclusão ou inativação de usuários;
+▪ No perfil Gerente de Procuradoria, a funcionalidade de cadastro de usuários apresentou mensagem de erro ao ser acionada.
+**RESULTADO**
+O teste não foi bem-sucedido, sendo identificadas as seguintes inconsistências:
+* Perfil Procurador-Chefe: o sistema não apresenta o botão de exclusão/inativação de usuário;
+* Perfil Gerente de Procuradoria: ao tentar cadastrar novos usuários, o sistema exibe mensagem de erro."""
 
 # ============================================
 # 2. INTEGRAÇÃO E UTILITÁRIOS
@@ -112,7 +124,10 @@ def get_global_state_cache():
         'bastao_start_time': None,
         'current_status_starts': {nome: datetime.now() for nome in CONSULTORES},
         'report_last_run_date': date.min,
+        'bastao_counts': {nome: 0 for nome in CONSULTORES},
+        'rotation_gif_start_time': None,
         'auxilio_ativo': False, 
+        'daily_logs': []
     }
 
 def save_state():
@@ -151,7 +166,7 @@ def update_queue_callback(nome):
     check_and_assume_baton()
 
 # ============================================
-# 4. INTERFACE
+# 4. INTERFACE PRINCIPAL
 # ============================================
 
 st.set_page_config(page_title="Controle Bastão Cesupe 2026", layout="wide", page_icon="🥂")
@@ -164,7 +179,7 @@ if 'status_texto' not in st.session_state:
 
 st_autorefresh(interval=8000, key="global_refresh")
 
-# Cabeçalho ajustado: GIF grande removido daqui
+# Cabeçalho
 c_esq, c_dir = st.columns([2, 1], vertical_alignment="bottom")
 with c_esq:
     st.markdown(f'<h1 style="color: #FFD700; margin: 0;">Controle Bastão Cesupe 2026 {BASTAO_EMOJI}</h1>', unsafe_allow_html=True)
@@ -182,6 +197,11 @@ with c_dir:
                 st.rerun()
 
 st.markdown("<hr style='border: 1px solid #FFD700; margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
+
+# Animação de Rotação
+if st.session_state.get('rotation_gif_start_time'):
+    if (datetime.now() - st.session_state.rotation_gif_start_time).total_seconds() < 12:
+        st.image(GIF_URL_ROTATION, width=250)
 
 col_m, col_s = st.columns([1.6, 1])
 
@@ -206,6 +226,7 @@ with col_m:
     if btns[0].button("🎯 Passar", use_container_width=True):
         if st.session_state.consultor_selectbox == dono:
             registrar_mudanca(dono, "")
+            st.session_state.rotation_gif_start_time = datetime.now()
             check_and_assume_baton(); st.rerun()
     if btns[1].button("⏭️ Pular", use_container_width=True):
         sel = st.session_state.consultor_selectbox
@@ -229,13 +250,6 @@ with col_m:
                 registrar_mudanca(st.session_state.consultor_selectbox, f"Atividade: {', '.join(esc)}" + (f" [{det}]" if det else ""))
                 st.session_state.active_view = None; st.rerun()
 
-    if st.session_state.active_view == "ses":
-        with st.container(border=True):
-            setor = st.text_input("Setor da Sessão:")
-            if st.button("Gravar Sessão"):
-                registrar_mudanca(st.session_state.consultor_selectbox, f"Sessão: {setor}")
-                st.session_state.active_view = None; st.rerun()
-
     if st.session_state.active_view == "prj":
         with st.container(border=True):
             p_sel = st.selectbox("Escolha o projeto:", ["Selecione..."] + LISTA_PROJETOS)
@@ -244,13 +258,24 @@ with col_m:
                 registrar_mudanca(st.session_state.consultor_selectbox, f"Projeto: {p_sel} [{p_obs}]")
                 st.session_state.active_view = None; st.rerun()
 
+    if st.session_state.active_view == "ses":
+        with st.container(border=True):
+            setor = st.text_input("Setor da Sessão:")
+            if st.button("Gravar Sessão"):
+                registrar_mudanca(st.session_state.consultor_selectbox, f"Sessão: {setor}")
+                st.session_state.active_view = None; st.rerun()
+
     if st.session_state.active_view == "err":
         with st.container(border=True):
-            tipo_rel = st.radio("Tipo:", ["Erro", "Novidade"], horizontal=True)
-            txt_rel = st.text_area("Descreva os detalhes:", value=(TEMPLATE_ERRO if tipo_rel == "Erro" else ""), height=250)
-            if st.button("Enviar para o Chat"):
-                if enviar_webhook_erro(tipo_rel, st.session_state.consultor_selectbox, txt_rel):
-                    st.success("Relato enviado!"); st.session_state.active_view = None; st.rerun()
+            st.subheader("⚠️ Relatar Erro ou Novidade")
+            t_f, t_e = st.tabs(["📝 Preencher", "📖 Exemplo de Modelo"])
+            with t_f:
+                tipo_rel = st.radio("Tipo:", ["Erro", "Novidade"], horizontal=True)
+                val_init = TEMPLATE_ERRO if tipo_rel == "Erro" else ""
+                txt_rel = st.text_area("Descreva os detalhes:", value=val_init, height=250)
+                if st.button("Enviar para o Chat"):
+                    if enviar_webhook_erro(tipo_rel, st.session_state.consultor_selectbox, txt_rel):
+                        st.success("Relato enviado!"); st.session_state.active_view = None; st.rerun()
 
     st.markdown("---")
     # Barra de Ferramentas
@@ -268,7 +293,8 @@ with col_m:
 
 with col_s:
     st.header("Status dos Consultores")
-    st.toggle("Auxílio Ativado", key="auxilio_ativo", on_change=save_state)
+    aux = st.toggle("Auxílio Ativado", key="auxilio_ativo", on_change=save_state)
+    if aux: st.warning("Auxílio Ativado!"); st.image(GIF_URL_NEDRY, width=220)
     st.markdown("---")
     
     ui = {'fila': [], 'atv': [], 'ses': [], 'prj': [], 'alm': [], 'sai': [], 'aus': []}
