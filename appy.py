@@ -43,7 +43,7 @@ def get_global_state_cache():
 
 # --- Constantes (Webhooks) ---
 GOOGLE_CHAT_WEBHOOK_BACKUP = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU"
-CHAT_WEBHOOK_BASTAO = "" 
+CHAT_WEBHOOK_BASTAO = "https://chat.googleapis.com/v1/spaces/AAQAXbwpQHY/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=7AQaoGHiWIfv3eczQzVZ-fbQdBqSBOh1CyQ854o1f7k" 
 GOOGLE_CHAT_WEBHOOK_REGISTRO = "https://chat.googleapis.com/v1/spaces/AAQAVvsU4Lg/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=hSghjEZq8-1EmlfHdSoPRq_nTSpYc0usCs23RJOD-yk"
 GOOGLE_CHAT_WEBHOOK_CHAMADO = "https://chat.googleapis.com/v1/spaces/AAQAPPWlpW8/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=jMg2PkqtpIe3JbG_SZG_ZhcfuQQII9RXM0rZQienUZk"
 GOOGLE_CHAT_WEBHOOK_SESSAO = "https://chat.googleapis.com/v1/spaces/AAQAWs1zqNM/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=hIxKd9f35kKdJqWUNjttzRBfCsxomK0OJ3AkH9DJmxY"
@@ -52,7 +52,7 @@ GOOGLE_CHAT_WEBHOOK_HORAS_EXTRAS = "https://chat.googleapis.com/v1/spaces/AAQA0V
 # --- NOVO WEBHOOK PARA ERRO/NOVIDADE ---
 GOOGLE_CHAT_WEBHOOK_ERRO_NOVIDADE = "https://chat.googleapis.com/v1/spaces/AAQAp4gdyUE/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=vnI4C_jTeF0UQINXiVYpRrnEsYaO4-Nnvs8RC-PTj0k"
 # --- WEBHOOK GOOGLE SHEETS (LOG DE STATUS) ---
-SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxRP77Ie-jbhjEDk3F6Za_QWxiIEcEqwRHQ0vQPk63ExLm0JCR24n_nqkWbqdVWT5lhJg/exec"
+SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxmQ76ojPpGdLot9fa310aFsc0YpfpyYyVEJOrE3cxyKThHfV_1vE_GzT4m8sAh3P67Nw/exec"
 
 # Listas para o formulário de atendimento
 REG_USUARIO_OPCOES = ["Cartório", "Gabinete", "Externo"]
@@ -175,7 +175,9 @@ def load_state():
 # --- ENVIO ASSÍNCRONO DE MENSAGENS ---
 def _send_webhook_thread(url, payload):
     try:
-        requests.post(url, json=payload, timeout=5)
+        # Envio garantindo que é JSON
+        headers = {'Content-Type': 'application/json'}
+        requests.post(url, json=payload, headers=headers, timeout=5)
     except Exception as e:
         print(f"Erro no envio assíncrono: {e}")
 
