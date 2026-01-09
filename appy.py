@@ -247,6 +247,23 @@ def send_atendimento_to_chat(consultor, data, usuario, nome_setor, sistema, desc
     threading.Thread(target=_send_webhook_thread, args=(GOOGLE_CHAT_WEBHOOK_REGISTRO, chat_message)).start()
     return True
 
+def handle_erro_novidade_submission(consultor, titulo, objetivo, relato, resultado):
+    # Enviar para o mesmo Webhook de Registro ou apenas notificar no console/toast
+    # Para consistência, vamos formatar e enviar se houver webhook, ou apenas exibir sucesso.
+    if not GOOGLE_CHAT_WEBHOOK_REGISTRO: return False
+    
+    msg = (
+        f"🐛 **Novo Relato de Erro/Novidade**\n\n"
+        f"👤 **Autor:** {consultor}\n"
+        f"📌 **Título:** {titulo}\n\n"
+        f"🎯 **Objetivo:**\n{objetivo}\n\n"
+        f"🧪 **Relato do Teste:**\n{relato}\n\n"
+        f"🏁 **Resultado:**\n{resultado}"
+    )
+    chat_message = {"text": msg}
+    threading.Thread(target=_send_webhook_thread, args=(GOOGLE_CHAT_WEBHOOK_REGISTRO, chat_message)).start()
+    return True
+
 def play_sound_html(): return f'<audio autoplay="true"><source src="{SOUND_URL}" type="audio/mpeg"></audio>'
 
 # --- EFEITO FOGOS DE ARTIFÍCIO (CSS) ---
@@ -1187,12 +1204,14 @@ with col_principal:
     st.markdown("---")
     
     # BOTÕES DE FERRAMENTAS INFERIORES
-    c_tool1, c_tool2, c_tool3, c_tool4, c_tool5 = st.columns(5)
+    # ALTERAÇÃO: Aumentado para 6 colunas para incluir o botão Erro/Novidade
+    c_tool1, c_tool2, c_tool3, c_tool4, c_tool5, c_tool6 = st.columns(6)
     c_tool1.button("📑 Checklist", help="Gerador de Checklist Eproc", use_container_width=True, on_click=toggle_view, args=("checklist",))
     c_tool2.button("🆘 Chamados", help="Guia de Abertura de Chamados", use_container_width=True, on_click=toggle_view, args=("chamados",))
     c_tool3.button("📝 Atendimento", help="Registrar Atendimento", use_container_width=True, on_click=toggle_view, args=("atendimentos",))
     c_tool4.button("⏰ H. Extras", help="Registrar Horas Extras", use_container_width=True, on_click=toggle_view, args=("hextras",))
-    c_tool5.button("🧠 Descanso", help="Jogo e Ranking", use_container_width=True, on_click=toggle_view, args=("descanso",)) # Novo Botão
+    c_tool5.button("🧠 Descanso", help="Jogo e Ranking", use_container_width=True, on_click=toggle_view, args=("descanso",))
+    c_tool6.button("🐛 Erro/Novidade", help="Relatar Erro ou Novidade", use_container_width=True, on_click=toggle_view, args=("erro_novidade",))
         
     # --- RENDERIZAÇÃO DAS FERRAMENTAS ---
     
@@ -1283,10 +1302,38 @@ with col_principal:
                 else:
                     handle_horas_extras_submission(consultor, he_data, he_inicio, he_tempo, he_motivo)
 
-    # 5. NOVO: DESCANSO MENTAL (SIMON GAME)
+    # 5. DESCANSO MENTAL (SIMON GAME)
     elif st.session_state.active_view == "descanso":
         with st.container(border=True):
             handle_simon_game()
+
+    # 6. NOVO: ERRO/NOVIDADE
+    elif st.session_state.active_view == "erro_novidade":
+        with st.container(border=True):
+            st.markdown("### 🐛 Registro de Erro ou Novidade")
+            
+            # Campos preenchidos com o exemplo fornecido
+            en_titulo = st.text_input("Título:", value="Melhoria na Gestão das Procuradorias")
+            
+            en_objetivo = st.text_area("Objetivo:", height=100, value="Permitir que os perfis de Procurador Chefe e Gerente de Procuradoria possam gerenciar os usuários das procuradorias, incluindo as ações de ativação e inativação de procuradores.")
+            
+            en_relato = st.text_area("Relato do Teste:", height=200, value="Foram realizados testes no menu “Gerenciar Procuradores”, com o intuito de validar as funcionalidades de ativação e desativação de usuários vinculados à procuradoria.\n\nDurante os testes, foram observados os seguintes comportamentos do sistema:\n▪ No perfil Procurador-Chefe, não foi exibido o botão destinado à exclusão ou inativação de usuários;\n▪ No perfil Gerente de Procuradoria, a funcionalidade de cadastro de usuários apresentou mensagem de erro ao ser acionada.")
+            
+            en_resultado = st.text_area("Resultado:", height=150, value="O teste não foi bem-sucedido, sendo identificadas as seguintes inconsistências:\n* Perfil Procurador-Chefe: o sistema não apresenta o botão de exclusão/inativação de usuário, impossibilitando a execução dessa ação por este perfil;\n* Perfil Gerente de Procuradoria: ao tentar cadastrar novos usuários, o sistema exibe mensagem de erro, impedindo a conclusão do procedimento.")
+            
+            if st.button("Enviar Relato", type="primary", use_container_width=True):
+                consultor = st.session_state.consultor_selectbox
+                if not consultor or consultor == "Selecione um nome":
+                    st.error("Selecione um consultor.")
+                else:
+                    if handle_erro_novidade_submission(consultor, en_titulo, en_objetivo, en_relato, en_resultado):
+                        st.success("Relato enviado com sucesso!")
+                        st.session_state.active_view = None
+                        time.sleep(1.5)
+                        st.rerun()
+                    else:
+                        st.error("Erro no envio.")
+
 
 with col_disponibilidade:
     st.markdown("###")
