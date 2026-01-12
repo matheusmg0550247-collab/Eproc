@@ -44,7 +44,7 @@ def get_global_state_cache():
 # --- Constantes (Webhooks) ---
 # [SEGURANÇA] Idealmente, mova estas chaves para st.secrets em produção
 GOOGLE_CHAT_WEBHOOK_BACKUP = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU"
-CHAT_WEBHOOK_BASTAO = "" 
+CHAT_WEBHOOK_BASTAO = "https://chat.googleapis.com/v1/spaces/AAQAXbwpQHY/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=7AQaoGHiWIfv3eczQzVZ-fbQdBqSBOh1CyQ854o1f7k" 
 GOOGLE_CHAT_WEBHOOK_REGISTRO = "https://chat.googleapis.com/v1/spaces/AAQAVvsU4Lg/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=hSghjEZq8-1EmlfHdSoPRq_nTSpYc0usCs23RJOD-yk"
 GOOGLE_CHAT_WEBHOOK_CHAMADO = "https://chat.googleapis.com/v1/spaces/AAQAPPWlpW8/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=jMg2PkqtpIe3JbG_SZG_ZhcfuQQII9RXM0rZQienUZk"
 GOOGLE_CHAT_WEBHOOK_SESSAO = "https://chat.googleapis.com/v1/spaces/AAQAWs1zqNM/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=hIxKd9f35kKdJqWUNjttzRBfCsxomK0OJ3AkH9DJmxY"
@@ -73,11 +73,12 @@ CAMARAS_DICT = {
 }
 CAMARAS_OPCOES = sorted(list(CAMARAS_DICT.keys()))
 
-# [ALTERAÇÃO] Removido "Reunião" desta lista
 OPCOES_ATIVIDADES_STATUS = [
     "HP", "E-mail", "WhatsApp Plantão", 
     "Treinamento", "Homologação", "Redação Documentos", "Outros"
 ]
+# Atividades que exigem input de texto para detalhamento
+ATIVIDADES_COM_DETALHE = ["Treinamento", "Homologação", "Redação Documentos", "Outros"]
 
 OPCOES_PROJETOS = [
     "Soma", "Treinamentos Eproc", "Manuais Eproc", 
@@ -88,7 +89,7 @@ GIF_BASTAO_HOLDER = "https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExa3Uwazd5c
 BASTAO_EMOJI = "🥂" 
 APP_URL_CLOUD = 'https://controle-bastao-cesupe.streamlit.app'
 STATUS_SAIDA_PRIORIDADE = ['Saída rápida']
-STATUSES_DE_SAIDA = ['Almoço', 'Saída rápida', 'Ausente', 'Sessão'] # Ajustado para refletir quem sai da fila
+STATUSES_DE_SAIDA = ['Almoço', 'Saída rápida', 'Ausente', 'Sessão'] 
 GIF_URL_WARNING = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExY2pjMDN0NGlvdXp1aHZ1ejJqMnY5MG1yZmN0d3NqcDl1bTU1dDJrciZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/fXnRObM8Q0RkOmR5nf/giphy.gif'
 GIF_URL_ROTATION = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExdmx4azVxbGt4Mnk1cjMzZm5sMmp1YThteGJsMzcyYmhsdmFoczV0aSZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/JpkZEKWY0s9QI4DGvF/giphy.gif'
 GIF_URL_LUNCH_WARNING = 'https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExMGZlbHN1azB3b2drdTI1eG10cDEzeWpmcmtwenZxNTV0bnc2OWgzZSYlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/bNlqpmBJRDMpxulfFB/giphy.gif'
@@ -509,16 +510,10 @@ def update_queue(consultor):
         
         # Se após verificação o status NÃO for Bastão, registra como vazio (Fila)
         if st.session_state.status_texto.get(consultor) != 'Bastão':
-             # OBS: Se já tiver em "Atividade", a gente não quer necessariamente zerar,
-             # mas como o usuário clicou no checkbox de "Entrar na Fila", assume-se que ele volta para fila.
-             # Se ele estiver em atividade e clicar no check da fila, mantém atividade + fila.
-             # Porém, aqui a lógica simplificada é: Check = Disponível.
-             # Se ele estava Indisponível/Almoço -> Vira vazio (Fila).
-             # Se estava em Atividade, continua em Atividade mas agora na fila (controlado pelo UI).
+             # Se status for de Saída ou Indisponível, vira fila pura (vazio)
              if old_status_text in STATUSES_DE_SAIDA or old_status_text == 'Indisponível':
                  st.session_state.status_texto[consultor] = ''
                  log_status_change(consultor, old_status_text or 'Indisponível', '', duration)
-
     else: 
         # Sair da fila
         if old_status_text not in STATUSES_DE_SAIDA and old_status_text != 'Bastão' and not old_status_text.startswith('Atividade') and not old_status_text.startswith('Projeto'):
@@ -622,7 +617,6 @@ def handle_chamado_submission():
     st.session_state.chamado_guide_step = 0
     st.session_state.chamado_textarea = ""
 
-# [ALTERAÇÃO CRÍTICA] Nova lógica de status e saída de fila
 def update_status(status_text, force_exit_queue=False): 
     selected = st.session_state.consultor_selectbox
     st.session_state.gif_warning = False; st.session_state.rotation_gif_start_time = None
@@ -663,8 +657,6 @@ def update_status(status_text, force_exit_queue=False):
             st.session_state.bastao_queue.remove(selected)
         st.session_state.skip_flags.pop(selected, None)
     
-    # Se for Atividade ou Projeto, não mexe na flag 'check', mantendo na fila se já estiver
-
     was_holder = next((True for c, s in st.session_state.status_texto.items() if s == 'Bastão' and c == selected), False)
     old_status = st.session_state.status_texto.get(selected, '') or ('Bastão' if was_holder else 'Disponível')
     duration = datetime.now() - st.session_state.current_status_starts.get(selected, datetime.now())
@@ -887,7 +879,6 @@ with col_principal:
         else: st.session_state.active_view = view_name; 
         if view_name == 'chamados': st.session_state.chamado_guide_step = 1
 
-    # [LAYOUT ATUALIZADO] 9 Botões reorganizados
     row1_c1, row1_c2, row1_c3, row1_c4 = st.columns(4)
     row2_c1, row2_c2, row2_c3, row2_c4, row2_c5 = st.columns(5)
 
@@ -906,16 +897,27 @@ with col_principal:
         with st.container(border=True):
             st.markdown("### Selecione a Atividade")
             atividades_escolhidas = st.multiselect("Tipo:", OPCOES_ATIVIDADES_STATUS)
+            
+            # [LÓGICA NOVA] Verifica se alguma das atividades escolhidas exige detalhamento
             texto_extra = ""
-            if "Outros" in atividades_escolhidas: texto_extra = st.text_input("Descreva a atividade 'Outros':", placeholder="Ex: Ajuste técnico...")
+            atividades_com_texto = [a for a in atividades_escolhidas if a in ATIVIDADES_COM_DETALHE]
+            
+            if atividades_com_texto:
+                # Cria um input dinâmico pedindo detalhes para as atividades selecionadas
+                labels_para_input = ", ".join(atividades_com_texto)
+                texto_extra = st.text_input(f"Detalhe para ({labels_para_input}):", placeholder="Ex: Assunto específico...")
+
             col_confirm_1, col_confirm_2 = st.columns(2)
             with col_confirm_1:
                 if st.button("Confirmar Atividade", type="primary", use_container_width=True):
                     if atividades_escolhidas:
                         str_atividades = ", ".join(atividades_escolhidas)
                         status_final = f"Atividade: {str_atividades}"
-                        if "Outros" in atividades_escolhidas and texto_extra: status_final += f" - {texto_extra}"
-                        update_status(status_final) # Mantém na fila por padrão
+                        # Se tiver texto extra, anexa ao status
+                        if texto_extra: 
+                            status_final += f" - {texto_extra}"
+                        
+                        update_status(status_final) 
                         st.session_state.active_view = None; st.rerun()
                     else: st.warning("Selecione pelo menos uma atividade.")
             with col_confirm_2:
@@ -929,12 +931,11 @@ with col_principal:
             with col_p1:
                 if st.button("Confirmar Projeto", type="primary", use_container_width=True):
                     status_final = f"Projeto: {projeto_escolhido}"
-                    update_status(status_final) # Mantém na fila por padrão
+                    update_status(status_final) 
                     st.session_state.active_view = None; st.rerun()
             with col_p2:
                 if st.button("Cancelar", use_container_width=True, key='cancel_proj'): st.session_state.active_view = None; st.rerun()
 
-    # [NOVO] Menu Reunião
     if st.session_state.active_view == 'menu_reuniao':
         with st.container(border=True):
             st.markdown("### Detalhes da Reunião")
@@ -944,7 +945,7 @@ with col_principal:
                 if st.button("Confirmar Reunião", type="primary", use_container_width=True):
                     if reuniao_desc:
                         status_final = f"Reunião: {reuniao_desc}"
-                        update_status(status_final) # Reunião força a saída da fila na lógica nova
+                        update_status(status_final) 
                         st.session_state.active_view = None; st.rerun()
                     else: st.warning("Digite o nome da reunião.")
             with col_r2:
@@ -1067,7 +1068,6 @@ with col_disponibilidade:
     st.markdown("---")
     st.header('Status dos(as) Consultores(as)')
     
-    # [VISUAL] Popula as listas de exibição. Permite que um nome esteja em mais de uma lista.
     ui_lists = {
         'fila': [], 
         'almoco': [], 
@@ -1081,11 +1081,9 @@ with col_disponibilidade:
     } 
 
     for nome in CONSULTORES:
-        # 1. VERIFICAÇÃO DE FILA
         if nome in st.session_state.bastao_queue:
             ui_lists['fila'].append(nome)
         
-        # 2. VERIFICAÇÃO DE STATUS
         status = st.session_state.status_texto.get(nome, 'Indisponível')
         
         if status == 'Bastão': pass
@@ -1096,7 +1094,6 @@ with col_disponibilidade:
         elif status == 'Indisponível': 
             if nome not in st.session_state.bastao_queue: ui_lists['indisponivel'].append(nome)
         
-        # Status Compostos
         elif status.startswith('Sessão'):
             clean_status = status.replace('Sessão: ', '')
             ui_lists['sessao_especifica'].append((nome, clean_status))
@@ -1112,13 +1109,14 @@ with col_disponibilidade:
         else:
             if nome not in st.session_state.bastao_queue: ui_lists['indisponivel'].append(nome)
 
-    # --- RENDERIZAÇÃO ---
+    # --- RENDERIZAÇÃO FILA ---
     st.subheader(f'✅ Na Fila ({len(ui_lists["fila"])})')
     render_order = [c for c in queue if c in ui_lists["fila"]]
     if not render_order: st.markdown('_Ninguém na fila._')
     else:
         for nome in render_order:
-            col_nome, col_check = st.columns([0.8, 0.2])
+            # CORREÇÃO DE ALINHAMENTO
+            col_nome, col_check = st.columns([0.85, 0.15], vertical_alignment="center")
             key = f'check_{nome}'
             col_check.checkbox(' ', key=key, on_change=update_queue, args=(nome,), label_visibility='collapsed')
             
@@ -1139,7 +1137,8 @@ with col_disponibilidade:
         if not names: st.markdown(f'_Ninguém em {title.lower()}._')
         else:
             for nome in sorted(names):
-                col_nome, col_check = st.columns([0.8, 0.2])
+                # CORREÇÃO DE ALINHAMENTO
+                col_nome, col_check = st.columns([0.85, 0.15], vertical_alignment="center")
                 key_dummy = f'check_dummy_{title}_{nome}'
                 is_checked = st.session_state.get(f'check_{nome}', False)
                 col_check.checkbox(' ', key=key_dummy, value=is_checked, on_change=update_queue, args=(nome,), label_visibility='collapsed')
@@ -1151,7 +1150,8 @@ with col_disponibilidade:
         if not lista_tuplas: st.markdown(f'_Ninguém em {title.lower()}._')
         else:
             for nome, desc in sorted(lista_tuplas, key=lambda x: x[0]):
-                col_nome, col_check = st.columns([0.8, 0.2])
+                # CORREÇÃO DE ALINHAMENTO
+                col_nome, col_check = st.columns([0.85, 0.15], vertical_alignment="center")
                 key_dummy = f'check_dummy_{title}_{nome}'
                 is_checked = st.session_state.get(f'check_{nome}', False)
                 col_check.checkbox(' ', key=key_dummy, value=is_checked, on_change=update_queue, args=(nome,), label_visibility='collapsed')
