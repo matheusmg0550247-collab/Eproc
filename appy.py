@@ -454,18 +454,23 @@ def find_next_holder_index(current_index, queue, skips):
         attempts += 1
     return -1
 
-def check_and_assume_baton():
+def check_and_assume_baton(forced_successor=None):
     queue = st.session_state.bastao_queue
     skips = st.session_state.skip_flags
     current_holder_status = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
     
     is_current_valid = (current_holder_status and current_holder_status in queue and st.session_state.get(f'check_{current_holder_status}'))
-    first_eligible_index = find_next_holder_index(-1, queue, skips)
-    first_eligible_holder = queue[first_eligible_index] if first_eligible_index != -1 else None
     
+    # [CORREÇÃO ROTAÇÃO] Se forçado a um sucessor, use-o. Caso contrário, busca na fila.
     should_have_baton = None
-    if is_current_valid: should_have_baton = current_holder_status
-    elif first_eligible_holder: should_have_baton = first_eligible_holder
+    if forced_successor:
+        should_have_baton = forced_successor
+    elif is_current_valid: 
+        should_have_baton = current_holder_status
+    else:
+        # Se ninguém tem o bastão ou o atual saiu, procura o primeiro elegível (fallback)
+        first_eligible_index = find_next_holder_index(-1, queue, skips)
+        should_have_baton = queue[first_eligible_index] if first_eligible_index != -1 else None
 
     changed = False
     previous_holder = current_holder_status 
@@ -511,6 +516,22 @@ def toggle_queue(consultor):
     st.session_state.lunch_warning_info = None 
     
     if consultor in st.session_state.bastao_queue:
+        # [CORREÇÃO ROTAÇÃO] Antes de remover, verifique se é o atual dono do bastão
+        # e calcule quem deve ser o próximo sucessor a partir dele.
+        current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
+        forced_successor = None
+        
+        if consultor == current_holder:
+            current_idx = -1
+            try: current_idx = st.session_state.bastao_queue.index(consultor)
+            except ValueError: pass
+            
+            if current_idx != -1:
+                # Calcula o próximo antes de remover o atual da lista
+                next_idx = find_next_holder_index(current_idx, st.session_state.bastao_queue, st.session_state.skip_flags)
+                if next_idx != -1:
+                    forced_successor = st.session_state.bastao_queue[next_idx]
+                    
         st.session_state.bastao_queue.remove(consultor)
         st.session_state[f'check_{consultor}'] = False
         current_s = st.session_state.status_texto.get(consultor, '')
@@ -519,6 +540,8 @@ def toggle_queue(consultor):
             duration = datetime.now() - st.session_state.current_status_starts.get(consultor, datetime.now())
             log_status_change(consultor, current_s, 'Indisponível', duration)
             st.session_state.status_texto[consultor] = 'Indisponível'
+            
+        check_and_assume_baton(forced_successor=forced_successor)
     else:
         st.session_state.bastao_queue.append(consultor)
         st.session_state[f'check_{consultor}'] = True
@@ -530,8 +553,8 @@ def toggle_queue(consultor):
             duration = datetime.now() - st.session_state.current_status_starts.get(consultor, datetime.now())
             log_status_change(consultor, 'Indisponível', '', duration)
             st.session_state.status_texto[consultor] = ''
+        check_and_assume_baton()
 
-    check_and_assume_baton()
     save_state()
 
 def leave_specific_status(consultor, status_type_to_remove):
@@ -552,6 +575,14 @@ def leave_specific_status(consultor, status_type_to_remove):
     
     log_status_change(consultor, old_status, new_status, duration)
     st.session_state.status_texto[consultor] = new_status
+    
+    # [CORREÇÃO ALMOÇO] Se desmarcou Almoço, volta pra fila
+    if status_type_to_remove == 'Almoço':
+        if consultor not in st.session_state.bastao_queue:
+            st.session_state.bastao_queue.append(consultor)
+        st.session_state[f'check_{consultor}'] = True
+        st.session_state.skip_flags[consultor] = False
+    
     check_and_assume_baton()
     save_state()
 
@@ -997,7 +1028,8 @@ with col_principal:
                 if st.button("Confirmar Reunião", type="primary", use_container_width=True):
                     if reuniao_desc:
                         status_final = f"Reunião: {reuniao_desc}"
-                        update_status(status_final) 
+                        # [MODIFICADO] Reunião agora força a saída da fila
+                        update_status(status_final, force_exit_queue=True) 
                         st.session_state.active_view = None; st.rerun()
                     else: st.warning("Digite o nome da reunião.")
             with col_r2:
