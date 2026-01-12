@@ -44,14 +44,14 @@ def get_global_state_cache():
 # --- Constantes (Webhooks) ---
 # [SEGURANÇA] Idealmente, mova estas chaves para st.secrets em produção
 GOOGLE_CHAT_WEBHOOK_BACKUP = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU"
-CHAT_WEBHOOK_BASTAO = "" 
+CHAT_WEBHOOK_BASTAO = "https://chat.googleapis.com/v1/spaces/AAQAXbwpQHY/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=7AQaoGHiWIfv3eczQzVZ-fbQdBqSBOh1CyQ854o1f7k" 
 GOOGLE_CHAT_WEBHOOK_REGISTRO = "https://chat.googleapis.com/v1/spaces/AAQAVvsU4Lg/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=hSghjEZq8-1EmlfHdSoPRq_nTSpYc0usCs23RJOD-yk"
 GOOGLE_CHAT_WEBHOOK_CHAMADO = "https://chat.googleapis.com/v1/spaces/AAQAPPWlpW8/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=jMg2PkqtpIe3JbG_SZG_ZhcfuQQII9RXM0rZQienUZk"
 GOOGLE_CHAT_WEBHOOK_SESSAO = "https://chat.googleapis.com/v1/spaces/AAQAWs1zqNM/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=hIxKd9f35kKdJqWUNjttzRBfCsxomK0OJ3AkH9DJmxY"
 GOOGLE_CHAT_WEBHOOK_CHECKLIST_HTML = "https://chat.googleapis.com/v1/spaces/AAQAXbwpQHY/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=7AQaoGHiWIfv3eczQzVZ-fbQdBqSBOh1CyQ854o1f7k"
 GOOGLE_CHAT_WEBHOOK_HORAS_EXTRAS = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU"
 GOOGLE_CHAT_WEBHOOK_ERRO_NOVIDADE = "https://chat.googleapis.com/v1/spaces/AAQAp4gdyUE/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=vnI4C_jTeF0UQINXiVYpRrnEsYaO4-Nnvs8RC-PTj0k"
-SHEETS_WEBHOOK_URL = ""
+SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxmQ76ojPpGdLot9fa310aFsc0YpfpyYyVEJOrE3cxyKThHfV_1vE_GzT4m8sAh3P67Nw/exec"
 
 REG_USUARIO_OPCOES = ["Cartório", "Gabinete", "Externo"]
 REG_SISTEMA_OPCOES = ["Conveniados", "Outros", "Eproc", "Themis", "JPE", "SIAP"]
@@ -199,11 +199,11 @@ def log_status_change(consultor, old_status, new_status, duration):
     # 2. REGRA DO RÓTULO: Status vazio = "Fila Bastão"
     old_lbl = old_status
     if old_lbl == '' or old_lbl is None: old_lbl = 'Fila Bastão'
-    elif old_lbl == 'Disponível': old_lbl = 'Bastão'
+    elif 'Bastão' in old_lbl: old_lbl = 'Bastão' # Generaliza status compostos
     
     new_lbl = new_status
     if new_lbl == '' or new_lbl is None: new_lbl = 'Fila Bastão'
-    elif new_lbl == 'Disponível': new_lbl = 'Bastão'
+    elif 'Bastão' in new_lbl: new_lbl = 'Bastão'
 
     entry = {
         'timestamp': datetime.now(),
@@ -426,7 +426,7 @@ def init_session_state():
         st.session_state.status_texto.setdefault(nome, current_status)
         
         # Check inicial da fila depende apenas se está na fila ou disponível
-        is_available = (current_status == 'Bastão' or current_status == '') and nome not in st.session_state.priority_return_queue
+        is_available = ('Bastão' in current_status or current_status == '') and nome not in st.session_state.priority_return_queue
         st.session_state[f'check_{nome}'] = is_available
         
         if nome not in st.session_state.current_status_starts: st.session_state.current_status_starts[nome] = datetime.now()
@@ -452,7 +452,9 @@ def find_next_holder_index(current_index, queue, skips):
 def check_and_assume_baton():
     queue = st.session_state.bastao_queue
     skips = st.session_state.skip_flags
-    current_holder_status = next((c for c, s in st.session_state.status_texto.items() if s == 'Bastão'), None)
+    # [ATUALIZADO] Detecta bastão mesmo se status for composto (ex: Bastão | Projeto...)
+    current_holder_status = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
+    
     is_current_valid = (current_holder_status and current_holder_status in queue and st.session_state.get(f'check_{current_holder_status}'))
     first_eligible_index = find_next_holder_index(-1, queue, skips)
     first_eligible_holder = queue[first_eligible_index] if first_eligible_index != -1 else None
@@ -465,24 +467,29 @@ def check_and_assume_baton():
     previous_holder = current_holder_status 
 
     for c in CONSULTORES:
-        if c != should_have_baton and st.session_state.status_texto.get(c) == 'Bastão':
+        # Se alguém tem o status Bastão mas não deveria ter
+        s_text = st.session_state.status_texto.get(c, '')
+        if c != should_have_baton and 'Bastão' in s_text:
             duration = datetime.now() - st.session_state.current_status_starts.get(c, datetime.now())
             log_status_change(c, 'Bastão', 'Indisponível', duration)
             st.session_state.status_texto[c] = 'Indisponível'
             changed = True
 
-    if should_have_baton and st.session_state.status_texto.get(should_have_baton) != 'Bastão':
-        old_status = st.session_state.status_texto.get(should_have_baton, '')
-        duration = datetime.now() - st.session_state.current_status_starts.get(should_have_baton, datetime.now())
-        log_status_change(should_have_baton, old_status, 'Bastão', duration)
-        st.session_state.status_texto[should_have_baton] = 'Bastão'
-        st.session_state.bastao_start_time = datetime.now()
-        if previous_holder != should_have_baton: 
-            st.session_state.play_sound = True 
-            send_chat_notification_internal(should_have_baton, 'Bastão') 
-        if st.session_state.skip_flags.get(should_have_baton):
-            st.session_state.skip_flags[should_have_baton] = False
-        changed = True
+    if should_have_baton:
+        s_current = st.session_state.status_texto.get(should_have_baton, '')
+        if 'Bastão' not in s_current:
+            # Novo detentor assume
+            old_status = s_current
+            duration = datetime.now() - st.session_state.current_status_starts.get(should_have_baton, datetime.now())
+            log_status_change(should_have_baton, old_status, 'Bastão', duration)
+            st.session_state.status_texto[should_have_baton] = 'Bastão'
+            st.session_state.bastao_start_time = datetime.now()
+            if previous_holder != should_have_baton: 
+                st.session_state.play_sound = True 
+                send_chat_notification_internal(should_have_baton, 'Bastão') 
+            if st.session_state.skip_flags.get(should_have_baton):
+                st.session_state.skip_flags[should_have_baton] = False
+            changed = True
     elif not should_have_baton:
         if current_holder_status:
             duration = datetime.now() - st.session_state.current_status_starts.get(current_holder_status, datetime.now())
@@ -495,31 +502,32 @@ def check_and_assume_baton():
     if changed: save_state()
     return changed
 
-# [NOVA LÓGICA] Toggle da Fila (Origem: Seção Fila)
 def toggle_queue(consultor):
     st.session_state.gif_warning = False; st.session_state.rotation_gif_start_time = None
     st.session_state.lunch_warning_info = None 
     
     if consultor in st.session_state.bastao_queue:
-        # Desmarcou a fila: Sai da fila
+        # Sair da fila
         st.session_state.bastao_queue.remove(consultor)
         st.session_state[f'check_{consultor}'] = False
         
-        # Se o status era vazio (disponível), vira Indisponível
-        if st.session_state.status_texto.get(consultor) == '':
+        # Se o status era Vazio ou Bastão puro, vira Indisponível
+        current_s = st.session_state.status_texto.get(consultor, '')
+        if current_s == '' or current_s == 'Bastão':
             duration = datetime.now() - st.session_state.current_status_starts.get(consultor, datetime.now())
-            log_status_change(consultor, '', 'Indisponível', duration)
+            log_status_change(consultor, current_s, 'Indisponível', duration)
             st.session_state.status_texto[consultor] = 'Indisponível'
     else:
-        # Marcou a fila: Entra na fila
+        # Entrar na fila
         st.session_state.bastao_queue.append(consultor)
         st.session_state[f'check_{consultor}'] = True
         st.session_state.skip_flags[consultor] = False
         if consultor in st.session_state.priority_return_queue:
             st.session_state.priority_return_queue.remove(consultor)
         
-        # Se estava Indisponível, limpa
-        if st.session_state.status_texto.get(consultor) == 'Indisponível':
+        # Se estava Indisponível, vira Disponível (Vazio). Se estava em Projeto, mantém Projeto.
+        current_s = st.session_state.status_texto.get(consultor, 'Indisponível')
+        if current_s == 'Indisponível':
             duration = datetime.now() - st.session_state.current_status_starts.get(consultor, datetime.now())
             log_status_change(consultor, 'Indisponível', '', duration)
             st.session_state.status_texto[consultor] = ''
@@ -527,16 +535,17 @@ def toggle_queue(consultor):
     check_and_assume_baton()
     save_state()
 
-# [NOVA LÓGICA] Sair de um status específico (Origem: Seção Projeto, Atividade, etc)
 def leave_specific_status(consultor):
     st.session_state.gif_warning = False
     
-    # Usuário desmarcou o checkbox de status (ex: Projeto). Ele quer sair desse status.
+    # Usuário desmarcou o checkbox de status (ex: Projeto). 
     old_status = st.session_state.status_texto.get(consultor, '')
     duration = datetime.now() - st.session_state.current_status_starts.get(consultor, datetime.now())
     
-    # Se ele está na fila, o status vira Vazio (Disponível). Se não, vira Indisponível.
-    if consultor in st.session_state.bastao_queue:
+    # Se ele está com o bastão (status composto), volta a ser só Bastão
+    if 'Bastão' in old_status:
+        new_status = 'Bastão'
+    elif consultor in st.session_state.bastao_queue:
         new_status = ''
     else:
         new_status = 'Indisponível'
@@ -546,11 +555,8 @@ def leave_specific_status(consultor):
     check_and_assume_baton()
     save_state()
 
-# [NOVA LÓGICA] Sair de Indisponível para Fila
 def enter_from_indisponivel(consultor):
     st.session_state.gif_warning = False
-    
-    # Usuário marcou checkbox em Indisponível. Quer ficar disponível/fila.
     if consultor not in st.session_state.bastao_queue:
         st.session_state.bastao_queue.append(consultor)
     
@@ -572,7 +578,9 @@ def rotate_bastao():
     if not selected or selected == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
     queue = st.session_state.bastao_queue
     skips = st.session_state.skip_flags
-    current_holder = next((c for c, s in st.session_state.status_texto.items() if s == 'Bastão'), None)
+    # [ATUALIZADO]
+    current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
+    
     if selected != current_holder: st.session_state.gif_warning = True; return 
 
     current_index = -1
@@ -620,7 +628,9 @@ def toggle_skip():
     if not st.session_state.get(f'check_{selected}'): st.warning(f'{selected} não está disponível para marcar/desmarcar.'); return
     current_skip_status = st.session_state.skip_flags.get(selected, False)
     st.session_state.skip_flags[selected] = not current_skip_status
-    current_holder = next((c for c, s in st.session_state.status_texto.items() if s == 'Bastão'), None)
+    # [ATUALIZADO]
+    current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
+    
     if selected == current_holder and st.session_state.skip_flags[selected]: save_state(); rotate_bastao(); return 
     save_state() 
 
@@ -696,8 +706,14 @@ def update_status(status_text, force_exit_queue=False):
             st.session_state.bastao_queue.remove(selected)
         st.session_state.skip_flags.pop(selected, None)
     
-    was_holder = next((True for c, s in st.session_state.status_texto.items() if s == 'Bastão' and c == selected), False)
+    # [ATUALIZADO] Verifica se era holder usando substring
+    was_holder = next((True for c, s in st.session_state.status_texto.items() if 'Bastão' in s and c == selected), False)
     old_status = st.session_state.status_texto.get(selected, '') or ('Bastão' if was_holder else 'Disponível')
+    
+    # Se ele tem o bastão e entrou em atividade/projeto (não saiu da fila), mantém bastão no status
+    if was_holder and not should_exit_queue:
+        status_text = f"Bastão | {status_text}"
+
     duration = datetime.now() - st.session_state.current_status_starts.get(selected, datetime.now())
     log_status_change(selected, old_status, status_text, duration)
     st.session_state.status_texto[selected] = status_text 
@@ -855,7 +871,9 @@ if st.session_state.get('gif_warning', False): st.error('🚫 Ação inválida! 
 col_principal, col_disponibilidade = st.columns([1.5, 1])
 queue = st.session_state.bastao_queue
 skips = st.session_state.skip_flags
-responsavel = next((c for c, s in st.session_state.status_texto.items() if s == 'Bastão'), None)
+# [ATUALIZADO] Responsável pode ter status composto
+responsavel = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
+
 current_index = queue.index(responsavel) if responsavel in queue else -1
 proximo_index = find_next_holder_index(current_index, queue, skips)
 proximo = queue[proximo_index] if proximo_index != -1 else None
@@ -937,13 +955,17 @@ with col_principal:
             st.markdown("### Selecione a Atividade")
             atividades_escolhidas = st.multiselect("Tipo:", OPCOES_ATIVIDADES_STATUS)
             
-            # [LÓGICA NOVA] Verifica se alguma das atividades escolhidas exige detalhamento
-            texto_extra = ""
-            atividades_com_texto = [a for a in atividades_escolhidas if a in ATIVIDADES_COM_DETALHE]
-            
-            if atividades_com_texto:
-                labels_para_input = ", ".join(atividades_com_texto)
-                texto_extra = st.text_input(f"Detalhe para ({labels_para_input}):", placeholder="Ex: Assunto específico...")
+            # [CORREÇÃO VISUAL] Container separado para input não ser coberto
+            with st.container(border=True):
+                st.caption("Detalhamento (Preencha se necessário)")
+                texto_extra = ""
+                atividades_com_texto = [a for a in atividades_escolhidas if a in ATIVIDADES_COM_DETALHE]
+                
+                if atividades_com_texto:
+                    labels_para_input = ", ".join(atividades_com_texto)
+                    texto_extra = st.text_input(f"Detalhe para ({labels_para_input}):", placeholder="Ex: Assunto específico...")
+                else:
+                    st.write("_Nenhum detalhe necessário._")
 
             col_confirm_1, col_confirm_2 = st.columns(2)
             with col_confirm_1:
@@ -1121,28 +1143,43 @@ with col_disponibilidade:
         
         status = st.session_state.status_texto.get(nome, 'Indisponível')
         
-        if status == 'Bastão': pass
-        elif status == '' or status is None: pass
+        # [ATUALIZADO] Parseamento mais flexível para "Bastão | Projeto..."
+        if 'Bastão' in status:
+            # Bastão puro não entra em lista específica além da fila
+            # Se tiver composto, entra nas outras
+            pass
+        
+        if status == '' or status is None: pass
         elif status == 'Almoço': ui_lists['almoco'].append(nome)
         elif status == 'Ausente': ui_lists['ausente'].append(nome)
         elif status == 'Saída rápida': ui_lists['saida'].append(nome)
         elif status == 'Indisponível': 
             if nome not in st.session_state.bastao_queue: ui_lists['indisponivel'].append(nome)
         
-        elif status.startswith('Sessão'):
-            clean_status = status.replace('Sessão: ', '')
-            ui_lists['sessao_especifica'].append((nome, clean_status))
-        elif status.startswith('Reunião'):
-            clean_status = status.replace('Reunião: ', '')
-            ui_lists['reuniao_especifica'].append((nome, clean_status))
-        elif status.startswith('Projeto'): 
-            clean_status = status.replace('Projeto: ', '')
-            ui_lists['projeto_especifico'].append((nome, clean_status))
-        elif status.startswith('Atividade') or status == 'Atendimento': 
-            clean = "Atendimento" if status == 'Atendimento' else status.replace('Atividade: ', '')
-            ui_lists['atividade_especifica'].append((nome, clean))
-        else:
-            if nome not in st.session_state.bastao_queue: ui_lists['indisponivel'].append(nome)
+        # Verificações de substring para pegar status compostos
+        if 'Sessão:' in status:
+            # Extrai texto após "Sessão:"
+            match = re.search(r'Sessão: (.*)', status)
+            if match: ui_lists['sessao_especifica'].append((nome, match.group(1)))
+        
+        if 'Reunião:' in status:
+            match = re.search(r'Reunião: (.*)', status)
+            if match: ui_lists['reuniao_especifica'].append((nome, match.group(1)))
+            
+        if 'Projeto:' in status:
+            match = re.search(r'Projeto: (.*)', status)
+            if match: ui_lists['projeto_especifico'].append((nome, match.group(1)))
+            
+        if 'Atividade:' in status or status == 'Atendimento':
+            if status == 'Atendimento': 
+                ui_lists['atividade_especifica'].append((nome, "Atendimento"))
+            else:
+                match = re.search(r'Atividade: (.*)', status)
+                if match: ui_lists['atividade_especifica'].append((nome, match.group(1)))
+        
+        # Caso genérico indisponível
+        if status == 'Indisponível':
+            pass
 
     # --- RENDERIZAÇÃO FILA ---
     st.subheader(f'✅ Na Fila ({len(ui_lists["fila"])})')
@@ -1152,15 +1189,14 @@ with col_disponibilidade:
         for nome in render_order:
             col_nome, col_check = st.columns([0.85, 0.15], vertical_alignment="center")
             key = f'chk_fila_{nome}'
-            # Checkbox reflete se está na fila. Callback toggle_queue trata a lógica.
             is_checked = True 
             col_check.checkbox(' ', key=key, value=is_checked, on_change=toggle_queue, args=(nome,), label_visibility='collapsed')
             
             skip_flag = skips.get(nome, False)
             status_atual = st.session_state.status_texto.get(nome, '')
             extra_info = ""
-            if status_atual.startswith("Atividade"): extra_info = " 📋"
-            elif status_atual.startswith("Projeto"): extra_info = " 🏗️"
+            if "Atividade" in status_atual: extra_info = " 📋"
+            elif "Projeto" in status_atual: extra_info = " 🏗️"
 
             if nome == responsavel: display = f'<span style="background-color: #FFD700; color: #000; padding: 2px 6px; border-radius: 5px; font-weight: bold;">🥂 {nome}</span>'
             elif skip_flag: display = f'**{nome}**{extra_info} :orange-background[Pulando ⏭️]'
@@ -1174,9 +1210,7 @@ with col_disponibilidade:
         else:
             for nome, desc in sorted(lista_tuplas, key=lambda x: x[0]):
                 col_nome, col_check = st.columns([0.85, 0.15], vertical_alignment="center")
-                # Chave única para checkbox de status
                 key_dummy = f'chk_status_{title}_{nome}' 
-                # Marcado porque está no status. Desmarcar chama leave_specific_status
                 col_check.checkbox(' ', key=key_dummy, value=True, on_change=leave_specific_status, args=(nome,), label_visibility='collapsed')
                 col_nome.markdown(f'**{nome}** :{tag_color}-background[{desc}]', unsafe_allow_html=True)
         st.markdown('---')
@@ -1188,11 +1222,9 @@ with col_disponibilidade:
             for nome in sorted(names):
                 col_nome, col_check = st.columns([0.85, 0.15], vertical_alignment="center")
                 key_dummy = f'chk_simples_{title}_{nome}'
-                # Se for Indisponível, aparece desmarcado. Ao marcar -> Entra na Fila
                 if title == 'Indisponível':
                     col_check.checkbox(' ', key=key_dummy, value=False, on_change=enter_from_indisponivel, args=(nome,), label_visibility='collapsed')
                 else:
-                    # Outros status (Almoço, Saída), aparece marcado. Desmarcar -> Sai do status
                     col_check.checkbox(' ', key=key_dummy, value=True, on_change=leave_specific_status, args=(nome,), label_visibility='collapsed')
                 
                 col_nome.markdown(f'**{nome}** :{tag_color}-background[{title}]', unsafe_allow_html=True)
