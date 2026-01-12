@@ -37,20 +37,19 @@ def get_global_state_cache():
         'lunch_warning_info': None,
         'auxilio_ativo': False, 
         'daily_logs': [],
-        # --- Ranking Global do Jogo ---
         'simon_ranking': [] 
     }
 
-# --- Constantes (Webhooks) ---
-GOOGLE_CHAT_WEBHOOK_BACKUP = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU"
+# --- Constantes (Webhooks) - COLE SEUS LINKS AQUI ---
+GOOGLE_CHAT_WEBHOOK_BACKUP = ""
 CHAT_WEBHOOK_BASTAO = "" 
-GOOGLE_CHAT_WEBHOOK_REGISTRO = "https://chat.googleapis.com/v1/spaces/AAQAVvsU4Lg/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=hSghjEZq8-1EmlfHdSoPRq_nTSpYc0usCs23RJOD-yk"
-GOOGLE_CHAT_WEBHOOK_CHAMADO = "https://chat.googleapis.com/v1/spaces/AAQAPPWlpW8/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=jMg2PkqtpIe3JbG_SZG_ZhcfuQQII9RXM0rZQienUZk"
-GOOGLE_CHAT_WEBHOOK_SESSAO = "https://chat.googleapis.com/v1/spaces/AAQAWs1zqNM/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=hIxKd9f35kKdJqWUNjttzRBfCsxomK0OJ3AkH9DJmxY"
-GOOGLE_CHAT_WEBHOOK_CHECKLIST_HTML = "https://chat.googleapis.com/v1/spaces/AAQAXbwpQHY/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=7AQaoGHiWIfv3eczQzVZ-fbQdBqSBOh1CyQ854o1f7k"
-GOOGLE_CHAT_WEBHOOK_HORAS_EXTRAS = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU"
-GOOGLE_CHAT_WEBHOOK_ERRO_NOVIDADE = "https://chat.googleapis.com/v1/spaces/AAQAp4gdyUE/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=vnI4C_jTeF0UQINXiVYpRrnEsYaO4-Nnvs8RC-PTj0k"
-SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxmQ76ojPpGdLot9fa310aFsc0YpfpyYyVEJOrE3cxyKThHfV_1vE_GzT4m8sAh3P67Nw/exec"
+GOOGLE_CHAT_WEBHOOK_REGISTRO = ""
+GOOGLE_CHAT_WEBHOOK_CHAMADO = ""
+GOOGLE_CHAT_WEBHOOK_SESSAO = ""
+GOOGLE_CHAT_WEBHOOK_CHECKLIST_HTML = ""
+GOOGLE_CHAT_WEBHOOK_HORAS_EXTRAS = ""
+GOOGLE_CHAT_WEBHOOK_ERRO_NOVIDADE = ""
+SHEETS_WEBHOOK_URL = ""
 
 REG_USUARIO_OPCOES = ["Cartório", "Gabinete", "Externo"]
 REG_SISTEMA_OPCOES = ["Conveniados", "Outros", "Eproc", "Themis", "JPE", "SIAP"]
@@ -86,7 +85,8 @@ GIF_BASTAO_HOLDER = "https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExa3Uwazd5c
 BASTAO_EMOJI = "🥂" 
 APP_URL_CLOUD = 'https://controle-bastao-cesupe.streamlit.app'
 STATUS_SAIDA_PRIORIDADE = ['Saída rápida']
-STATUSES_DE_SAIDA = ['Atendimento', 'Almoço', 'Saída rápida', 'Ausente', 'Sessão'] 
+# Atualizado lista de status que tiram da fila na lógica nova
+STATUSES_DE_SAIDA = ['Almoço', 'Saída rápida', 'Ausente', 'Sessão'] 
 GIF_URL_WARNING = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExY2pjMDN0NGlvdXp1aHZ1ejJqMnY5MG1yZmN0d3NqcDl1bTU1dDJrciZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/fXnRObM8Q0RkOmR5nf/giphy.gif'
 GIF_URL_ROTATION = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExdmx4azVxbGt4Mnk1cjMzZm5sMmp1YThteGJsMzcyYmhsdmFoczV0aSZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/JpkZEKWY0s9QI4DGvF/giphy.gif'
 GIF_URL_LUNCH_WARNING = 'https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExMGZlbHN1azB3b2drdTI1eG10cDEzeWpmcmtwenZxNTV0bnc2OWgzZSYlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/bNlqpmBJRDMpxulfFB/giphy.gif'
@@ -162,6 +162,7 @@ def load_state():
     return loaded_data
 
 def _send_webhook_thread(url, payload):
+    if not url: return # Se url vazia, ignora
     try:
         headers = {'Content-Type': 'application/json'}
         requests.post(url, json=payload, headers=headers, timeout=5)
@@ -497,26 +498,19 @@ def update_queue(consultor):
     duration = datetime.now() - st.session_state.current_status_starts.get(consultor, datetime.now())
 
     if is_checked: 
-        # AQUI FOI A CORREÇÃO: Não logamos "Fila" imediatamente.
-        # Primeiro, inserimos nas estruturas de fila.
         if consultor not in st.session_state.bastao_queue:
             st.session_state.bastao_queue.append(consultor) 
         st.session_state.skip_flags[consultor] = False 
         if consultor in st.session_state.priority_return_queue:
             st.session_state.priority_return_queue.remove(consultor)
         
-        # Agora verificamos se essa pessoa já vai ganhar o bastão direto
         check_and_assume_baton()
         
-        # Se após a verificação o status NÃO for Bastão, aí sim registramos que ela entrou na Fila.
-        # Se for Bastão, o registro já foi feito dentro de check_and_assume_baton (Indisponível -> Bastão)
         if st.session_state.status_texto.get(consultor) != 'Bastão':
-             # Marca internamente como vazio (Fila) e loga "Fila Bastão"
              st.session_state.status_texto[consultor] = ''
              log_status_change(consultor, old_status_text or 'Indisponível', '', duration)
 
     else: 
-        # Lógica de sair (desmarcar)
         if old_status_text not in STATUSES_DE_SAIDA and old_status_text != 'Bastão':
             log_status_change(consultor, old_status_text , 'Indisponível', duration)
             st.session_state.status_texto[consultor] = 'Indisponível' 
@@ -622,35 +616,52 @@ def update_status(status_text, change_to_available):
     selected = st.session_state.consultor_selectbox
     st.session_state.gif_warning = False; st.session_state.rotation_gif_start_time = None
     if not selected or selected == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
+    
     if status_text != 'Almoço': st.session_state.lunch_warning_info = None
     current_lunch_warning = st.session_state.get('lunch_warning_info')
     is_second_try = False
     if current_lunch_warning and current_lunch_warning.get('consultor') == selected:
         elapsed = (datetime.now() - current_lunch_warning.get('start_time', datetime.min)).total_seconds()
         if elapsed < 30: is_second_try = True 
+    
     if status_text == 'Almoço' and not is_second_try:
         all_statuses = st.session_state.status_texto
         num_na_fila = sum(1 for s in all_statuses.values() if s == '' or s == 'Bastão')
-        num_atividade = sum(1 for s in all_statuses.values() if s == 'Atendimento') 
+        num_atividade = sum(1 for s in all_statuses.values() if 'Atividade' in s or 'Atendimento' in s) 
         total_ativos = num_na_fila + num_atividade
         num_almoco = sum(1 for s in all_statuses.values() if s == 'Almoço')
-        limite_almoco = total_ativos / 2.0
-        if total_ativos > 0 and num_almoco >= limite_almoco:
-            st.session_state.lunch_warning_info = {'consultor': selected, 'start_time': datetime.now(), 'message': f'Consultor(a) {selected} verificar horário. Metade dos consultores ativos já em almoço. Clique novamente em "Almoço" para confirmar.'}
+        if total_ativos > 0 and num_almoco >= (total_ativos / 2.0):
+            st.session_state.lunch_warning_info = {'consultor': selected, 'start_time': datetime.now(), 'message': f'Atenção: Metade da equipe ativa já está em almoço. Clique novamente para confirmar.'}
             save_state(); return 
+    
     st.session_state.lunch_warning_info = None
-    st.session_state[f'check_{selected}'] = False 
+    
+    # --- NOVA LÓGICA DE FILA ---
+    # Definição de quais status REMOVEM da fila
+    STATUS_QUEBRA_FILA = ['Almoço', 'Ausente', 'Saída rápida', 'Sessão']
+    should_remove = status_text in STATUS_QUEBRA_FILA or status_text.startswith("Sessão")
+
+    if should_remove:
+        st.session_state[f'check_{selected}'] = False 
+        if selected in st.session_state.bastao_queue: 
+            st.session_state.bastao_queue.remove(selected)
+        st.session_state.skip_flags.pop(selected, None)
+        
+        if status_text == 'Saída rápida':
+            if selected not in st.session_state.priority_return_queue: st.session_state.priority_return_queue.append(selected)
+        elif selected in st.session_state.priority_return_queue: 
+            st.session_state.priority_return_queue.remove(selected)
+    
     was_holder = next((True for c, s in st.session_state.status_texto.items() if s == 'Bastão' and c == selected), False)
     old_status = st.session_state.status_texto.get(selected, '') or ('Bastão' if was_holder else 'Disponível')
     duration = datetime.now() - st.session_state.current_status_starts.get(selected, datetime.now())
+    
     log_status_change(selected, old_status, status_text, duration)
     st.session_state.status_texto[selected] = status_text 
-    if selected in st.session_state.bastao_queue: st.session_state.bastao_queue.remove(selected)
-    st.session_state.skip_flags.pop(selected, None)
-    if status_text == 'Saída rápida':
-        if selected not in st.session_state.priority_return_queue: st.session_state.priority_return_queue.append(selected)
-    elif selected in st.session_state.priority_return_queue: st.session_state.priority_return_queue.remove(selected)
-    if was_holder: check_and_assume_baton() 
+    
+    if was_holder and should_remove: 
+        check_and_assume_baton() 
+        
     save_state() 
 
 def handle_horas_extras_submission(consultor_sel, data, inicio, tempo, motivo):
@@ -1022,85 +1033,95 @@ with col_disponibilidade:
     st.header('Status dos(as) Consultores(as)')
     st.markdown('Marque/Desmarque para entrar/sair.')
     
+    # 1. Limpa as listas
     ui_lists = {'fila': [], 'almoco': [], 'saida': [], 'ausente': [], 'atividade_especifica': [], 'sessao_especifica': [], 'projeto_especifico': [], 'indisponivel': []} 
+
+    # 2. Popula as listas com a NOVA LÓGICA
     for nome in CONSULTORES:
-        is_checked = st.session_state.get(f'check_{nome}', False)
         status = st.session_state.status_texto.get(nome, 'Indisponível')
-        if status == 'Bastão': ui_lists['fila'].insert(0, nome)
-        elif status == '': ui_lists['fila'].append(nome)
-        elif status == 'Almoço': ui_lists['almoco'].append(nome)
+        is_in_queue = nome in st.session_state.bastao_queue
+        
+        # SE estiver na fila (seja Bastão, Disponível, Projeto ou Atividade), aparece na lista FILA
+        if is_in_queue:
+            ui_lists['fila'].append(nome)
+        
+        # AGORA verificamos o status texto para popular as OUTRAS listas (dupla listagem)
+        if status == 'Almoço': ui_lists['almoco'].append(nome)
         elif status == 'Ausente': ui_lists['ausente'].append(nome)
         elif status == 'Saída rápida': ui_lists['saida'].append(nome)
+        
+        # Categorias que permitem estar na fila simultaneamente:
         elif status.startswith('Sessão'):
             clean_status = status.replace('Sessão: ', '')
             ui_lists['sessao_especifica'].append((nome, clean_status))
+            
         elif status.startswith('Projeto'): 
             clean_status = status.replace('Projeto: ', '')
             ui_lists['projeto_especifico'].append((nome, clean_status))
+            
         elif status.startswith('Atividade') or status == 'Atendimento': 
-            if status == 'Atendimento': ui_lists['atividade_especifica'].append((nome, "Atendimento"))
-            else: clean_status = status.replace('Atividade: ', ''); ui_lists['atividade_especifica'].append((nome, clean_status))
-        elif status == 'Indisponível': ui_lists['indisponivel'].append(nome)
-        else: ui_lists['indisponivel'].append(nome)
+            clean_status = "Atendimento" if status == 'Atendimento' else status.replace('Atividade: ', '')
+            ui_lists['atividade_especifica'].append((nome, clean_status))
+            
+        elif status == 'Indisponível': 
+            ui_lists['indisponivel'].append(nome)
 
+    # 3. Renderização
+    
+    # --- FILA ---
     st.subheader(f'✅ Na Fila ({len(ui_lists["fila"])})')
+    # Ordena a visualização baseado na ordem real da fila
     render_order = [c for c in queue if c in ui_lists['fila']] + [c for c in ui_lists['fila'] if c not in queue]
+    
     if not render_order: st.markdown('_Ninguém disponível._')
     else:
         for nome in render_order:
             col_nome, col_check = st.columns([0.8, 0.2])
             key = f'check_{nome}'
+            # Checkbox controla entrada/saída da fila
             col_check.checkbox(' ', key=key, on_change=update_queue, args=(nome,), label_visibility='collapsed')
+            
             skip_flag = skips.get(nome, False)
+            status_atual = st.session_state.status_texto.get(nome, '')
+
+            # Definição do Badge Visual na Fila
+            badge = ""
+            if status_atual.startswith('Projeto'): badge = " :blue-background[Prj]"
+            elif status_atual.startswith('Atividade') or status_atual == 'Atendimento': badge = " :orange-background[Atv]"
+            
             if nome == responsavel: display = f'<span style="background-color: #FFD700; color: #000; padding: 2px 6px; border-radius: 5px; font-weight: bold;">🥂 {nome}</span>'
-            elif skip_flag: display = f'**{nome}** :orange-background[Pulando ⏭️]'
-            else: display = f'**{nome}** :blue-background[Aguardando]'
+            elif skip_flag: display = f'**{nome}**{badge} :orange-background[Pulando ⏭️]'
+            else: display = f'**{nome}**{badge} :blue-background[Aguardando]'
+            
             col_nome.markdown(display, unsafe_allow_html=True)
     st.markdown('---')
 
-    def render_section(title, icon, names, tag_color):
+    # Função Helper para renderizar seções simples
+    def render_section_simple(title, icon, names, tag_color):
         st.subheader(f'{icon} {title} ({len(names)})')
         if not names: st.markdown(f'_Ninguém em {title.lower()}._')
         else:
             for nome in sorted(names):
-                col_nome, col_check = st.columns([0.8, 0.2])
-                key = f'check_{nome}'
-                col_check.checkbox(' ', key=key, value=False, on_change=update_queue, args=(nome,), label_visibility='collapsed')
-                col_nome.markdown(f'**{nome}** :{tag_color}-background[{title}]', unsafe_allow_html=True)
+                st.markdown(f'**{nome}** :{tag_color}-background[{title}]', unsafe_allow_html=True)
         st.markdown('---')
 
-    st.subheader(f'📋 Em Demanda ({len(ui_lists["atividade_especifica"])})')
-    if not ui_lists['atividade_especifica']: st.markdown('_Ninguém em demanda._')
-    else:
-        for nome, status_desc in sorted(ui_lists['atividade_especifica'], key=lambda x: x[0]):
-            col_nome, col_check = st.columns([0.8, 0.2])
-            col_check.checkbox(' ', key=f'check_{nome}', value=False, on_change=update_queue, args=(nome,), label_visibility='collapsed')
-            col_nome.markdown(f'**{nome}** :orange-background[{status_desc}]', unsafe_allow_html=True)
-    st.markdown('---')
+    # Função Helper para seções com descrição (Projeto/Atividade)
+    def render_section_desc(title, icon, items, tag_color):
+        st.subheader(f'{icon} {title} ({len(items)})')
+        if not items: st.markdown(f'_Ninguém em {title.lower()}._')
+        else:
+            for nome, desc in sorted(items, key=lambda x: x[0]):
+                st.markdown(f'**{nome}** :{tag_color}-background[{desc}]', unsafe_allow_html=True)
+        st.markdown('---')
 
-    render_section('Almoço', '🍽️', ui_lists['almoco'], 'red')
-
-    st.subheader(f'🎙️ Sessão ({len(ui_lists["sessao_especifica"])})')
-    if not ui_lists['sessao_especifica']: st.markdown('_Ninguém em sessão._')
-    else:
-        for nome, status_desc in sorted(ui_lists['sessao_especifica'], key=lambda x: x[0]):
-            col_nome, col_check = st.columns([0.8, 0.2])
-            col_check.checkbox(' ', key=f'check_{nome}', value=False, on_change=update_queue, args=(nome,), label_visibility='collapsed')
-            col_nome.markdown(f'**{nome}** :green-background[{status_desc}]', unsafe_allow_html=True)
-    st.markdown('---')
-
-    st.subheader(f'🏗️ Em Projetos ({len(ui_lists["projeto_especifico"])})')
-    if not ui_lists['projeto_especifico']: st.markdown('_Ninguém em projeto._')
-    else:
-        for nome, status_desc in sorted(ui_lists['projeto_especifico'], key=lambda x: x[0]):
-            col_nome, col_check = st.columns([0.8, 0.2])
-            col_check.checkbox(' ', key=f'check_{nome}', value=False, on_change=update_queue, args=(nome,), label_visibility='collapsed')
-            col_nome.markdown(f'**{nome}** :blue-background[{status_desc}]', unsafe_allow_html=True)
-    st.markdown('---')
-
-    render_section('Saída rápida', '🚶', ui_lists['saida'], 'red')
-    render_section('Ausente', '👤', ui_lists['ausente'], 'violet') 
-    render_section('Indisponível', '❌', ui_lists['indisponivel'], 'grey')
+    # Renderiza as seções Específicas
+    render_section_desc('Em Demanda', '📋', ui_lists['atividade_especifica'], 'orange')
+    render_section_simple('Almoço', '🍽️', ui_lists['almoco'], 'red')
+    render_section_desc('Sessão', '🎙️', ui_lists['sessao_especifica'], 'green')
+    render_section_desc('Em Projetos', '🏗️', ui_lists['projeto_especifico'], 'blue')
+    render_section_simple('Saída rápida', '🚶', ui_lists['saida'], 'red')
+    render_section_simple('Ausente', '👤', ui_lists['ausente'], 'violet')
+    render_section_simple('Indisponível', '❌', ui_lists['indisponivel'], 'grey')
 
 now_utc = datetime.utcnow()
 now_br = now_utc - timedelta(hours=3) 
