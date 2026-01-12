@@ -427,11 +427,24 @@ def init_session_state():
         if current_status is None: current_status = 'Indisponível'
         st.session_state.status_texto[nome] = current_status
         
-        # Só marca check se estiver realmente na fila ou explicitamente disponível
-        is_available = ('Bastão' in current_status or current_status == '') and nome not in st.session_state.priority_return_queue
-        # Se for Indisponível, check deve ser Falso
-        if 'Indisponível' in current_status: is_available = False
+        # [MODIFICAÇÃO IMPORTANTE]: Lógica de disponibilidade
+        # Se NÃO tiver status de bloqueio, considera disponível (Checkbox = True)
+        blocking_keywords = ['Indisponível', 'Almoço', 'Ausente', 'Saída rápida', 'Sessão', 'Reunião']
+        is_available = True
         
+        for kw in blocking_keywords:
+            if kw in current_status:
+                is_available = False
+                break
+        
+        # Override: Se estiver na fila de retorno prioritário, não está disponível para o bastão normal
+        if nome in st.session_state.priority_return_queue:
+            is_available = False
+            
+        # Override de segurança: Se tiver explicitamente "Bastão" no texto, deve estar disponível (embora raro com bloqueio)
+        if 'Bastão' in current_status:
+            is_available = True
+
         st.session_state[f'check_{nome}'] = is_available
         
         if nome not in st.session_state.current_status_starts: st.session_state.current_status_starts[nome] = datetime.now()
@@ -713,7 +726,8 @@ def update_status(new_status_part, force_exit_queue=False):
         # Lógica de aviso de almoço aqui...
         pass 
 
-    blocking_statuses = ['Almoço', 'Ausente', 'Saída rápida']
+    # [MODIFICADO] Lista de bloqueio inclui Sessão e Reunião
+    blocking_statuses = ['Almoço', 'Ausente', 'Saída rápida', 'Sessão', 'Reunião']
     should_exit_queue = False
     
     if new_status_part in blocking_statuses or force_exit_queue:
