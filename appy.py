@@ -1196,6 +1196,14 @@ with col_principal:
                         time.sleep(1.5)
                         st.rerun()
                     else: st.error("Erro no envio.")
+    
+    st.markdown("---")
+    st.markdown("### 📚 Links Úteis - Notebooks LM Cesupe")
+    st.markdown("""
+    * [Notebook Lm Eproc Gabinete](https://notebooklm.google.com/notebook/e2fcf868-1697-4a4c-a7db-fed5560e04ad)
+    * [Eproc Cartório](https://notebooklm.google.com/notebook/8b7fd5e6-ee33-4d5e-945c-f763c443846f)
+    * [Respostas Padrão e Atendimentos Cesupe](https://notebooklm.google.com/notebook/5504cfb6-174b-4cba-bbd4-ee22f45f60fe)
+    """)
 
 with col_disponibilidade:
     st.markdown("###")
@@ -1305,14 +1313,6 @@ with col_disponibilidade:
     render_section_simples('Saída rápida', '🚶', ui_lists['saida'], 'red')
     render_section_simples('Ausente', '👤', ui_lists['ausente'], 'violet') 
     render_section_simples('Indisponível', '❌', ui_lists['indisponivel'], 'grey')
-
-st.markdown("---")
-st.markdown("### 📚 Links Úteis - Notebooks LM Cesupe")
-st.markdown("""
-* [Notebook Cesupe 1](https://notebooklm.google.com/notebook/e2fcf868-1697-4a4c-a7db-fed5560e04ad)
-* [Notebook Cesupe 2](https://notebooklm.google.com/notebook/8b7fd5e6-ee33-4d5e-945c-f763c443846f)
-* [Notebook Cesupe 3](https://notebooklm.google.com/notebook/5504cfb6-174b-4cba-bbd4-ee22f45f60fe)
-""")
 
 now_utc = datetime.utcnow()
 now_br = get_brazil_time()
