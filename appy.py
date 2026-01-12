@@ -52,8 +52,8 @@ GOOGLE_CHAT_WEBHOOK_CHECKLIST_HTML = "https://chat.googleapis.com/v1/spaces/AAQA
 GOOGLE_CHAT_WEBHOOK_HORAS_EXTRAS = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU"
 GOOGLE_CHAT_WEBHOOK_ERRO_NOVIDADE = "https://chat.googleapis.com/v1/spaces/AAQAp4gdyUE/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=vnI4C_jTeF0UQINXiVYpRrnEsYaO4-Nnvs8RC-PTj0k"
 
-# [ATUALIZADO] Nova URL do Script do Google Sheets
-SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbx7z9mgDt1FwXJMrcP3NbrXU-TKV5ovvNgqb7T1EW71lfSrPIPOUEgmxu5MCd1VYykZeQ/exec"
+# [ATUALIZADO] Nova URL do Web App da nova planilha
+SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbyCV3jaGf5XnYfhHKNXt8ZylTSh2QGYsqnXvXzEvqf6C6l2o_7PpY8UaPx4r5QlE5u_EA/exec"
 
 REG_USUARIO_OPCOES = ["Cartório", "Gabinete", "Externo"]
 REG_SISTEMA_OPCOES = ["Conveniados", "Outros", "Eproc", "Themis", "JPE", "SIAP"]
