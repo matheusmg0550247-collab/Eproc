@@ -42,6 +42,7 @@ def get_global_state_cache():
     }
 
 # --- Constantes (Webhooks) ---
+# [SEGURANÇA] Idealmente, mova estas chaves para st.secrets em produção
 GOOGLE_CHAT_WEBHOOK_BACKUP = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU"
 CHAT_WEBHOOK_BASTAO = "" 
 GOOGLE_CHAT_WEBHOOK_REGISTRO = "https://chat.googleapis.com/v1/spaces/AAQAVvsU4Lg/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=hSghjEZq8-1EmlfHdSoPRq_nTSpYc0usCs23RJOD-yk"
@@ -76,7 +77,6 @@ OPCOES_ATIVIDADES_STATUS = [
     "HP", "E-mail", "WhatsApp Plantão", 
     "Treinamento", "Homologação", "Redação Documentos", "Outros"
 ]
-# Atividades que exigem input de texto para detalhamento
 ATIVIDADES_COM_DETALHE = ["Treinamento", "Homologação", "Redação Documentos", "Outros"]
 
 OPCOES_PROJETOS = [
@@ -88,7 +88,7 @@ GIF_BASTAO_HOLDER = "https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExa3Uwazd5c
 BASTAO_EMOJI = "🥂" 
 APP_URL_CLOUD = 'https://controle-bastao-cesupe.streamlit.app'
 STATUS_SAIDA_PRIORIDADE = ['Saída rápida']
-STATUSES_DE_SAIDA = ['Almoço', 'Saída rápida', 'Ausente', 'Sessão'] # Nota: Sessão e Reunião são tratados como saída de fila se não especificado
+STATUSES_DE_SAIDA = ['Almoço', 'Saída rápida', 'Ausente', 'Sessão'] 
 GIF_URL_WARNING = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExY2pjMDN0NGlvdXp1aHZ1ejJqMnY5MG1yZmN0d3NqcDl1bTU1dDJrciZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/fXnRObM8Q0RkOmR5nf/giphy.gif'
 GIF_URL_ROTATION = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExdmx4azVxbGt4Mnk1cjMzZm5sMmp1YThteGJsMzcyYmhsdmFoczV0aSZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/JpkZEKWY0s9QI4DGvF/giphy.gif'
 GIF_URL_LUNCH_WARNING = 'https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExMGZlbHN1azB3b2drdTI1eG10cDEzeWpmcmtwenZxNTV0bnc2OWgzZSYlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/bNlqpmBJRDMpxulfFB/giphy.gif'
@@ -418,7 +418,7 @@ def init_session_state():
     st.session_state['auxilio_ativo'] = persisted_state.get('auxilio_ativo', False)
     st.session_state['simon_ranking'] = persisted_state.get('simon_ranking', [])
 
-    # [CORREÇÃO BUG TODOS DISPONÍVEIS] Inicializa com Indisponível se vazio
+    # [CORREÇÃO BUG TODOS DISPONÍVEIS] Garante consistência na inicialização
     for nome in CONSULTORES:
         st.session_state.bastao_counts.setdefault(nome, 0)
         st.session_state.skip_flags.setdefault(nome, False)
@@ -427,7 +427,11 @@ def init_session_state():
         if current_status is None: current_status = 'Indisponível'
         st.session_state.status_texto[nome] = current_status
         
+        # Só marca check se estiver realmente na fila ou explicitamente disponível
         is_available = ('Bastão' in current_status or current_status == '') and nome not in st.session_state.priority_return_queue
+        # Se for Indisponível, check deve ser Falso
+        if 'Indisponível' in current_status: is_available = False
+        
         st.session_state[f'check_{nome}'] = is_available
         
         if nome not in st.session_state.current_status_starts: st.session_state.current_status_starts[nome] = datetime.now()
@@ -511,7 +515,6 @@ def toggle_queue(consultor):
         st.session_state[f'check_{consultor}'] = False
         current_s = st.session_state.status_texto.get(consultor, '')
         # Sai da fila mas mantém status de projeto/atividade se houver
-        # Se era só Bastão ou Vazio, vira Indisponível
         if current_s == '' or current_s == 'Bastão':
             duration = datetime.now() - st.session_state.current_status_starts.get(consultor, datetime.now())
             log_status_change(consultor, current_s, 'Indisponível', duration)
@@ -537,7 +540,6 @@ def leave_specific_status(consultor, status_type_to_remove):
     old_status = st.session_state.status_texto.get(consultor, '')
     duration = datetime.now() - st.session_state.current_status_starts.get(consultor, datetime.now())
     
-    # Reconstrói a string de status removendo a parte específica
     parts = [p.strip() for p in old_status.split('|')]
     new_parts = []
     for p in parts:
@@ -680,30 +682,25 @@ def update_status(new_status_part, force_exit_queue=False):
         # Lógica de aviso de almoço aqui...
         pass 
 
-    # Lógica de bloqueio total (Saída da fila e limpeza de outros status)
     blocking_statuses = ['Almoço', 'Ausente', 'Saída rápida']
     should_exit_queue = False
     
-    # Se o novo status é bloqueante ou foi forçado (botão de saída)
     if new_status_part in blocking_statuses or force_exit_queue:
         should_exit_queue = True
-        final_status = new_status_part # Substitui tudo
+        final_status = new_status_part 
     else:
-        # Lógica Acumulativa
+        # Lógica Acumulativa: Adiciona novo status aos existentes
         current = st.session_state.status_texto.get(selected, '')
         parts = [p.strip() for p in current.split('|') if p.strip()]
         
-        # Remove partes conflitantes do mesmo tipo
-        # Ex: Se já tem "Projeto: A" e adiciona "Projeto: B", remove o A.
         type_of_new = new_status_part.split(':')[0]
         cleaned_parts = []
         for p in parts:
             if p == 'Indisponível': continue
-            if p.startswith(type_of_new): continue
+            if p.startswith(type_of_new): continue # Substitui status do mesmo tipo (ex: troca um projeto por outro)
             cleaned_parts.append(p)
         
         cleaned_parts.append(new_status_part)
-        # Reordena para ficar bonito: Bastão -> Atividade -> Projeto
         cleaned_parts.sort(key=lambda x: 0 if 'Bastão' in x else 1 if 'Atividade' in x else 2)
         final_status = " | ".join(cleaned_parts)
 
@@ -716,6 +713,10 @@ def update_status(new_status_part, force_exit_queue=False):
     was_holder = next((True for c, s in st.session_state.status_texto.items() if 'Bastão' in s and c == selected), False)
     old_status = st.session_state.status_texto.get(selected, '')
     
+    if was_holder and not should_exit_queue:
+        if 'Bastão' not in final_status:
+            final_status = f"Bastão | {final_status}"
+
     duration = datetime.now() - st.session_state.current_status_starts.get(selected, datetime.now())
     log_status_change(selected, old_status, final_status, duration)
     st.session_state.status_texto[selected] = final_status
@@ -832,6 +833,7 @@ with c_topo_dir:
     with c_sub2:
         if st.button("🚀 Entrar", help="Ficar disponível na fila imediatamente"):
             if novo_responsavel and novo_responsavel != "Selecione":
+                # Botão rápido força entrada na fila e limpa skips
                 toggle_queue(novo_responsavel)
                 st.session_state.consultor_selectbox = novo_responsavel 
                 st.success(f"{novo_responsavel} agora está na fila!")
@@ -953,13 +955,13 @@ with col_principal:
     if st.session_state.active_view == 'menu_atividades':
         with st.container(border=True):
             st.markdown("### Selecione a Atividade")
-            # [CORREÇÃO VISUAL] Inverte ordem: Input acima da Lista para não ser tampado
-            with st.container(border=True):
-                st.caption("📝 Detalhamento (Preencha antes de selecionar)")
-                texto_extra = st.text_input("Detalhe:", placeholder="Ex: Assunto específico...")
+            # [CORREÇÃO VISUAL] Coloca lado a lado: Lista (Esq) e Texto (Dir) para não tampar
+            c_a1, c_a2 = st.columns([1, 1], vertical_alignment="bottom")
+            with c_a1:
+                atividades_escolhidas = st.multiselect("Tipo:", OPCOES_ATIVIDADES_STATUS)
+            with c_a2:
+                texto_extra = st.text_input("Detalhe (se necessário):", placeholder="Ex: Assunto específico...")
 
-            atividades_escolhidas = st.multiselect("Tipo:", OPCOES_ATIVIDADES_STATUS)
-            
             col_confirm_1, col_confirm_2 = st.columns(2)
             with col_confirm_1:
                 if st.button("Confirmar Atividade", type="primary", use_container_width=True):
