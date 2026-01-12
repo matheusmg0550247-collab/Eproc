@@ -40,7 +40,7 @@ def get_global_state_cache():
         'simon_ranking': [] 
     }
 
-# --- Constantes (Webhooks) - COLE SEUS LINKS AQUI ---
+# --- Constantes (Webhooks) - REMOVIDOS PARA SEGURANÇA ---
 GOOGLE_CHAT_WEBHOOK_BACKUP = ""
 CHAT_WEBHOOK_BASTAO = "" 
 GOOGLE_CHAT_WEBHOOK_REGISTRO = ""
@@ -85,7 +85,7 @@ GIF_BASTAO_HOLDER = "https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExa3Uwazd5c
 BASTAO_EMOJI = "🥂" 
 APP_URL_CLOUD = 'https://controle-bastao-cesupe.streamlit.app'
 STATUS_SAIDA_PRIORIDADE = ['Saída rápida']
-# Atualizado lista de status que tiram da fila na lógica nova
+# Modificado: Apenas estes status retiram da fila
 STATUSES_DE_SAIDA = ['Almoço', 'Saída rápida', 'Ausente', 'Sessão'] 
 GIF_URL_WARNING = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExY2pjMDN0NGlvdXp1aHZ1ejJqMnY5MG1yZmN0d3NqcDl1bTU1dDJrciZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/fXnRObM8Q0RkOmR5nf/giphy.gif'
 GIF_URL_ROTATION = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExdmx4azVxbGt4Mnk1cjMzZm5sMmp1YThteGJsMzcyYmhsdmFoczV0aSZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/JpkZEKWY0s9QI4DGvF/giphy.gif'
@@ -162,7 +162,7 @@ def load_state():
     return loaded_data
 
 def _send_webhook_thread(url, payload):
-    if not url: return # Se url vazia, ignora
+    if not url: return
     try:
         headers = {'Content-Type': 'application/json'}
         requests.post(url, json=payload, headers=headers, timeout=5)
@@ -636,8 +636,7 @@ def update_status(status_text, change_to_available):
     
     st.session_state.lunch_warning_info = None
     
-    # --- NOVA LÓGICA DE FILA ---
-    # Definição de quais status REMOVEM da fila
+    # --- NOVA LÓGICA DE FILA: SÓ ESSES REMOVEM DA FILA ---
     STATUS_QUEBRA_FILA = ['Almoço', 'Ausente', 'Saída rápida', 'Sessão']
     should_remove = status_text in STATUS_QUEBRA_FILA or status_text.startswith("Sessão")
 
@@ -652,6 +651,9 @@ def update_status(status_text, change_to_available):
         elif selected in st.session_state.priority_return_queue: 
             st.session_state.priority_return_queue.remove(selected)
     
+    # Se for Atividade ou Projeto, a pessoa fica na fila (não entra no if should_remove)
+    # E atualizamos o status texto normalmente para aparecer em ambos os lugares
+
     was_holder = next((True for c, s in st.session_state.status_texto.items() if s == 'Bastão' and c == selected), False)
     old_status = st.session_state.status_texto.get(selected, '') or ('Bastão' if was_holder else 'Disponível')
     duration = datetime.now() - st.session_state.current_status_starts.get(selected, datetime.now())
