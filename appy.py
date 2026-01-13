@@ -81,7 +81,6 @@ CAMARAS_DICT = {
 }
 CAMARAS_OPCOES = sorted(list(CAMARAS_DICT.keys()))
 
-# [ALTERAÇÃO] Removido "Treinamento" desta lista, pois agora tem botão próprio
 OPCOES_ATIVIDADES_STATUS = [
     "HP", "E-mail", "WhatsApp Plantão", 
     "Homologação", "Redação Documentos", "Outros"
@@ -1280,7 +1279,10 @@ with col_disponibilidade:
         # [DISPLAY] Captura status de Treinamento
         if 'Treinamento:' in status:
             match = re.search(r'Treinamento: (.*)', status)
-            if match: ui_lists['treinamento_especifico'].append((nome, match.group(1).split('|')[0].strip()))
+            desc_treinamento = match.group(1).split('|')[0].strip() if match else "Geral"
+            # Fallback se a descrição estiver vazia
+            if not desc_treinamento: desc_treinamento = "Geral"
+            ui_lists['treinamento_especifico'].append((nome, desc_treinamento))
             
         if 'Atividade:' in status or status == 'Atendimento':
             if status == 'Atendimento': 
@@ -1312,7 +1314,20 @@ with col_disponibilidade:
             col_nome.markdown(display, unsafe_allow_html=True)
     st.markdown('---')
 
-    def render_section_detalhada(title, icon, lista_tuplas, tag_color, keyword_removal):
+    # --- FUNÇÃO ATUALIZADA: Renderização Segura com HTML ---
+    def render_section_detalhada(title, icon, lista_tuplas, tag_color_name, keyword_removal):
+        # Mapa de Cores Hexadecimal (Para HTML robusto)
+        colors = {
+            'orange': '#FFECB3', # Amber 100
+            'blue': '#BBDEFB',   # Blue 100
+            'teal': '#B2DFDB',   # Teal 100 (CORREÇÃO: Isso evita o erro visual)
+            'violet': '#E1BEE7', # Purple 100
+            'green': '#C8E6C9',  # Green 100
+            'red': '#FFCDD2',    # Red 100
+            'grey': '#F5F5F5'    # Grey 100
+        }
+        bg_hex = colors.get(tag_color_name, '#E0E0E0') # Fallback
+
         st.subheader(f'{icon} {title} ({len(lista_tuplas)})')
         if not lista_tuplas: st.markdown(f'_Ninguém em {title.lower()}._')
         else:
@@ -1320,10 +1335,26 @@ with col_disponibilidade:
                 col_nome, col_check = st.columns([0.85, 0.15], vertical_alignment="center")
                 key_dummy = f'chk_status_{title}_{nome}' 
                 col_check.checkbox(' ', key=key_dummy, value=True, on_change=leave_specific_status, args=(nome, keyword_removal), label_visibility='collapsed')
-                col_nome.markdown(f'**{nome}** :{tag_color}-background[{desc}]', unsafe_allow_html=True)
+                
+                # HTML direto para evitar que o código de markdown vaze
+                html_badged = f"""
+                <div style="font-size: 16px; margin: 2px 0;">
+                    <strong>{nome}</strong>
+                    <span style="background-color: {bg_hex}; color: #333; padding: 2px 8px; border-radius: 12px; font-size: 14px; margin-left: 8px; vertical-align: middle;">
+                        {desc}
+                    </span>
+                </div>
+                """
+                col_nome.markdown(html_badged, unsafe_allow_html=True)
         st.markdown('---')
 
-    def render_section_simples(title, icon, names, tag_color):
+    def render_section_simples(title, icon, names, tag_color_name):
+        colors = {
+            'orange': '#FFECB3', 'blue': '#BBDEFB', 'teal': '#B2DFDB', 
+            'violet': '#E1BEE7', 'green': '#C8E6C9', 'red': '#FFCDD2', 'grey': '#EEEEEE'
+        }
+        bg_hex = colors.get(tag_color_name, '#E0E0E0')
+
         st.subheader(f'{icon} {title} ({len(names)})')
         if not names: st.markdown(f'_Ninguém em {title.lower()}._')
         else:
@@ -1335,12 +1366,20 @@ with col_disponibilidade:
                 else:
                     col_check.checkbox(' ', key=key_dummy, value=True, on_change=leave_specific_status, args=(nome, title), label_visibility='collapsed')
                 
-                col_nome.markdown(f'**{nome}** :{tag_color}-background[{title}]', unsafe_allow_html=True)
+                html_simple = f"""
+                <div style="font-size: 16px; margin: 2px 0;">
+                    <strong>{nome}</strong>
+                    <span style="background-color: {bg_hex}; color: #444; padding: 2px 6px; border-radius: 6px; font-size: 12px; margin-left: 6px; vertical-align: middle; text-transform: uppercase;">
+                        {title}
+                    </span>
+                </div>
+                """
+                col_nome.markdown(html_simple, unsafe_allow_html=True)
         st.markdown('---')
 
     render_section_detalhada('Em Demanda', '📋', ui_lists['atividade_especifica'], 'orange', 'Atividade')
     render_section_detalhada('Projetos', '🏗️', ui_lists['projeto_especifico'], 'blue', 'Projeto')
-    render_section_detalhada('Treinamento', '🎓', ui_lists['treinamento_especifico'], 'teal', 'Treinamento') # Nova Seção
+    render_section_detalhada('Treinamento', '🎓', ui_lists['treinamento_especifico'], 'teal', 'Treinamento') # Nova Seção Corrigida
     render_section_detalhada('Reuniões', '📅', ui_lists['reuniao_especifica'], 'violet', 'Reunião')
     render_section_simples('Almoço', '🍽️', ui_lists['almoco'], 'red')
     render_section_detalhada('Sessão', '🎙️', ui_lists['sessao_especifica'], 'green', 'Sessão')
