@@ -81,11 +81,12 @@ CAMARAS_DICT = {
 }
 CAMARAS_OPCOES = sorted(list(CAMARAS_DICT.keys()))
 
+# [ALTERAÇÃO] Removido "Treinamento" desta lista, pois agora tem botão próprio
 OPCOES_ATIVIDADES_STATUS = [
     "HP", "E-mail", "WhatsApp Plantão", 
-    "Treinamento", "Homologação", "Redação Documentos", "Outros"
+    "Homologação", "Redação Documentos", "Outros"
 ]
-ATIVIDADES_COM_DETALHE = ["Treinamento", "Homologação", "Redação Documentos", "Outros"]
+ATIVIDADES_COM_DETALHE = ["Homologação", "Redação Documentos", "Outros"]
 
 OPCOES_PROJETOS = [
     "Soma", "Treinamentos Eproc", "Manuais Eproc", 
@@ -96,7 +97,8 @@ GIF_BASTAO_HOLDER = "https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExa3Uwazd5c
 BASTAO_EMOJI = "🥂" 
 APP_URL_CLOUD = 'https://controle-bastao-cesupe.streamlit.app'
 STATUS_SAIDA_PRIORIDADE = ['Saída rápida']
-STATUSES_DE_SAIDA = ['Almoço', 'Saída rápida', 'Ausente', 'Sessão'] 
+# [ALTERAÇÃO] Adicionado Treinamento como status de saída
+STATUSES_DE_SAIDA = ['Almoço', 'Saída rápida', 'Ausente', 'Sessão', 'Treinamento'] 
 GIF_URL_WARNING = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExY2pjMDN0NGlvdXp1aHZ1ejJqMnY5MG1yZmN0d3NqcDl1bTU1dDJrciZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/fXnRObM8Q0RkOmR5nf/giphy.gif'
 GIF_URL_ROTATION = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExdmx4azVxbGt4Mnk1cjMzZm5sMmp1YThteGJsMzcyYmhsdmFoczV0aSZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/JpkZEKWY0s9QI4DGvF/giphy.gif'
 GIF_URL_LUNCH_WARNING = 'https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExMGZlbHN1azB3b2drdTI1eG10cDEzeWpmcmtwenZxNTV0bnc2OWgzZSYlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/bNlqpmBJRDMpxulfFB/giphy.gif'
@@ -446,7 +448,8 @@ def init_session_state():
         
         # [MODIFICAÇÃO IMPORTANTE]: Lógica de disponibilidade
         # Se NÃO tiver status de bloqueio, considera disponível (Checkbox = True)
-        blocking_keywords = ['Indisponível', 'Almoço', 'Ausente', 'Saída rápida', 'Sessão', 'Reunião']
+        # [ATUALIZAÇÃO] Adicionado "Treinamento" para garantir bloqueio correto
+        blocking_keywords = ['Indisponível', 'Almoço', 'Ausente', 'Saída rápida', 'Sessão', 'Reunião', 'Treinamento']
         is_available = True
         
         for kw in blocking_keywords:
@@ -610,7 +613,7 @@ def leave_specific_status(consultor, status_type_to_remove):
     st.session_state.status_texto[consultor] = new_status
     
     # [CORREÇÃO ALMOÇO] Se desmarcou Almoço, volta pra fila
-    if status_type_to_remove == 'Almoço':
+    if status_type_to_remove == 'Almoço' or status_type_to_remove == 'Treinamento':
         if consultor not in st.session_state.bastao_queue:
             st.session_state.bastao_queue.append(consultor)
         st.session_state[f'check_{consultor}'] = True
@@ -733,7 +736,7 @@ def handle_chamado_submission():
     st.session_state.chamado_guide_step = 0
     st.session_state.chamado_textarea = ""
 
-# [STATUS ACUMULATIVO]
+# [STATUS ACUMULATIVO E BLOQUEANTE ATUALIZADO]
 def update_status(new_status_part, force_exit_queue=False): 
     selected = st.session_state.consultor_selectbox
     st.session_state.gif_warning = False; st.session_state.rotation_gif_start_time = None
@@ -748,11 +751,14 @@ def update_status(new_status_part, force_exit_queue=False):
         # Lógica de aviso de almoço aqui...
         pass 
 
-    # [MODIFICADO] Lista de bloqueio inclui Sessão e Reunião
-    blocking_statuses = ['Almoço', 'Ausente', 'Saída rápida', 'Sessão', 'Reunião']
+    # [MODIFICADO] Lista de bloqueio inclui Sessão, Reunião e agora TREINAMENTO
+    blocking_statuses = ['Almoço', 'Ausente', 'Saída rápida', 'Sessão', 'Reunião', 'Treinamento']
     should_exit_queue = False
     
-    if new_status_part in blocking_statuses or force_exit_queue:
+    # Verifica se o novo status contém alguma palavra chave de bloqueio
+    is_blocking = any(b in new_status_part for b in blocking_statuses)
+
+    if is_blocking or force_exit_queue:
         should_exit_queue = True
         final_status = new_status_part 
     else:
@@ -768,7 +774,8 @@ def update_status(new_status_part, force_exit_queue=False):
             cleaned_parts.append(p)
         
         cleaned_parts.append(new_status_part)
-        cleaned_parts.sort(key=lambda x: 0 if 'Bastão' in x else 1 if 'Atividade' in x else 2)
+        # Garante a ordem: Bastão primeiro, depois Atividade/Projeto
+        cleaned_parts.sort(key=lambda x: 0 if 'Bastão' in x else 1 if 'Atividade' in x or 'Projeto' in x else 2)
         final_status = " | ".join(cleaned_parts)
 
     if should_exit_queue:
@@ -777,6 +784,7 @@ def update_status(new_status_part, force_exit_queue=False):
             st.session_state.bastao_queue.remove(selected)
         st.session_state.skip_flags.pop(selected, None)
     
+    # Lógica para garantir que Bastão permaneça se não for saída de fila
     was_holder = next((True for c, s in st.session_state.status_texto.items() if 'Bastão' in s and c == selected), False)
     old_status = st.session_state.status_texto.get(selected, '')
     
@@ -1007,23 +1015,25 @@ with col_principal:
         if view_name == 'chamados': st.session_state.chamado_guide_step = 1
 
     row1_c1, row1_c2, row1_c3, row1_c4 = st.columns(4)
-    row2_c1, row2_c2, row2_c3, row2_c4, row2_c5 = st.columns(5)
+    # [LAYOUT] Adicionado espaço para o novo botão de Treinamento na segunda linha (6 colunas agora)
+    row2_c1, row2_c2, row2_c3, row2_c4, row2_c5, row2_c6 = st.columns(6)
 
     row1_c1.button('🎯 Passar', on_click=rotate_bastao, use_container_width=True, help='Passa o bastão.')
     row1_c2.button('⏭️ Pular', on_click=toggle_skip, use_container_width=True, help='Pular vez.')
     row1_c3.button('📋 Atividades', on_click=toggle_view, args=('menu_atividades',), use_container_width=True)
     row1_c4.button('🏗️ Projeto', on_click=toggle_view, args=('menu_projetos',), use_container_width=True)
     
-    row2_c1.button('📅 Reunião', on_click=toggle_view, args=('menu_reuniao',), use_container_width=True)
-    row2_c2.button('🍽️ Almoço', on_click=update_status, args=('Almoço', True,), use_container_width=True)
-    row2_c3.button('🎙️ Sessão', on_click=toggle_view, args=('menu_sessao',), use_container_width=True)
-    row2_c4.button('🚶 Saída', on_click=update_status, args=('Saída rápida', True,), use_container_width=True)
-    row2_c5.button('👤 Ausente', on_click=update_status, args=('Ausente', True,), use_container_width=True)
+    # [NOVO BOTÃO]
+    row2_c1.button('🎓 Treinamento', on_click=toggle_view, args=('menu_treinamento',), use_container_width=True)
+    row2_c2.button('📅 Reunião', on_click=toggle_view, args=('menu_reuniao',), use_container_width=True)
+    row2_c3.button('🍽️ Almoço', on_click=update_status, args=('Almoço', True,), use_container_width=True)
+    row2_c4.button('🎙️ Sessão', on_click=toggle_view, args=('menu_sessao',), use_container_width=True)
+    row2_c5.button('🚶 Saída', on_click=update_status, args=('Saída rápida', True,), use_container_width=True)
+    row2_c6.button('👤 Ausente', on_click=update_status, args=('Ausente', True,), use_container_width=True)
     
     if st.session_state.active_view == 'menu_atividades':
         with st.container(border=True):
             st.markdown("### Selecione a Atividade")
-            # [CORREÇÃO VISUAL] Coloca lado a lado: Lista (Esq) e Texto (Dir) para não tampar
             c_a1, c_a2 = st.columns([1, 1], vertical_alignment="bottom")
             with c_a1:
                 atividades_escolhidas = st.multiselect("Tipo:", OPCOES_ATIVIDADES_STATUS)
@@ -1065,12 +1075,29 @@ with col_principal:
                 if st.button("Confirmar Reunião", type="primary", use_container_width=True):
                     if reuniao_desc:
                         status_final = f"Reunião: {reuniao_desc}"
-                        # [MODIFICADO] Reunião agora força a saída da fila
                         update_status(status_final, force_exit_queue=True) 
                         st.session_state.active_view = None; st.rerun()
                     else: st.warning("Digite o nome da reunião.")
             with col_r2:
                 if st.button("Cancelar", use_container_width=True, key='cancel_reuniao'): st.session_state.active_view = None; st.rerun()
+
+    # [NOVO MENU] Menu Treinamento
+    if st.session_state.active_view == 'menu_treinamento':
+        with st.container(border=True):
+            st.markdown("### Detalhes do Treinamento")
+            st.info("ℹ️ Ao confirmar treinamento, você sairá da fila do bastão.")
+            treinamento_desc = st.text_input("Qual Treinamento?", placeholder="Ex: Treinamento Eproc, Curso TJMG...")
+            col_t1, col_t2 = st.columns(2)
+            with col_t1:
+                if st.button("Confirmar Treinamento", type="primary", use_container_width=True):
+                    if treinamento_desc:
+                        status_final = f"Treinamento: {treinamento_desc}"
+                        # Force exit queue = True (Comportamento de bloqueio)
+                        update_status(status_final, force_exit_queue=True) 
+                        st.session_state.active_view = None; st.rerun()
+                    else: st.warning("Digite o nome do treinamento.")
+            with col_t2:
+                if st.button("Cancelar", use_container_width=True, key='cancel_treinamento'): st.session_state.active_view = None; st.rerun()
 
     if st.session_state.active_view == 'menu_sessao':
         with st.container(border=True):
@@ -1221,6 +1248,7 @@ with col_disponibilidade:
         'sessao_especifica': [], 
         'projeto_especifico': [], 
         'reuniao_especifica': [],
+        'treinamento_especifico': [], # Nova lista
         'indisponivel': []
     } 
 
@@ -1248,6 +1276,11 @@ with col_disponibilidade:
         if 'Projeto:' in status:
             match = re.search(r'Projeto: (.*)', status)
             if match: ui_lists['projeto_especifico'].append((nome, match.group(1).split('|')[0].strip()))
+        
+        # [DISPLAY] Captura status de Treinamento
+        if 'Treinamento:' in status:
+            match = re.search(r'Treinamento: (.*)', status)
+            if match: ui_lists['treinamento_especifico'].append((nome, match.group(1).split('|')[0].strip()))
             
         if 'Atividade:' in status or status == 'Atendimento':
             if status == 'Atendimento': 
@@ -1307,6 +1340,7 @@ with col_disponibilidade:
 
     render_section_detalhada('Em Demanda', '📋', ui_lists['atividade_especifica'], 'orange', 'Atividade')
     render_section_detalhada('Projetos', '🏗️', ui_lists['projeto_especifico'], 'blue', 'Projeto')
+    render_section_detalhada('Treinamento', '🎓', ui_lists['treinamento_especifico'], 'teal', 'Treinamento') # Nova Seção
     render_section_detalhada('Reuniões', '📅', ui_lists['reuniao_especifica'], 'violet', 'Reunião')
     render_section_simples('Almoço', '🍽️', ui_lists['almoco'], 'red')
     render_section_detalhada('Sessão', '🎙️', ui_lists['sessao_especifica'], 'green', 'Sessão')
