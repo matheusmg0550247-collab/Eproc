@@ -407,7 +407,7 @@ def send_daily_report():
     save_state()
 
 # ============================================
-# LÓGICA DE ESTADO (Corrigida: Não reseta fila)
+# LÓGICA DE ESTADO
 # ============================================
 def init_session_state():
     persisted_state = load_state()
@@ -458,7 +458,7 @@ def init_session_state():
     check_and_assume_baton()
 
 # ============================================
-# LÓGICA DE FILA (Corrigida: Busca Circular)
+# LÓGICA DE FILA 
 # ============================================
 def find_next_holder_index(current_index, queue, skips):
     if not queue: return -1
@@ -860,17 +860,25 @@ init_session_state()
 st.components.v1.html("<script>window.scrollTo(0, 0);</script>", height=0)
 render_fireworks()
 
-# --- NOVO SISTEMA DE AUTO-REFRESH MANUAL (Sem Biblioteca Externa) ---
-# Isso resolve o erro "trouble loading component"
-if 'last_auto_check' not in st.session_state:
-    st.session_state.last_auto_check = time.time()
+# --- NOVO SISTEMA DE AUTO-REFRESH NATIVO (COM ST.FRAGMENT) ---
+# Isso cria um loop automático que recarrega a página periodicamente.
+# Assim, o tempo não fica travado.
 
-# Define velocidade do refresh (2s se tiver GIF/Alerta, 8s normal)
-refresh_rate_sec = 2 if (st.session_state.get('rotation_gif_start_time') or st.session_state.get('lunch_warning_info')) else 8
+intervalo = 2 if (st.session_state.get('rotation_gif_start_time') or st.session_state.get('lunch_warning_info')) else 8
 
-if time.time() - st.session_state.last_auto_check > refresh_rate_sec:
-    st.session_state.last_auto_check = time.time()
-    st.rerun()
+# [FIX] Se o Streamlit for >= 1.37 (que você colocou no requirements.txt), isso funciona.
+if hasattr(st, "fragment"):
+    @st.fragment(run_every=intervalo)
+    def auto_update_loop():
+        # Este fragmento roda sozinho e manda a página recarregar para atualizar o tempo
+        st.rerun()
+    auto_update_loop()
+else:
+    # Fallback caso a versão do Streamlit não atualize corretamente
+    time.sleep(1)
+    if time.time() % intervalo < 1:
+        st.rerun()
+
 # --------------------------------------------------------------------
 
 c_topo_esq, c_topo_dir = st.columns([2, 1], vertical_alignment="bottom")
