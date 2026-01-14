@@ -8,7 +8,6 @@ import requests
 import time
 from datetime import datetime, timedelta, date, time as dt_time
 from operator import itemgetter
-from streamlit_autorefresh import st_autorefresh
 import json
 import re
 import threading
@@ -97,7 +96,6 @@ GIF_BASTAO_HOLDER = "https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExa3Uwazd5c
 BASTAO_EMOJI = "🥂" 
 APP_URL_CLOUD = 'https://controle-bastao-cesupe.streamlit.app'
 STATUS_SAIDA_PRIORIDADE = ['Saída rápida']
-# [ALTERAÇÃO] Adicionado Treinamento como status de saída
 STATUSES_DE_SAIDA = ['Almoço', 'Saída rápida', 'Ausente', 'Sessão', 'Treinamento'] 
 GIF_URL_WARNING = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExY2pjMDN0NGlvdXp1aHZ1ejJqMnY5MG1yZmN0d3NqcDl1bTU1dDJrciZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/fXnRObM8Q0RkOmR5nf/giphy.gif'
 GIF_URL_ROTATION = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExdmx4azVxbGt4Mnk1cjMzZm5sMmp1YThteGJsMzcyYmhsdmFoczV0aSZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/JpkZEKWY0s9QI4DGvF/giphy.gif'
@@ -211,16 +209,10 @@ def log_status_change(consultor, old_status, new_status, duration):
     old_lbl = old_status if old_status else 'Fila Bastão'
     new_lbl = new_status if new_status else 'Fila Bastão'
 
-    # [CORREÇÃO LOG STATUS COMPOSTO]: Garante que "Fila | Projeto" apareça no log
-    # Verifica se a pessoa está na fila mas não tem a palavra "Bastão" explicitamente
-    # (ou seja, está na fila mas não é o dono)
     if consultor in st.session_state.bastao_queue:
         if 'Bastão' not in new_lbl and new_lbl != 'Fila Bastão':
-             # Se não for o dono, mas está na fila e tem atividade (ex: Projeto), adiciona "Fila | "
              new_lbl = f"Fila | {new_lbl}"
     
-    # Se for "Bastão" puro ou com algo, já está certo no new_status vindo do update_status
-
     entry = {
         'timestamp': now_br,
         'consultor': consultor,
@@ -415,7 +407,7 @@ def send_daily_report():
     save_state()
 
 # ============================================
-# [CORREÇÃO 1: init_session_state robusto]
+# LÓGICA DE ESTADO (Corrigida: Não reseta fila)
 # ============================================
 def init_session_state():
     persisted_state = load_state()
@@ -448,8 +440,6 @@ def init_session_state():
         if current_status is None: current_status = 'Indisponível'
         st.session_state.status_texto[nome] = current_status
         
-        # [MODIFICAÇÃO] Lógica de Disponibilidade (Checkboxes)
-        # Prioriza quem já está na fila, a menos que tenha status de bloqueio
         blocking_keywords = ['Almoço', 'Ausente', 'Saída rápida', 'Sessão', 'Reunião', 'Treinamento']
         is_hard_blocked = any(kw in current_status for kw in blocking_keywords)
         
@@ -457,40 +447,30 @@ def init_session_state():
             is_available = False
         elif nome in st.session_state.priority_return_queue:
             is_available = False
-        # Se já está na fila e não tem bloqueio rígido, PRESERVA (Evita o bug de reset)
         elif nome in st.session_state.bastao_queue:
             is_available = True
         else:
             is_available = 'Indisponível' not in current_status
 
         st.session_state[f'check_{nome}'] = is_available
-        
         if nome not in st.session_state.current_status_starts: st.session_state.current_status_starts[nome] = now_br
 
     check_and_assume_baton()
 
 # ============================================
-# [CORREÇÃO 2: find_next_holder_index com busca circular]
+# LÓGICA DE FILA (Corrigida: Busca Circular)
 # ============================================
 def find_next_holder_index(current_index, queue, skips):
     if not queue: return -1
     n = len(queue)
-    
-    # Começa a busca a partir da próxima posição (ou 0 se current_index for -1)
     start_index = (current_index + 1) % n
-    
-    # Percorre a lista inteira uma vez (n vezes)
     for i in range(n):
         idx = (start_index + i) % n
         consultor = queue[idx]
-        
-        # Critérios: Disponível (Check=True) E Não Pular
         is_available = st.session_state.get(f'check_{consultor}', False)
         is_skipping = skips.get(consultor, False)
-        
         if is_available and not is_skipping:
             return idx
-            
     return -1
 
 def check_and_assume_baton(forced_successor=None):
@@ -499,15 +479,12 @@ def check_and_assume_baton(forced_successor=None):
     current_holder_status = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
     
     is_current_valid = (current_holder_status and current_holder_status in queue and st.session_state.get(f'check_{current_holder_status}'))
-    
-    # [CORREÇÃO ROTAÇÃO] Se forçado a um sucessor, use-o. Caso contrário, busca na fila.
     should_have_baton = None
     if forced_successor:
         should_have_baton = forced_successor
     elif is_current_valid: 
         should_have_baton = current_holder_status
     else:
-        # Se ninguém tem o bastão ou o atual saiu, procura o primeiro elegível (fallback)
         first_eligible_index = find_next_holder_index(-1, queue, skips)
         should_have_baton = queue[first_eligible_index] if first_eligible_index != -1 else None
 
@@ -528,7 +505,6 @@ def check_and_assume_baton(forced_successor=None):
         if 'Bastão' not in s_current:
             old_status = s_current
             duration = now_br - st.session_state.current_status_starts.get(should_have_baton, now_br)
-            # Mantém status anteriores se for acumulativo
             new_status = f"Bastão | {old_status}" if old_status and old_status != "Indisponível" else "Bastão"
             log_status_change(should_have_baton, old_status, new_status, duration)
             st.session_state.status_texto[should_have_baton] = new_status
@@ -551,24 +527,18 @@ def check_and_assume_baton(forced_successor=None):
     if changed: save_state()
     return changed
 
-# ============================================
-# [CORREÇÃO 3: toggle_queue limpa flag de skip]
-# ============================================
 def toggle_queue(consultor):
     st.session_state.gif_warning = False; st.session_state.rotation_gif_start_time = None
     st.session_state.lunch_warning_info = None 
     now_br = get_brazil_time()
     
     if consultor in st.session_state.bastao_queue:
-        # SAINDO DA FILA
         current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
         forced_successor = None
-        
         if consultor == current_holder:
             current_idx = -1
             try: current_idx = st.session_state.bastao_queue.index(consultor)
             except ValueError: pass
-            
             if current_idx != -1:
                 next_idx = find_next_holder_index(current_idx, st.session_state.bastao_queue, st.session_state.skip_flags)
                 if next_idx != -1:
@@ -585,30 +555,23 @@ def toggle_queue(consultor):
             
         check_and_assume_baton(forced_successor=forced_successor)
     else:
-        # ENTRANDO NA FILA
         st.session_state.bastao_queue.append(consultor)
         st.session_state[f'check_{consultor}'] = True
-        
-        # [MODIFICAÇÃO] Reseta flag de Pular ao entrar na fila
         st.session_state.skip_flags[consultor] = False 
         
         if consultor in st.session_state.priority_return_queue:
             st.session_state.priority_return_queue.remove(consultor)
             
         current_s = st.session_state.status_texto.get(consultor, 'Indisponível')
-        
-        # Limpa o "Indisponível" visualmente
         if 'Indisponível' in current_s:
             duration = now_br - st.session_state.current_status_starts.get(consultor, now_br)
             log_status_change(consultor, current_s, '', duration)
             st.session_state.status_texto[consultor] = ''
             
         check_and_assume_baton()
-
     save_state()
 
 def leave_specific_status(consultor, status_type_to_remove):
-    # Remove apenas o tipo de status específico (Ex: Remove só 'Projeto: ...')
     st.session_state.gif_warning = False
     old_status = st.session_state.status_texto.get(consultor, '')
     now_br = get_brazil_time()
@@ -627,7 +590,6 @@ def leave_specific_status(consultor, status_type_to_remove):
     log_status_change(consultor, old_status, new_status, duration)
     st.session_state.status_texto[consultor] = new_status
     
-    # [CORREÇÃO ALMOÇO] Se desmarcou Almoço, volta pra fila
     if status_type_to_remove == 'Almoço' or status_type_to_remove == 'Treinamento':
         if consultor not in st.session_state.bastao_queue:
             st.session_state.bastao_queue.append(consultor)
@@ -685,13 +647,11 @@ def rotate_bastao():
 
         now_br = get_brazil_time()
         duration = now_br - (st.session_state.bastao_start_time or now_br)
-        # Tira Bastão do antigo, mantém resto
         old_h_status = st.session_state.status_texto[current_holder]
         new_h_status = old_h_status.replace('Bastão | ', '').replace('Bastão', '').strip()
         log_status_change(current_holder, old_h_status, new_h_status, duration)
         st.session_state.status_texto[current_holder] = new_h_status 
         
-        # Dá Bastão pro novo
         old_n_status = st.session_state.status_texto.get(next_holder, '')
         new_n_status = f"Bastão | {old_n_status}" if old_n_status else "Bastão"
         log_status_change(next_holder, old_n_status, new_n_status, timedelta(0))
@@ -751,7 +711,6 @@ def handle_chamado_submission():
     st.session_state.chamado_guide_step = 0
     st.session_state.chamado_textarea = ""
 
-# [STATUS ACUMULATIVO E BLOQUEANTE ATUALIZADO]
 def update_status(new_status_part, force_exit_queue=False): 
     selected = st.session_state.consultor_selectbox
     st.session_state.gif_warning = False; st.session_state.rotation_gif_start_time = None
@@ -760,36 +719,26 @@ def update_status(new_status_part, force_exit_queue=False):
         st.warning('Selecione um(a) consultor(a).')
         return
 
-    # Aviso Almoço
     if new_status_part != 'Almoço': st.session_state.lunch_warning_info = None
-    if new_status_part == 'Almoço':
-        # Lógica de aviso de almoço aqui...
-        pass 
+    if new_status_part == 'Almoço': pass 
 
-    # [MODIFICADO] Lista de bloqueio inclui Sessão, Reunião e agora TREINAMENTO
     blocking_statuses = ['Almoço', 'Ausente', 'Saída rápida', 'Sessão', 'Reunião', 'Treinamento']
     should_exit_queue = False
-    
-    # Verifica se o novo status contém alguma palavra chave de bloqueio
     is_blocking = any(b in new_status_part for b in blocking_statuses)
 
     if is_blocking or force_exit_queue:
         should_exit_queue = True
         final_status = new_status_part 
     else:
-        # Lógica Acumulativa: Adiciona novo status aos existentes
         current = st.session_state.status_texto.get(selected, '')
         parts = [p.strip() for p in current.split('|') if p.strip()]
-        
         type_of_new = new_status_part.split(':')[0]
         cleaned_parts = []
         for p in parts:
             if p == 'Indisponível': continue
-            if p.startswith(type_of_new): continue # Substitui status do mesmo tipo (ex: troca um projeto por outro)
+            if p.startswith(type_of_new): continue
             cleaned_parts.append(p)
-        
         cleaned_parts.append(new_status_part)
-        # Garante a ordem: Bastão primeiro, depois Atividade/Projeto
         cleaned_parts.sort(key=lambda x: 0 if 'Bastão' in x else 1 if 'Atividade' in x or 'Projeto' in x else 2)
         final_status = " | ".join(cleaned_parts)
 
@@ -799,7 +748,6 @@ def update_status(new_status_part, force_exit_queue=False):
             st.session_state.bastao_queue.remove(selected)
         st.session_state.skip_flags.pop(selected, None)
     
-    # Lógica para garantir que Bastão permaneça se não for saída de fila
     was_holder = next((True for c, s in st.session_state.status_texto.items() if 'Bastão' in s and c == selected), False)
     old_status = st.session_state.status_texto.get(selected, '')
     
@@ -912,6 +860,19 @@ init_session_state()
 st.components.v1.html("<script>window.scrollTo(0, 0);</script>", height=0)
 render_fireworks()
 
+# --- NOVO SISTEMA DE AUTO-REFRESH MANUAL (Sem Biblioteca Externa) ---
+# Isso resolve o erro "trouble loading component"
+if 'last_auto_check' not in st.session_state:
+    st.session_state.last_auto_check = time.time()
+
+# Define velocidade do refresh (2s se tiver GIF/Alerta, 8s normal)
+refresh_rate_sec = 2 if (st.session_state.get('rotation_gif_start_time') or st.session_state.get('lunch_warning_info')) else 8
+
+if time.time() - st.session_state.last_auto_check > refresh_rate_sec:
+    st.session_state.last_auto_check = time.time()
+    st.rerun()
+# --------------------------------------------------------------------
+
 c_topo_esq, c_topo_dir = st.columns([2, 1], vertical_alignment="bottom")
 with c_topo_esq:
     img_data = get_img_as_base64(PUG2026_FILENAME)
@@ -924,7 +885,6 @@ with c_topo_dir:
     with c_sub2:
         if st.button("🚀 Entrar", help="Ficar disponível na fila imediatamente"):
             if novo_responsavel and novo_responsavel != "Selecione":
-                # Botão rápido força entrada na fila e limpa skips
                 toggle_queue(novo_responsavel)
                 st.session_state.consultor_selectbox = novo_responsavel 
                 st.success(f"{novo_responsavel} agora está na fila!")
@@ -936,24 +896,21 @@ gif_start_time = st.session_state.get('rotation_gif_start_time')
 lunch_warning_info = st.session_state.get('lunch_warning_info') 
 show_gif = False
 show_lunch_warning = False
-refresh_interval = 8000 
 
 if gif_start_time:
     try:
         elapsed = (datetime.now() - gif_start_time).total_seconds()
-        if elapsed < 20: show_gif = True; refresh_interval = 2000 
+        if elapsed < 20: show_gif = True
         else: st.session_state.rotation_gif_start_time = None; save_state() 
     except: st.session_state.rotation_gif_start_time = None
         
 if lunch_warning_info and lunch_warning_info.get('start_time'):
     try:
         elapsed_lunch = (datetime.now() - lunch_warning_info['start_time']).total_seconds()
-        if elapsed_lunch < 30: show_lunch_warning = True; refresh_interval = 2000 
+        if elapsed_lunch < 30: show_lunch_warning = True
         else: st.session_state.lunch_warning_info = None; save_state() 
     except Exception as e: print(f"Erro ao processar timer do aviso de almoço: {e}"); st.session_state.lunch_warning_info = None
         
-st_autorefresh(interval=refresh_interval, key='auto_rerun_key') 
-
 if st.session_state.get('play_sound', False):
     st.components.v1.html(play_sound_html(), height=0, width=0)
     st.session_state.play_sound = False 
@@ -972,22 +929,14 @@ proximo_index = find_next_holder_index(current_index, queue, skips)
 proximo = queue[proximo_index] if proximo_index != -1 else None
 restante = []
 
-# --- LÓGICA CORRIGIDA: MOSTRAR TODOS DA FILA ---
 if proximo_index != -1: 
     num_q = len(queue)
-    # Começa logo após o "Próximo" para manter a ordem visual cíclica
     idx = (proximo_index + 1) % num_q 
-    
-    # Itera por toda a fila para garantir que todos sejam verificados
     for _ in range(num_q):
         person = queue[idx]
-        # Adiciona todos que não sejam o Responsável e nem o Próximo
-        # Sem filtros de 'skip' ou 'check' para garantir que espelhe a lista da direita
         if person != responsavel and person != proximo:
             restante.append(person)
-        
         idx = (idx + 1) % num_q
-# ------------------------------------------------
 
 with col_principal:
     st.header("Responsável pelo Bastão")
@@ -1016,18 +965,10 @@ with col_principal:
     skipped_consultants = [c for c, is_skipped in skips.items() if is_skipped and st.session_state.get(f'check_{c}')]
     if skipped_consultants:
         skipped_text = ', '.join(sorted(skipped_consultants))
-        num_skipped = len(skipped_consultants)
-        
-        # Ajuste do texto conforme pedido
-        lbl_consultor = 'Consultores' if num_skipped > 1 else 'Consultor(a)'
-        lbl_acao = 'acionaram' if num_skipped > 1 else 'acionou'
-        lbl_retorno = 'irão retornar' if num_skipped > 1 else 'irá retornar'
-
         st.markdown(f'''
         <div style="margin-top: 10px; padding: 10px; border-left: 5px solid #ff9800; background-color: #fff3e0;">
-            <span style="color: #e65100; font-weight: bold;">⚠️ {lbl_consultor} {lbl_acao} o botão pular:</span><br>
+            <span style="color: #e65100; font-weight: bold;">⚠️ Consultores acionaram o botão pular:</span><br>
             <span style="color: #333;"><strong>{skipped_text}</strong></span><br>
-            <span style="font-size: 0.9em; color: #555;">({lbl_retorno} na próxima rotação do bastão)</span>
         </div>
         ''', unsafe_allow_html=True)
 
@@ -1043,7 +984,6 @@ with col_principal:
         if view_name == 'chamados': st.session_state.chamado_guide_step = 1
 
     row1_c1, row1_c2, row1_c3, row1_c4 = st.columns(4)
-    # [LAYOUT] Adicionado espaço para o novo botão de Treinamento na segunda linha (6 colunas agora)
     row2_c1, row2_c2, row2_c3, row2_c4, row2_c5, row2_c6 = st.columns(6)
 
     row1_c1.button('🎯 Passar', on_click=rotate_bastao, use_container_width=True, help='Passa o bastão.')
@@ -1051,7 +991,6 @@ with col_principal:
     row1_c3.button('📋 Atividades', on_click=toggle_view, args=('menu_atividades',), use_container_width=True)
     row1_c4.button('🏗️ Projeto', on_click=toggle_view, args=('menu_projetos',), use_container_width=True)
     
-    # [NOVO BOTÃO]
     row2_c1.button('🎓 Treinamento', on_click=toggle_view, args=('menu_treinamento',), use_container_width=True)
     row2_c2.button('📅 Reunião', on_click=toggle_view, args=('menu_reuniao',), use_container_width=True)
     row2_c3.button('🍽️ Almoço', on_click=update_status, args=('Almoço', True,), use_container_width=True)
@@ -1067,7 +1006,6 @@ with col_principal:
                 atividades_escolhidas = st.multiselect("Tipo:", OPCOES_ATIVIDADES_STATUS)
             with c_a2:
                 texto_extra = st.text_input("Detalhe (se necessário):", placeholder="Ex: Assunto específico...")
-
             col_confirm_1, col_confirm_2 = st.columns(2)
             with col_confirm_1:
                 if st.button("Confirmar Atividade", type="primary", use_container_width=True):
@@ -1077,7 +1015,6 @@ with col_principal:
                         if texto_extra: status_final += f" - {texto_extra}"
                         update_status(status_final) 
                         st.session_state.active_view = None; st.rerun()
-                    else: st.warning("Selecione pelo menos uma atividade.")
             with col_confirm_2:
                 if st.button("Cancelar", use_container_width=True, key='cancel_act'): st.session_state.active_view = None; st.rerun()
 
@@ -1105,11 +1042,9 @@ with col_principal:
                         status_final = f"Reunião: {reuniao_desc}"
                         update_status(status_final, force_exit_queue=True) 
                         st.session_state.active_view = None; st.rerun()
-                    else: st.warning("Digite o nome da reunião.")
             with col_r2:
                 if st.button("Cancelar", use_container_width=True, key='cancel_reuniao'): st.session_state.active_view = None; st.rerun()
 
-    # [NOVO MENU] Menu Treinamento
     if st.session_state.active_view == 'menu_treinamento':
         with st.container(border=True):
             st.markdown("### Detalhes do Treinamento")
@@ -1120,10 +1055,8 @@ with col_principal:
                 if st.button("Confirmar Treinamento", type="primary", use_container_width=True):
                     if treinamento_desc:
                         status_final = f"Treinamento: {treinamento_desc}"
-                        # Force exit queue = True (Comportamento de bloqueio)
                         update_status(status_final, force_exit_queue=True) 
                         st.session_state.active_view = None; st.rerun()
-                    else: st.warning("Digite o nome do treinamento.")
             with col_t2:
                 if st.button("Cancelar", use_container_width=True, key='cancel_treinamento'): st.session_state.active_view = None; st.rerun()
 
@@ -1136,9 +1069,8 @@ with col_principal:
                 if st.button("Confirmar Sessão", type="primary", use_container_width=True):
                     if sessao_desc:
                         status_final = f"Sessão: {sessao_desc}"
-                        update_status(status_final, force_exit_queue=True) # Sessão normalmente tira da fila
+                        update_status(status_final, force_exit_queue=True)
                         st.session_state.active_view = None; st.rerun()
-                    else: st.warning("Digite o nome da sessão.")
             with col_s2:
                 if st.button("Cancelar", use_container_width=True, key='cancel_sessao'): st.session_state.active_view = None; st.rerun()
     
@@ -1276,7 +1208,7 @@ with col_disponibilidade:
         'sessao_especifica': [], 
         'projeto_especifico': [], 
         'reuniao_especifica': [],
-        'treinamento_especifico': [], # Nova lista
+        'treinamento_especifico': [],
         'indisponivel': []
     } 
 
@@ -1305,11 +1237,9 @@ with col_disponibilidade:
             match = re.search(r'Projeto: (.*)', status)
             if match: ui_lists['projeto_especifico'].append((nome, match.group(1).split('|')[0].strip()))
         
-        # [DISPLAY] Captura status de Treinamento
         if 'Treinamento:' in status:
             match = re.search(r'Treinamento: (.*)', status)
             desc_treinamento = match.group(1).split('|')[0].strip() if match else "Geral"
-            # Fallback se a descrição estiver vazia
             if not desc_treinamento: desc_treinamento = "Geral"
             ui_lists['treinamento_especifico'].append((nome, desc_treinamento))
             
@@ -1320,7 +1250,6 @@ with col_disponibilidade:
                 match = re.search(r'Atividade: (.*)', status)
                 if match: ui_lists['atividade_especifica'].append((nome, match.group(1).split('|')[0].strip()))
 
-    # --- RENDERIZAÇÃO FILA ---
     st.subheader(f'✅ Na Fila ({len(ui_lists["fila"])})')
     render_order = [c for c in queue if c in ui_lists["fila"]]
     if not render_order: st.markdown('_Ninguém na fila._')
@@ -1343,19 +1272,12 @@ with col_disponibilidade:
             col_nome.markdown(display, unsafe_allow_html=True)
     st.markdown('---')
 
-    # --- FUNÇÃO ATUALIZADA: Renderização Segura com HTML ---
     def render_section_detalhada(title, icon, lista_tuplas, tag_color_name, keyword_removal):
-        # Mapa de Cores Hexadecimal (Para HTML robusto)
         colors = {
-            'orange': '#FFECB3', # Amber 100
-            'blue': '#BBDEFB',   # Blue 100
-            'teal': '#B2DFDB',   # Teal 100 (CORREÇÃO: Isso evita o erro visual)
-            'violet': '#E1BEE7', # Purple 100
-            'green': '#C8E6C9',  # Green 100
-            'red': '#FFCDD2',    # Red 100
-            'grey': '#F5F5F5'    # Grey 100
+            'orange': '#FFECB3', 'blue': '#BBDEFB', 'teal': '#B2DFDB', 
+            'violet': '#E1BEE7', 'green': '#C8E6C9', 'red': '#FFCDD2', 'grey': '#F5F5F5'
         }
-        bg_hex = colors.get(tag_color_name, '#E0E0E0') # Fallback
+        bg_hex = colors.get(tag_color_name, '#E0E0E0') 
 
         st.subheader(f'{icon} {title} ({len(lista_tuplas)})')
         if not lista_tuplas: st.markdown(f'_Ninguém em {title.lower()}._')
@@ -1365,7 +1287,6 @@ with col_disponibilidade:
                 key_dummy = f'chk_status_{title}_{nome}' 
                 col_check.checkbox(' ', key=key_dummy, value=True, on_change=leave_specific_status, args=(nome, keyword_removal), label_visibility='collapsed')
                 
-                # HTML direto para evitar que o código de markdown vaze
                 html_badged = f"""
                 <div style="font-size: 16px; margin: 2px 0;">
                     <strong>{nome}</strong>
@@ -1408,7 +1329,7 @@ with col_disponibilidade:
 
     render_section_detalhada('Em Demanda', '📋', ui_lists['atividade_especifica'], 'orange', 'Atividade')
     render_section_detalhada('Projetos', '🏗️', ui_lists['projeto_especifico'], 'blue', 'Projeto')
-    render_section_detalhada('Treinamento', '🎓', ui_lists['treinamento_especifico'], 'teal', 'Treinamento') # Nova Seção Corrigida
+    render_section_detalhada('Treinamento', '🎓', ui_lists['treinamento_especifico'], 'teal', 'Treinamento') 
     render_section_detalhada('Reuniões', '📅', ui_lists['reuniao_especifica'], 'violet', 'Reunião')
     render_section_simples('Almoço', '🍽️', ui_lists['almoco'], 'red')
     render_section_detalhada('Sessão', '🎙️', ui_lists['sessao_especifica'], 'green', 'Sessão')
