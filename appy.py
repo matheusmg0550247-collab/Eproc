@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # ============================================
 # 1. IMPORTS E DEFINIÇÕES GLOBAIS
 # ============================================
@@ -93,7 +94,7 @@ OPCOES_PROJETOS = [
 ]
 
 GIF_BASTAO_HOLDER = "https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExa3Uwazd5cnNra2oxdDkydjZkcHdqcWN2cng0Y2N0cmNmN21vYXVzMiZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/3rXs5J0hZkXwTZjuvM/giphy.gif"
-BASTAO_EMOJI = "??" 
+BASTAO_EMOJI = "🥂" 
 APP_URL_CLOUD = 'https://controle-bastao-cesupe.streamlit.app'
 STATUS_SAIDA_PRIORIDADE = ['Saída rápida']
 # [ALTERAÇÃO] Adicionado Treinamento como status de saída
@@ -245,7 +246,7 @@ def format_time_duration(duration):
 
 def send_chat_notification_internal(consultor, status):
     if CHAT_WEBHOOK_BASTAO and status == 'Bastão':
-        message_template = "?? **BASTÃO GIRADO!** ?? \n\n- **Novo(a) Responsável:** {consultor}\n- **Acesse o Painel:** {app_url}"
+        message_template = "🎉 **BASTÃO GIRADO!** 🎉 \n\n- **Novo(a) Responsável:** {consultor}\n- **Acesse o Painel:** {app_url}"
         message_text = message_template.format(consultor=consultor, app_url=APP_URL_CLOUD) 
         chat_message = {"text": message_text}
         threading.Thread(target=_send_webhook_thread, args=(CHAT_WEBHOOK_BASTAO, chat_message)).start()
@@ -257,12 +258,12 @@ def send_horas_extras_to_chat(consultor, data, inicio, tempo, motivo):
     data_formatada = data.strftime("%d/%m/%Y")
     inicio_formatado = inicio.strftime("%H:%M")
     msg = (
-        f"? **Registro de Horas Extras**\n\n"
-        f"?? **Consultor:** {consultor}\n"
-        f"?? **Data:** {data_formatada}\n"
-        f"?? **Início:** {inicio_formatado}\n"
-        f"?? **Tempo Total:** {tempo}\n"
-        f"?? **Motivo:** {motivo}"
+        f"⏰ **Registro de Horas Extras**\n\n"
+        f"👤 **Consultor:** {consultor}\n"
+        f"📅 **Data:** {data_formatada}\n"
+        f"🕐 **Início:** {inicio_formatado}\n"
+        f"⏱️ **Tempo Total:** {tempo}\n"
+        f"📝 **Motivo:** {motivo}"
     )
     chat_message = {"text": msg}
     threading.Thread(target=_send_webhook_thread, args=(GOOGLE_CHAT_WEBHOOK_HORAS_EXTRAS, chat_message)).start()
@@ -271,17 +272,17 @@ def send_horas_extras_to_chat(consultor, data, inicio, tempo, motivo):
 def send_atendimento_to_chat(consultor, data, usuario, nome_setor, sistema, descricao, canal, desfecho, jira_opcional=""):
     if not GOOGLE_CHAT_WEBHOOK_REGISTRO: return False
     data_formatada = data.strftime("%d/%m/%Y")
-    jira_str = f"\n?? **Jira:** CESUPE-{jira_opcional}" if jira_opcional else ""
+    jira_str = f"\n🔢 **Jira:** CESUPE-{jira_opcional}" if jira_opcional else ""
     msg = (
-        f"?? **Novo Registro de Atendimento**\n\n"
-        f"?? **Consultor:** {consultor}\n"
-        f"?? **Data:** {data_formatada}\n"
-        f"?? **Usuário:** {usuario}\n"
-        f"?? **Nome/Setor:** {nome_setor}\n"
-        f"?? **Sistema:** {sistema}\n"
-        f"?? **Descrição:** {descricao}\n"
-        f"?? **Canal:** {canal}\n"
-        f"? **Desfecho:** {desfecho}"
+        f"📋 **Novo Registro de Atendimento**\n\n"
+        f"👤 **Consultor:** {consultor}\n"
+        f"📅 **Data:** {data_formatada}\n"
+        f"👥 **Usuário:** {usuario}\n"
+        f"🏢 **Nome/Setor:** {nome_setor}\n"
+        f"💻 **Sistema:** {sistema}\n"
+        f"📝 **Descrição:** {descricao}\n"
+        f"📞 **Canal:** {canal}\n"
+        f"✅ **Desfecho:** {desfecho}"
         f"{jira_str}"
     )
     chat_message = {"text": msg}
@@ -292,13 +293,13 @@ def handle_erro_novidade_submission(consultor, titulo, objetivo, relato, resulta
     if not GOOGLE_CHAT_WEBHOOK_ERRO_NOVIDADE: return False
     data_envio = get_brazil_time().strftime("%d/%m/%Y %H:%M")
     msg = (
-        f"?? **Novo Relato de Erro/Novidade**\n"
-        f"?? **Data:** {data_envio}\n\n"
-        f"?? **Autor:** {consultor}\n"
-        f"?? **Título:** {titulo}\n\n"
-        f"?? **Objetivo:**\n{objetivo}\n\n"
-        f"?? **Relato:**\n{relato}\n\n"
-        f"?? **Resultado:**\n{resultado}"
+        f"🐛 **Novo Relato de Erro/Novidade**\n"
+        f"📅 **Data:** {data_envio}\n\n"
+        f"👤 **Autor:** {consultor}\n"
+        f"📌 **Título:** {titulo}\n\n"
+        f"🎯 **Objetivo:**\n{objetivo}\n\n"
+        f"🧪 **Relato:**\n{relato}\n\n"
+        f"🏁 **Resultado:**\n{resultado}"
     )
     chat_message = {"text": msg}
     threading.Thread(target=_send_webhook_thread, args=(GOOGLE_CHAT_WEBHOOK_ERRO_NOVIDADE, chat_message)).start()
@@ -385,7 +386,7 @@ def send_daily_report():
 
     now_br = get_brazil_time()
     today_str = now_br.strftime("%d/%m/%Y")
-    report_text = f"?? **Relatório Diário de Atividades - {today_str}** ??\n\n"
+    report_text = f"📊 **Relatório Diário de Atividades - {today_str}** 📊\n\n"
     consultores_com_dados = []
     for nome in CONSULTORES:
         counts = bastao_counts.get(nome, 0)
@@ -393,18 +394,18 @@ def send_daily_report():
         bastao_time = times.get('Bastão', timedelta(0))
         if counts > 0 or times:
             consultores_com_dados.append(nome)
-            report_text += f"**?? {nome}**\n"
+            report_text += f"**👤 {nome}**\n"
             report_text += f"- {BASTAO_EMOJI} Bastão Recebido: **{counts}** vez(es)\n"
-            report_text += f"- ?? Tempo com Bastão: **{format_time_duration(bastao_time)}**\n"
+            report_text += f"- ⏱️ Tempo com Bastão: **{format_time_duration(bastao_time)}**\n"
             other_statuses = []
             sorted_times = sorted(times.items(), key=itemgetter(0)) 
             for status, time in sorted_times:
                 if status != 'Bastão' and status:
                     other_statuses.append(f"{status}: **{format_time_duration(time)}**")
-            if other_statuses: report_text += f"- ? Outros Tempos: {', '.join(other_statuses)}\n\n"
+            if other_statuses: report_text += f"- ⏳ Outros Tempos: {', '.join(other_statuses)}\n\n"
             else: report_text += "\n"
 
-    if not consultores_com_dados: report_text = f"?? **Relatório Diário - {today_str}** ??\n\nNenhuma atividade registrada hoje."
+    if not consultores_com_dados: report_text = f"📊 **Relatório Diário - {today_str}** 📊\n\nNenhuma atividade registrada hoje."
     if not GOOGLE_CHAT_WEBHOOK_BACKUP: return 
     chat_message = {'text': report_text}
     threading.Thread(target=_send_webhook_thread, args=(GOOGLE_CHAT_WEBHOOK_BACKUP, chat_message)).start()
@@ -672,7 +673,7 @@ def rotate_bastao():
     if len(skippers_ahead) > 0 and len(skippers_ahead) == len([p for p in eligible_in_queue if p != current_holder]):
         for c in queue: st.session_state.skip_flags[c] = False
         skips = st.session_state.skip_flags 
-        st.toast("Ciclo reiniciado! Todos os próximos pularam, fila resetada.", icon="??")
+        st.toast("Ciclo reiniciado! Todos os próximos pularam, fila resetada.", icon="🔄")
 
     next_idx = find_next_holder_index(current_index, queue, skips)
     if next_idx != -1:
@@ -745,7 +746,7 @@ def handle_sessao_submission(consultor_sel, camara_sel, data_obj):
 def set_chamado_step(step_num): st.session_state.chamado_guide_step = step_num
 
 def handle_chamado_submission():
-    st.toast("Chamado simulado com sucesso.", icon="?")
+    st.toast("Chamado simulado com sucesso.", icon="✅")
     st.session_state.last_reg_status = "success_chamado" 
     st.session_state.chamado_guide_step = 0
     st.session_state.chamado_textarea = ""
@@ -837,11 +838,11 @@ def handle_atendimento_submission(consultor, data, usuario, nome_setor, sistema,
     else: st.error("Erro ao enviar. Verifique o Webhook.")
 
 def handle_simon_game():
-    COLORS = ["??", "??", "??", "??"]
-    st.markdown("### ?? Jogo da Memória (Simon)")
+    COLORS = ["🔴", "🔵", "🟢", "🟡"]
+    st.markdown("### 🧠 Jogo da Memória (Simon)")
     st.caption("Repita a sequência de cores!")
     if st.session_state.simon_status == 'start':
-        if st.button("?? Iniciar Jogo", use_container_width=True):
+        if st.button("▶️ Iniciar Jogo", use_container_width=True):
             st.session_state.simon_sequence = [random.choice(COLORS)]
             st.session_state.simon_user_input = []
             st.session_state.simon_level = 1
@@ -853,17 +854,17 @@ def handle_simon_game():
         for i, color in enumerate(st.session_state.simon_sequence):
             with cols[i]: st.markdown(f"<h1 style='text-align: center;'>{color}</h1>", unsafe_allow_html=True)
         st.markdown("---")
-        if st.button("?? Já decorei! Responder", type="primary", use_container_width=True):
+        if st.button("🙈 Já decorei! Responder", type="primary", use_container_width=True):
             st.session_state.simon_status = 'playing'
             st.rerun()
     elif st.session_state.simon_status == 'playing':
         st.markdown(f"**Nível {st.session_state.simon_level}** - Clique na ordem:")
         c1, c2, c3, c4 = st.columns(4)
         pressed = None
-        if c1.button("??", use_container_width=True): pressed = "??"
-        if c2.button("??", use_container_width=True): pressed = "??"
-        if c3.button("??", use_container_width=True): pressed = "??"
-        if c4.button("??", use_container_width=True): pressed = "??"
+        if c1.button("🔴", use_container_width=True): pressed = "🔴"
+        if c2.button("🔵", use_container_width=True): pressed = "🔵"
+        if c3.button("🟢", use_container_width=True): pressed = "🟢"
+        if c4.button("🟡", use_container_width=True): pressed = "🟡"
         if pressed:
             st.session_state.simon_user_input.append(pressed)
             current_idx = len(st.session_state.simon_user_input) - 1
@@ -880,7 +881,7 @@ def handle_simon_game():
                 st.rerun()
         if st.session_state.simon_user_input: st.markdown(f"Sua resposta: {' '.join(st.session_state.simon_user_input)}")
     elif st.session_state.simon_status == 'lost':
-        st.error(f"? Errou! Você chegou ao Nível {st.session_state.simon_level}.")
+        st.error(f"❌ Errou! Você chegou ao Nível {st.session_state.simon_level}.")
         st.markdown(f"Sequência correta era: {' '.join(st.session_state.simon_sequence)}")
         consultor = st.session_state.consultor_selectbox
         if consultor and consultor != 'Selecione um nome':
@@ -897,7 +898,7 @@ def handle_simon_game():
         else: st.warning("Selecione seu nome no menu superior para salvar no Ranking.")
         if st.button("Tentar Novamente"): st.session_state.simon_status = 'start'; st.rerun()
     st.markdown("---")
-    st.subheader("?? Ranking Global (Top 5)")
+    st.subheader("🏆 Ranking Global (Top 5)")
     ranking = st.session_state.simon_ranking
     if not ranking: st.markdown("_Nenhum recorde ainda._")
     else: df_rank = pd.DataFrame(ranking); st.table(df_rank)
@@ -906,7 +907,7 @@ def handle_simon_game():
 # 4. EXECUÇÃO PRINCIPAL DO STREAMLIT APP
 # ============================================
 
-st.set_page_config(page_title="Controle Bastão Cesupe 2026", layout="wide", page_icon="??")
+st.set_page_config(page_title="Controle Bastão Cesupe 2026", layout="wide", page_icon="🥂")
 init_session_state()
 st.components.v1.html("<script>window.scrollTo(0, 0);</script>", height=0)
 render_fireworks()
@@ -921,7 +922,7 @@ with c_topo_dir:
     c_sub1, c_sub2 = st.columns([2, 1], vertical_alignment="bottom")
     with c_sub1: novo_responsavel = st.selectbox("Assumir Bastão (Rápido)", options=["Selecione"] + CONSULTORES, label_visibility="collapsed", key="quick_enter")
     with c_sub2:
-        if st.button("?? Entrar", help="Ficar disponível na fila imediatamente"):
+        if st.button("🚀 Entrar", help="Ficar disponível na fila imediatamente"):
             if novo_responsavel and novo_responsavel != "Selecione":
                 # Botão rápido força entrada na fila e limpa skips
                 toggle_queue(novo_responsavel)
@@ -958,8 +959,8 @@ if st.session_state.get('play_sound', False):
     st.session_state.play_sound = False 
 
 if show_gif: st.image(GIF_URL_ROTATION, width=200, caption='Bastão Passado!')
-if show_lunch_warning: st.warning(f"?? **{lunch_warning_info['message']}**"); st.image(GIF_URL_LUNCH_WARNING, width=200)
-if st.session_state.get('gif_warning', False): st.error('?? Ação inválida! Verifique as regras.'); st.image(GIF_URL_WARNING, width=150)
+if show_lunch_warning: st.warning(f"🔔 **{lunch_warning_info['message']}**"); st.image(GIF_URL_LUNCH_WARNING, width=200)
+if st.session_state.get('gif_warning', False): st.error('🚫 Ação inválida! Verifique as regras.'); st.image(GIF_URL_WARNING, width=150)
 
 col_principal, col_disponibilidade = st.columns([1.5, 1])
 queue = st.session_state.bastao_queue
@@ -999,7 +1000,7 @@ with col_principal:
         if st.session_state.bastao_start_time:
              try: duration = get_brazil_time() - st.session_state.bastao_start_time
              except: pass
-        st.caption(f"?? Tempo com o bastão: **{format_time_duration(duration)}**")
+        st.caption(f"⏱️ Tempo com o bastão: **{format_time_duration(duration)}**")
     else: st.markdown('<h2>(Ninguém com o bastão)</h2>', unsafe_allow_html=True)
     st.markdown("###")
 
@@ -1024,7 +1025,7 @@ with col_principal:
 
         st.markdown(f'''
         <div style="margin-top: 10px; padding: 10px; border-left: 5px solid #ff9800; background-color: #fff3e0;">
-            <span style="color: #e65100; font-weight: bold;">?? {lbl_consultor} {lbl_acao} o botão pular:</span><br>
+            <span style="color: #e65100; font-weight: bold;">⚠️ {lbl_consultor} {lbl_acao} o botão pular:</span><br>
             <span style="color: #333;"><strong>{skipped_text}</strong></span><br>
             <span style="font-size: 0.9em; color: #555;">({lbl_retorno} na próxima rotação do bastão)</span>
         </div>
@@ -1045,18 +1046,18 @@ with col_principal:
     # [LAYOUT] Adicionado espaço para o novo botão de Treinamento na segunda linha (6 colunas agora)
     row2_c1, row2_c2, row2_c3, row2_c4, row2_c5, row2_c6 = st.columns(6)
 
-    row1_c1.button('?? Passar', on_click=rotate_bastao, use_container_width=True, help='Passa o bastão.')
-    row1_c2.button('?? Pular', on_click=toggle_skip, use_container_width=True, help='Pular vez.')
-    row1_c3.button('?? Atividades', on_click=toggle_view, args=('menu_atividades',), use_container_width=True)
-    row1_c4.button('??? Projeto', on_click=toggle_view, args=('menu_projetos',), use_container_width=True)
+    row1_c1.button('🎯 Passar', on_click=rotate_bastao, use_container_width=True, help='Passa o bastão.')
+    row1_c2.button('⏭️ Pular', on_click=toggle_skip, use_container_width=True, help='Pular vez.')
+    row1_c3.button('📋 Atividades', on_click=toggle_view, args=('menu_atividades',), use_container_width=True)
+    row1_c4.button('🏗️ Projeto', on_click=toggle_view, args=('menu_projetos',), use_container_width=True)
     
     # [NOVO BOTÃO]
-    row2_c1.button('?? Treinamento', on_click=toggle_view, args=('menu_treinamento',), use_container_width=True)
-    row2_c2.button('?? Reunião', on_click=toggle_view, args=('menu_reuniao',), use_container_width=True)
-    row2_c3.button('??? Almoço', on_click=update_status, args=('Almoço', True,), use_container_width=True)
-    row2_c4.button('??? Sessão', on_click=toggle_view, args=('menu_sessao',), use_container_width=True)
-    row2_c5.button('?? Saída', on_click=update_status, args=('Saída rápida', True,), use_container_width=True)
-    row2_c6.button('?? Ausente', on_click=update_status, args=('Ausente', True,), use_container_width=True)
+    row2_c1.button('🎓 Treinamento', on_click=toggle_view, args=('menu_treinamento',), use_container_width=True)
+    row2_c2.button('📅 Reunião', on_click=toggle_view, args=('menu_reuniao',), use_container_width=True)
+    row2_c3.button('🍽️ Almoço', on_click=update_status, args=('Almoço', True,), use_container_width=True)
+    row2_c4.button('🎙️ Sessão', on_click=toggle_view, args=('menu_sessao',), use_container_width=True)
+    row2_c5.button('🚶 Saída', on_click=update_status, args=('Saída rápida', True,), use_container_width=True)
+    row2_c6.button('👤 Ausente', on_click=update_status, args=('Ausente', True,), use_container_width=True)
     
     if st.session_state.active_view == 'menu_atividades':
         with st.container(border=True):
@@ -1112,7 +1113,7 @@ with col_principal:
     if st.session_state.active_view == 'menu_treinamento':
         with st.container(border=True):
             st.markdown("### Detalhes do Treinamento")
-            st.info("?? Ao confirmar treinamento, você sairá da fila do bastão.")
+            st.info("ℹ️ Ao confirmar treinamento, você sairá da fila do bastão.")
             treinamento_desc = st.text_input("Qual Treinamento?", placeholder="Ex: Treinamento Eproc, Curso TJMG...")
             col_t1, col_t2 = st.columns(2)
             with col_t1:
@@ -1142,16 +1143,16 @@ with col_principal:
                 if st.button("Cancelar", use_container_width=True, key='cancel_sessao'): st.session_state.active_view = None; st.rerun()
     
     st.markdown("####")
-    st.button('?? Atualizar (Manual)', on_click=manual_rerun, use_container_width=True)
+    st.button('🔄 Atualizar (Manual)', on_click=manual_rerun, use_container_width=True)
     st.markdown("---")
     
     c_tool1, c_tool2, c_tool3, c_tool4, c_tool5, c_tool6 = st.columns(6)
-    c_tool1.button("?? Checklist", help="Gerador de Checklist Eproc", use_container_width=True, on_click=toggle_view, args=("checklist",))
-    c_tool2.button("?? Chamados", help="Guia de Abertura de Chamados", use_container_width=True, on_click=toggle_view, args=("chamados",))
-    c_tool3.button("?? Atendimento", help="Registrar Atendimento", use_container_width=True, on_click=toggle_view, args=("atendimentos",))
-    c_tool4.button("? H. Extras", help="Registrar Horas Extras", use_container_width=True, on_click=toggle_view, args=("hextras",))
-    c_tool5.button("?? Descanso", help="Jogo e Ranking", use_container_width=True, on_click=toggle_view, args=("descanso",))
-    c_tool6.button("?? Erro/Novidade", help="Relatar Erro ou Novidade", use_container_width=True, on_click=toggle_view, args=("erro_novidade",))
+    c_tool1.button("📑 Checklist", help="Gerador de Checklist Eproc", use_container_width=True, on_click=toggle_view, args=("checklist",))
+    c_tool2.button("🆘 Chamados", help="Guia de Abertura de Chamados", use_container_width=True, on_click=toggle_view, args=("chamados",))
+    c_tool3.button("📝 Atendimento", help="Registrar Atendimento", use_container_width=True, on_click=toggle_view, args=("atendimentos",))
+    c_tool4.button("⏰ H. Extras", help="Registrar Horas Extras", use_container_width=True, on_click=toggle_view, args=("hextras",))
+    c_tool5.button("🧠 Descanso", help="Jogo e Ranking", use_container_width=True, on_click=toggle_view, args=("descanso",))
+    c_tool6.button("🐛 Erro/Novidade", help="Relatar Erro ou Novidade", use_container_width=True, on_click=toggle_view, args=("erro_novidade",))
         
     if st.session_state.active_view == "checklist":
         with st.container(border=True):
@@ -1160,7 +1161,7 @@ with col_principal:
                 st.success("Registro de Sessão enviado com sucesso!")
                 if st.session_state.get('html_download_ready') and st.session_state.get('html_content_cache'):
                     filename = st.session_state.get('html_filename', 'Checklist_Sessao.html')
-                    st.download_button(label=f"?? Baixar Formulário HTML ({filename})", data=st.session_state.html_content_cache, file_name=filename, mime="text/html")
+                    st.download_button(label=f"⬇️ Baixar Formulário HTML ({filename})", data=st.session_state.html_content_cache, file_name=filename, mime="text/html")
             st.markdown("### Gerar HTML e Notificar")
             data_eproc = st.date_input("Data da Sessão:", value=get_brazil_time().date(), format="DD/MM/YYYY", key='sessao_data_input')
             camara_eproc = st.selectbox("Selecione a Câmara:", CAMARAS_OPCOES, index=None, key='sessao_camara_select')
@@ -1174,21 +1175,21 @@ with col_principal:
             st.header("Padrão abertura de chamados / jiras")
             guide_step = st.session_state.get('chamado_guide_step', 1)
             if guide_step == 1:
-                st.subheader("?? Resumo e Passo 1: Testes Iniciais")
+                st.subheader("📄 Resumo e Passo 1: Testes Iniciais")
                 st.markdown("O processo de abertura de chamados segue uma padronização.\n**PASSO 1: Testes Iniciais**\nAntes de abrir o chamado, o consultor(a) deve primeiro realizar os procedimentos de suporte e testes necessários.")
-                st.button("Próximo (Passo 2) ??", on_click=set_chamado_step, args=(2,))
+                st.button("Próximo (Passo 2) ➡️", on_click=set_chamado_step, args=(2,))
             elif guide_step == 2:
                 st.subheader("PASSO 2: Checklist de Abertura")
                 st.markdown("**1. Dados do Usuário**\n**2. Dados do Processo**\n**3. Descrição do Erro**\n**4. Prints/Vídeo**")
-                st.button("Próximo (Passo 3) ??", on_click=set_chamado_step, args=(3,))
+                st.button("Próximo (Passo 3) ➡️", on_click=set_chamado_step, args=(3,))
             elif guide_step == 3:
                 st.subheader("PASSO 3: Registrar e Informar")
                 st.markdown("Envie e-mail ao usuário informando o número do chamado.")
-                st.button("Próximo (Observações) ??", on_click=set_chamado_step, args=(4,))
+                st.button("Próximo (Observações) ➡️", on_click=set_chamado_step, args=(4,))
             elif guide_step == 4:
                 st.subheader("Observações Gerais")
                 st.markdown("* Comunicação via e-mail institucional.\n* Atualização no IN.")
-                st.button("Entendi! Abrir campo ??", on_click=set_chamado_step, args=(5,))
+                st.button("Entendi! Abrir campo ➡️", on_click=set_chamado_step, args=(5,))
             elif guide_step == 5:
                 st.subheader("Campo de Digitação do Chamado")
                 st.text_area("Rascunho do Chamado:", height=300, key="chamado_textarea", label_visibility="collapsed")
@@ -1230,8 +1231,8 @@ with col_principal:
 
     elif st.session_state.active_view == "erro_novidade":
         with st.container(border=True):
-            st.markdown("### ?? Registro de Erro ou Novidade")
-            with st.expander("?? Ver Exemplo de Preenchimento"):
+            st.markdown("### 🐛 Registro de Erro ou Novidade")
+            with st.expander("📝 Ver Exemplo de Preenchimento"):
                 st.markdown("""**Título:** Melhoria na Gestão das Procuradorias
 **Objetivo:** Permitir que os perfis de Procurador Chefe...
 **Relato:** Foram realizados testes...
@@ -1252,7 +1253,7 @@ with col_principal:
                     else: st.error("Erro no envio.")
     
     st.markdown("---")
-    st.markdown("### ?? Links Úteis - Notebooks LM Cesupe")
+    st.markdown("### 📚 Links Úteis - Notebooks LM Cesupe")
     st.markdown("""
     * [Notebook Lm Eproc Gabinete](https://notebooklm.google.com/notebook/e2fcf868-1697-4a4c-a7db-fed5560e04ad)
     * [Eproc Cartório](https://notebooklm.google.com/notebook/8b7fd5e6-ee33-4d5e-945c-f763c443846f)
@@ -1320,7 +1321,7 @@ with col_disponibilidade:
                 if match: ui_lists['atividade_especifica'].append((nome, match.group(1).split('|')[0].strip()))
 
     # --- RENDERIZAÇÃO FILA ---
-    st.subheader(f'? Na Fila ({len(ui_lists["fila"])})')
+    st.subheader(f'✅ Na Fila ({len(ui_lists["fila"])})')
     render_order = [c for c in queue if c in ui_lists["fila"]]
     if not render_order: st.markdown('_Ninguém na fila._')
     else:
@@ -1333,11 +1334,11 @@ with col_disponibilidade:
             skip_flag = skips.get(nome, False)
             status_atual = st.session_state.status_texto.get(nome, '')
             extra_info = ""
-            if "Atividade" in status_atual: extra_info += " ??"
-            if "Projeto" in status_atual: extra_info += " ???"
+            if "Atividade" in status_atual: extra_info += " 📋"
+            if "Projeto" in status_atual: extra_info += " 🏗️"
 
-            if nome == responsavel: display = f'<span style="background-color: #FFD700; color: #000; padding: 2px 6px; border-radius: 5px; font-weight: bold;">?? {nome}</span>'
-            elif skip_flag: display = f'**{nome}**{extra_info} :orange-background[Pulando ??]'
+            if nome == responsavel: display = f'<span style="background-color: #FFD700; color: #000; padding: 2px 6px; border-radius: 5px; font-weight: bold;">🥂 {nome}</span>'
+            elif skip_flag: display = f'**{nome}**{extra_info} :orange-background[Pulando ⏭️]'
             else: display = f'**{nome}**{extra_info} :blue-background[Aguardando]'
             col_nome.markdown(display, unsafe_allow_html=True)
     st.markdown('---')
@@ -1405,15 +1406,15 @@ with col_disponibilidade:
                 col_nome.markdown(html_simple, unsafe_allow_html=True)
         st.markdown('---')
 
-    render_section_detalhada('Em Demanda', '??', ui_lists['atividade_especifica'], 'orange', 'Atividade')
-    render_section_detalhada('Projetos', '???', ui_lists['projeto_especifico'], 'blue', 'Projeto')
-    render_section_detalhada('Treinamento', '??', ui_lists['treinamento_especifico'], 'teal', 'Treinamento') # Nova Seção Corrigida
-    render_section_detalhada('Reuniões', '??', ui_lists['reuniao_especifica'], 'violet', 'Reunião')
-    render_section_simples('Almoço', '???', ui_lists['almoco'], 'red')
-    render_section_detalhada('Sessão', '???', ui_lists['sessao_especifica'], 'green', 'Sessão')
-    render_section_simples('Saída rápida', '??', ui_lists['saida'], 'red')
-    render_section_simples('Ausente', '??', ui_lists['ausente'], 'violet') 
-    render_section_simples('Indisponível', '?', ui_lists['indisponivel'], 'grey')
+    render_section_detalhada('Em Demanda', '📋', ui_lists['atividade_especifica'], 'orange', 'Atividade')
+    render_section_detalhada('Projetos', '🏗️', ui_lists['projeto_especifico'], 'blue', 'Projeto')
+    render_section_detalhada('Treinamento', '🎓', ui_lists['treinamento_especifico'], 'teal', 'Treinamento') # Nova Seção Corrigida
+    render_section_detalhada('Reuniões', '📅', ui_lists['reuniao_especifica'], 'violet', 'Reunião')
+    render_section_simples('Almoço', '🍽️', ui_lists['almoco'], 'red')
+    render_section_detalhada('Sessão', '🎙️', ui_lists['sessao_especifica'], 'green', 'Sessão')
+    render_section_simples('Saída rápida', '🚶', ui_lists['saida'], 'red')
+    render_section_simples('Ausente', '👤', ui_lists['ausente'], 'violet') 
+    render_section_simples('Indisponível', '❌', ui_lists['indisponivel'], 'grey')
 
 now_utc = datetime.utcnow()
 now_br = get_brazil_time()
