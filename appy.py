@@ -1423,3 +1423,35 @@ last_run_date = st.session_state.report_last_run_date.date() if isinstance(st.se
 if now_br.hour >= 20 and now_br.date() > last_run_date:
     print(f"TRIGGER: Enviando relatório diário. Agora (BRT): {now_br}, Última Execução: {st.session_state.report_last_run_date}")
     send_daily_report()
+    # --- ÁREA DE DIAGNÓSTICO (Apagar depois que funcionar) ---
+st.divider()
+st.subheader("🛠️ Teste de Conexão com Google Sheets")
+url_teste = st.text_input("URL do Web App (Verifique se não tem espaços):", value=SHEETS_WEBHOOK_URL)
+
+if st.button("🧪 Testar Envio Manual"):
+    try:
+        st.info("Tentando enviar...")
+        payload_teste = {
+            "data_hora": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+            "consultor": "TESTE_DIAGNOSTICO",
+            "status_anterior": "Teste A",
+            "status_atual": "Teste B",
+            "tempo_anterior": "00:00:00"
+        }
+        # Tenta enviar sem threading para ver o erro
+        response = requests.post(url_teste, json=payload_teste, timeout=10)
+        
+        st.write(f"**Status Code:** {response.status_code}")
+        st.write(f"**Resposta do Google:** {response.text}")
+        
+        if response.status_code == 200:
+            st.success("✅ Sucesso! O Python conseguiu falar com o Google.")
+        elif response.status_code == 302:
+            st.warning("⚠️ Redirecionamento (302). Isso geralmente significa problema na URL ou permissões.")
+        elif response.status_code == 401 or response.status_code == 403:
+            st.error("🚫 Erro de Permissão. O Google bloqueou o acesso (Verifique 'Quem pode acessar').")
+        else:
+            st.error("❌ Erro desconhecido.")
+            
+    except Exception as e:
+        st.error(f"🔥 Ocorreu um erro no Python: {e}")
