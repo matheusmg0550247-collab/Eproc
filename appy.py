@@ -127,18 +127,19 @@ def gerar_docx_certidao(tipo_certidao, num_processo, data_indisponibilidade_inpu
     run_tj = head.add_run("TRIBUNAL DE JUSTIÇA DO ESTADO DE MINAS GERAIS\n")
     run_tj.bold = True
     head.add_run("Rua Ouro Preto, Nº 1564 - Bairro Santo Agostinho - CEP 30170-041 - Belo Horizonte - MG - www.tjmg.jus.br\n")
-    head.add_run("Andar: 3º e 4º PV\n\n")
+    head.add_run("Andar: 3º 3º e 4º PV\n\n")
 
-    # --- TÍTULO DO PARECER ---
+    # [cite_start]--- TÍTULO DO PARECER [cite: 5, 22, 36] ---
     num_parecer = int(datetime.now().strftime("%H%M")) 
     ano_atual = datetime.now().year
     
+    # "Parecer" para Geral, "Parecer Técnico" para outros
     tipo_parecer_txt = "Parecer" if tipo_certidao == "Geral" else "Parecer Técnico"
     titulo = document.add_paragraph(f"{tipo_parecer_txt} GEJUD/DIRTEC/TJMG nº {num_parecer}/{ano_atual}.")
     titulo.alignment = WD_ALIGN_PARAGRAPH.LEFT
     titulo.runs[0].bold = True
 
-    # --- ASSUNTO ---
+    # [cite_start]--- ASSUNTO [cite: 6, 23, 37] ---
     if tipo_certidao == "Geral":
         sistema_texto = "JPe – 2ª Instância" 
     elif tipo_certidao == "Eletrônica":
@@ -150,7 +151,7 @@ def gerar_docx_certidao(tipo_certidao, num_processo, data_indisponibilidade_inpu
 
     document.add_paragraph("Exmo(a). Senhor(a) Relator(a).")
 
-    # --- DATA E LOCAL ---
+    # [cite_start]--- DATA E LOCAL [cite: 8, 25, 38] ---
     data_hoje = datetime.now().strftime("%d de %B de %Y")
     meses = {"January": "janeiro", "February": "fevereiro", "March": "março", "April": "abril", "May": "maio", "June": "junho", "July": "julho", "August": "agosto", "September": "setembro", "October": "outubro", "November": "novembro", "December": "dezembro"}
     for k, v in meses.items(): data_hoje = data_hoje.replace(k, v)
@@ -159,25 +160,30 @@ def gerar_docx_certidao(tipo_certidao, num_processo, data_indisponibilidade_inpu
 
     # --- TRATAMENTO DA DATA DE INDISPONIBILIDADE ---
     data_texto = ""
-    if isinstance(data_indisponibilidade_input, (list, tuple)) and len(data_indisponibilidade_input) > 1:
-        inicio = data_indisponibilidade_input[0].strftime("%d/%m/%Y")
-        fim = data_indisponibilidade_input[1].strftime("%d/%m/%Y")
-        data_texto = f"no período de {inicio} a {fim}"
-    elif isinstance(data_indisponibilidade_input, (list, tuple)) and len(data_indisponibilidade_input) == 1:
-        d = data_indisponibilidade_input[0]
-        data_texto = f"em {d.strftime('%d/%m/%Y')}"
+    # Se for uma lista (intervalo ou único) ou data direta
+    if isinstance(data_indisponibilidade_input, (list, tuple)):
+        if len(data_indisponibilidade_input) > 1:
+            inicio = data_indisponibilidade_input[0].strftime("%d/%m/%Y")
+            fim = data_indisponibilidade_input[1].strftime("%d/%m/%Y")
+            data_texto = f"no período de {inicio} a {fim}"
+        elif len(data_indisponibilidade_input) == 1:
+            d = data_indisponibilidade_input[0]
+            data_texto = f"em {d.strftime('%d/%m/%Y')}"
+        else:
+            data_texto = "em data não especificada"
     elif isinstance(data_indisponibilidade_input, (date, datetime)):
         data_texto = f"em {data_indisponibilidade_input.strftime('%d/%m/%Y')}"
     else:
         data_texto = "em data não especificada"
 
-    # --- CORPO DO TEXTO ---
+    # [cite_start]--- CORPO DO TEXTO [cite: 9, 26, 40] ---
     if tipo_certidao == "Geral":
         p_geral = document.add_paragraph()
         p_geral.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-        # Texto Geral (Sem processo, sem chamado)
+        # [cite_start]Texto Geral específico [cite: 40]
         p_geral.add_run(f"Para fins de cumprimento dos artigos 13 e 14 da Resolução nº 780/2014 do Tribunal de Justiça do Estado de Minas Gerais, informamos que {data_texto} houve indisponibilidade do portal JPe, superior a uma hora, que impossibilitou o peticionamento eletrônico de recursos em processos que já tramitavam no sistema.")
     else:
+        # [cite_start]Texto Padrão (Física/Eletrônica) com Processo e Chamado [cite: 9, 26]
         texto_principal = document.add_paragraph()
         texto_principal.add_run(f"Informamos que {data_texto}, houve indisponibilidade específica do sistema para o peticionamento do processo nº {num_processo}.")
         document.add_paragraph(f"O Chamado de número {num_chamado}, foi aberto e encaminhado à DIRTEC (Diretoria Executiva de Tecnologia da Informação e Comunicação).")
@@ -187,12 +193,13 @@ def gerar_docx_certidao(tipo_certidao, num_processo, data_indisponibilidade_inpu
         p_motivo = document.add_paragraph()
         p_motivo.add_run(f"Descrição da Ocorrência/Motivo: {motivo_pedido}")
 
+    # [cite_start]Texto específico da Física [cite: 28]
     if tipo_certidao == "Física":
         p_fisica = document.add_paragraph()
         p_fisica.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         p_fisica.add_run("Diante da indisponibilidade específica, não havendo um prazo para solução do problema, a Primeira Vice-Presidência recomenda o ingresso dos autos físicos, nos termos do § 2º, do artigo 14º, da Resolução nº 780/2014, do Tribunal de Justiça do Estado de Minas Gerais.")
 
-    # --- ENCERRAMENTO ---
+    # [cite_start]--- ENCERRAMENTO [cite: 11, 29, 41] ---
     if tipo_certidao == "Eletrônica":
         document.add_paragraph("Esperamos ter prestado as informações solicitadas e colocamo-nos à disposição para outras que se fizerem necessárias.")
     else:
@@ -201,7 +208,7 @@ def gerar_docx_certidao(tipo_certidao, num_processo, data_indisponibilidade_inpu
     document.add_paragraph("Respeitosamente,")
     document.add_paragraph("\n\n") 
 
-    # --- ASSINATURA ---
+    # [cite_start]--- ASSINATURA [cite: 15, 33, 43] ---
     assinatura = document.add_paragraph()
     assinatura.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run_ass = assinatura.add_run("Waner Andrade Silva\n")
@@ -216,17 +223,13 @@ def gerar_docx_certidao(tipo_certidao, num_processo, data_indisponibilidade_inpu
     buffer.seek(0)
     return buffer
 
-def send_certidao_notification_to_chat(consultor, tipo, motivo):
+def send_certidao_notification_to_chat(consultor, tipo):
     if not GOOGLE_CHAT_WEBHOOK_CERTIDAO: return False
     
-    # Construção da mensagem de notificação (sem link de download, pois não há armazenamento em nuvem)
-    # Explica que o arquivo está disponível para quem gerou na interface
+    # Mensagem padronizada solicitada
     msg = (
-        f"🖨️ **Nova Certidão Gerada**\n\n"
-        f"👤 **Gerado por:** {consultor}\n"
-        f"📄 **Tipo:** {tipo}\n"
-        f"📝 **Motivo:** {motivo}\n"
-        f"⚠️ *O arquivo foi gerado e baixado localmente pelo consultor.*"
+        f"Consultor {consultor} solicitou uma certidão ({tipo}) de indisponibilidade. "
+        f"Modelo em word encontra-se na pasta do servidor para envio."
     )
     
     chat_message = {"text": msg}
@@ -1384,7 +1387,7 @@ with col_principal:
                     st.session_state['ultimo_nome_docx'] = nome_arq
                     
                     # Envia notificação ao chat (Sem link de download, apenas aviso)
-                    send_certidao_notification_to_chat(consultor_logado, tipo_cert, motivo_pedido)
+                    send_certidao_notification_to_chat(consultor_logado, tipo_cert)
                     
                     st.success("Certidão gerada com sucesso! Clique abaixo para baixar.")
 
