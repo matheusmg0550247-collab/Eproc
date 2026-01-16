@@ -67,7 +67,7 @@ GOOGLE_CHAT_WEBHOOK_ERRO_NOVIDADE = "https://chat.googleapis.com/v1/spaces/AAQAp
 GOOGLE_CHAT_WEBHOOK_CERTIDAO = "https://chat.googleapis.com/v1/spaces/AAQAZ8UfLjw/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=83659FzLIWIpx9919tlJz88Hb2fSGyHJof9rSKCHviA"
 
 # URL DO SEU APPS SCRIPT (Atualizado)
-SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbylJaPd9ZeIxpFV3lwAjx2PjbCvDf3bOlyHNx2zUSpzpqakZN3SluuqOO7j4Dm30Zex7Q/exec"
+SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbyDQssAsW0ZQg0xGpLcIVnJn4RKxsBvNkzYyTUg6SPOsMcgR9FQsbTG5EDFvXcDqbViTw/exec"
 
 REG_USUARIO_OPCOES = ["Cartório", "Gabinete", "Externo"]
 REG_SISTEMA_OPCOES = ["Conveniados", "Outros", "Eproc", "Themis", "JPE", "SIAP"]
@@ -134,6 +134,7 @@ def gerar_docx_certidao(tipo_certidao, num_processo, data_indisponibilidade_inpu
     num_parecer = int(datetime.now().strftime("%H%M")) 
     ano_atual = datetime.now().year
     
+    # "Parecer" para Geral, "Parecer Técnico" para outros
     tipo_parecer_txt = "Parecer" if tipo_certidao == "Geral" else "Parecer Técnico"
     titulo = document.add_paragraph(f"{tipo_parecer_txt} GEJUD/DIRTEC/TJMG nº {num_parecer}/{ano_atual}.")
     titulo.alignment = WD_ALIGN_PARAGRAPH.LEFT
@@ -158,9 +159,8 @@ def gerar_docx_certidao(tipo_certidao, num_processo, data_indisponibilidade_inpu
     
     document.add_paragraph(f"Belo Horizonte, {data_hoje}")
 
-    # --- TRATAMENTO DA DATA DE INDISPONIBILIDADE ---
+    # --- TRATAMENTO DA DATA DE INDISPONIBILIDADE (TEXTO WORD) ---
     data_texto = ""
-    # Se for uma lista (intervalo ou único) ou data direta
     if isinstance(data_indisponibilidade_input, (list, tuple)):
         if len(data_indisponibilidade_input) > 1:
             inicio = data_indisponibilidade_input[0].strftime("%d/%m/%Y")
