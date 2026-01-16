@@ -29,6 +29,7 @@ CONSULTORES = sorted([
 
 # --- FUNÇÃO DE HORÁRIO BRASIL (UTC-3) ---
 def get_brazil_time():
+    # Ajusta UTC para UTC-3 (Brasília)
     return datetime.utcnow() - timedelta(hours=3)
 
 # --- FUNÇÃO DE CACHE GLOBAL ---
@@ -63,8 +64,8 @@ GOOGLE_CHAT_WEBHOOK_HORAS_EXTRAS = "https://chat.googleapis.com/v1/spaces/AAQA0V
 GOOGLE_CHAT_WEBHOOK_ERRO_NOVIDADE = "https://chat.googleapis.com/v1/spaces/AAQAp4gdyUE/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=vnI4C_jTeF0UQINXiVYpRrnEsYaO4-Nnvs8RC-PTj0k"
 GOOGLE_CHAT_WEBHOOK_CERTIDAO = "https://chat.googleapis.com/v1/spaces/AAQAZ8UfLjw/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=83659FzLIWIpx9919tlJz88Hb2fSGyHJof9rSKCHviA"
 
-# URL DO SEU APPS SCRIPT
-SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbzjqCMpj8LqJaHYp4C4Gl3y517puvuK4eMLqHVrEEPY_uF-pGUI8UV6o5CeKDX5mW3cFw/exec"
+# URL DO SEU APPS SCRIPT (Atualizado com o novo link fornecido)
+SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbx9P6vF3yzIQ1hA6ak2ehAaYQamrdFGfltEbpiH_-Cphb24kBpN_9D0rmghzZywiUx-4Q/exec"
 
 REG_USUARIO_OPCOES = ["Cartório", "Gabinete", "Externo"]
 REG_SISTEMA_OPCOES = ["Conveniados", "Outros", "Eproc", "Themis", "JPE", "SIAP"]
@@ -159,6 +160,7 @@ def gerar_docx_certidao(tipo_certidao, num_processo, data_indisponibilidade_inpu
         p_geral = document.add_paragraph()
         p_geral.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         hora_txt = hora_inicio.strftime("%H:%M") if hora_inicio else "00:00"
+        [cite_start]# [cite: 40] Texto Geral com Hora e Motivo
         p_geral.add_run(f"Para fins de cumprimento dos artigos 13 e 14 da Resolução nº 780/2014 do Tribunal de Justiça do Estado de Minas Gerais, informamos que {data_texto} houve indisponibilidade do portal JPe, superior a uma hora, a partir de {hora_txt}h, que impossibilitou o peticionamento eletrônico de recursos em processos que já tramitavam no sistema.")
     else:
         texto_principal = document.add_paragraph()
@@ -1132,27 +1134,25 @@ with col_principal:
     elif st.session_state.active_view == "certidao":
         with st.container(border=True):
             st.header("🖨️ Gerador de Certidão de Indisponibilidade")
+            
+            # Inputs
             tipo_cert = st.selectbox("Tipo de Certidão:", ["Geral", "Eletrônica", "Física"])
+            
+            # Condicional para input de Data
             dt_indis = []
             
             if tipo_cert == "Geral":
-                # Certidão Geral pede Data (Dia Único ou Período) e HORA
-                col_d, col_h = st.columns(2)
-                
-                # Escolha se é dia único ou período
-                tipo_periodo = col_d.radio("Período:", ["Dia Único", "Intervalo de Dias"], horizontal=True)
-                
+                # Certidão Geral pede Data (Dia Único ou Período)
+                # OBS: Removido o campo "Horário de Início" pois você pediu para voltar à versão anterior
+                tipo_periodo = st.radio("Período:", ["Dia Único", "Intervalo de Dias"], horizontal=True)
                 if tipo_periodo == "Dia Único":
-                    dt_input_raw = col_d.date_input("Data da Indisponibilidade:", value=get_brazil_time().date(), format="DD/MM/YYYY")
+                    dt_input_raw = st.date_input("Data da Indisponibilidade:", value=get_brazil_time().date(), format="DD/MM/YYYY")
                     dt_indis = [dt_input_raw]
                 else:
-                    dt_indis_raw = col_d.date_input("Selecione o Intervalo:", value=[], format="DD/MM/YYYY")
+                    dt_indis_raw = st.date_input("Selecione o Intervalo:", value=[], format="DD/MM/YYYY")
                     if isinstance(dt_indis_raw, list): dt_indis = dt_indis_raw
                     else: dt_indis = [dt_indis_raw] # Fallback
 
-                # Campo de Hora para Geral
-                hora_inicio_geral = col_h.time_input("Horário de Início (a partir de):", value=dt_time(8, 0))
-                
                 st.info("ℹ️ Certidão Geral não requer número de processo ou chamado.")
                 num_proc = ""
                 chamado = ""
@@ -1164,13 +1164,12 @@ with col_principal:
                     dt_input_raw = st.date_input("Data da Indisponibilidade:", value=get_brazil_time().date(), format="DD/MM/YYYY")
                     dt_indis = [dt_input_raw]
                 else:
-                    dt_indis_raw = st.date_input("Selecione o Intervalo:", value=[], format="DD/MM/YYYY")
+                    dt_indis = st.date_input("Selecione o Intervalo:", value=[], format="DD/MM/YYYY")
                     if isinstance(dt_indis_raw, list): dt_indis = dt_indis_raw
                     else: dt_indis = [dt_indis_raw]
 
                 num_proc = st.text_input("Número do Processo:", placeholder="1.0000...")
                 chamado = st.text_input("Número do Chamado (ServiceNow/Jira):")
-                hora_inicio_geral = None
                 
             motivo_pedido = st.text_area("Motivo do Pedido / Descrição da Ocorrência:", placeholder="Descreva brevemente a causa da indisponibilidade...")
             consultor_logado = st.session_state.consultor_selectbox
@@ -1185,7 +1184,7 @@ with col_principal:
                 
                 if not erro:
                     # Gera o arquivo
-                    arquivo_buffer = gerar_docx_certidao(tipo_cert, num_proc, dt_indis, chamado, motivo_pedido, hora_inicio_geral)
+                    arquivo_buffer = gerar_docx_certidao(tipo_cert, num_proc, dt_indis, chamado, motivo_pedido)
                     
                     nome_arq = f"Certidao_{tipo_cert}.docx"
                     if num_proc: nome_arq = f"Certidao_{tipo_cert}_{num_proc.replace('/','-')}.docx"
@@ -1196,7 +1195,7 @@ with col_principal:
                     # Notifica Chat
                     send_certidao_notification_to_chat(consultor_logado, tipo_cert)
                     
-                    # NÃO envia para o Sheets nesta versão para evitar erro, conforme pedido
+                    # NÃO envia para o Sheets nesta versão
                     
                     st.success("Certidão gerada com sucesso! Clique abaixo para baixar.")
 
