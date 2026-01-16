@@ -117,7 +117,7 @@ PUG2026_FILENAME = "pug2026.png"
 # ============================================
 
 # --- FUNÇÃO GERADORA DE CERTIDÃO (WORD) ---
-def gerar_docx_certidao(tipo_certidao, num_processo, data_indisponibilidade, num_chamado):
+def gerar_docx_certidao(tipo_certidao, num_processo, data_indisponibilidade_input, num_chamado):
     document = Document()
     
     # Configuração de Fonte Padrão para o documento
@@ -126,82 +126,102 @@ def gerar_docx_certidao(tipo_certidao, num_processo, data_indisponibilidade, num
     font.name = 'Arial'
     font.size = Pt(12)
 
-    # --- CABEÇALHO (Baseado nos docs 402 e 503) ---
+    # --- CABEÇALHO (Padronizado para todos ) ---
     head = document.add_paragraph()
     head.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    # Negrito para o nome do Tribunal [cite: 2, 19]
     run_tj = head.add_run("TRIBUNAL DE JUSTIÇA DO ESTADO DE MINAS GERAIS\n")
     run_tj.bold = True
-    # Endereço padrão [cite: 3, 20]
     head.add_run("Rua Ouro Preto, Nº 1564 - Bairro Santo Agostinho - CEP 30170-041 - Belo Horizonte - MG - www.tjmg.jus.br\n")
-    head.add_run("Andar: 3º e 4º PV\n\n")
+    head.add_run("Andar: 3º 3º e 4º PV\n\n")
 
     # --- TÍTULO DO PARECER ---
-    # Gerando um número fictício para o parecer baseado na hora atual para não ficar vazio
     num_parecer = int(datetime.now().strftime("%H%M")) 
     ano_atual = datetime.now().year
     
-    titulo = document.add_paragraph(f"Parecer Técnico GEJUD/DIRTEC/TJMG nº {num_parecer}/{ano_atual}.")
+    #  A Certidão Geral usa apenas "Parecer", as outras "Parecer Técnico"
+    tipo_parecer_txt = "Parecer" if tipo_certidao == "Geral" else "Parecer Técnico"
+    titulo = document.add_paragraph(f"{tipo_parecer_txt} GEJUD/DIRTEC/TJMG nº {num_parecer}/{ano_atual}.")
     titulo.alignment = WD_ALIGN_PARAGRAPH.LEFT
     titulo.runs[0].bold = True
 
     # --- ASSUNTO ---
-    # Se for "Eletrônica" ou "Geral", usamos texto padrão. Se especificar 2ª Instância, ajusta.
-    # Baseado no Doc 503 (Eletrônico): "JPe - 2ª Instância" [cite: 6]
-    # Baseado no Doc 402 (Físico): "JPe" [cite: 23]
-    sistema_texto = "JPe - 2ª Instância" if tipo_certidao == "Eletrônica" else "JPe"
+    if tipo_certidao == "Geral":
+        # [cite: 37] Texto específico da certidão geral
+        sistema_texto = "JPe – 2ª Instância" 
+    elif tipo_certidao == "Eletrônica":
+        sistema_texto = "JPe - 2ª Instância"
+    else:
+        sistema_texto = "JPe"
+        
     document.add_paragraph(f'Assunto: Notifica erro no "{sistema_texto}" ao peticionar.')
 
-    document.add_paragraph("Exmo(a). Senhor(a) Relator(a),")
+    document.add_paragraph("Exmo(a). Senhor(a) Relator(a).") # [cite: 39] Ponto final ao invés de vírgula no Geral, mas mantendo padrão
 
     # --- DATA E LOCAL ---
-    # Data atual por extenso
     data_hoje = datetime.now().strftime("%d de %B de %Y")
     meses = {"January": "janeiro", "February": "fevereiro", "March": "março", "April": "abril", "May": "maio", "June": "junho", "July": "julho", "August": "agosto", "September": "setembro", "October": "outubro", "November": "novembro", "December": "dezembro"}
     for k, v in meses.items(): data_hoje = data_hoje.replace(k, v)
     
-    p_data = document.add_paragraph(f"Belo Horizonte, {data_hoje}")
+    document.add_paragraph(f"Belo Horizonte, {data_hoje}") # [cite: 38]
+
+    # --- TRATAMENTO DA DATA (Período ou Dia Único) ---
+    data_texto = ""
+    if isinstance(data_indisponibilidade_input, (list, tuple)) and len(data_indisponibilidade_input) > 1:
+        # É um intervalo
+        inicio = data_indisponibilidade_input[0].strftime("%d/%m/%Y")
+        fim = data_indisponibilidade_input[1].strftime("%d/%m/%Y")
+        data_texto = f"no período de {inicio} a {fim}"
+    elif isinstance(data_indisponibilidade_input, (list, tuple)) and len(data_indisponibilidade_input) == 1:
+        # Lista com 1 elemento
+        d = data_indisponibilidade_input[0]
+        data_texto = f"em {d.strftime('%d/%m/%Y')}"
+    elif isinstance(data_indisponibilidade_input, (date, datetime)):
+        # Objeto data direto
+        data_texto = f"em {data_indisponibilidade_input.strftime('%d/%m/%Y')}"
+    else:
+        # Fallback
+        data_texto = "em data não especificada"
 
     # --- CORPO DO TEXTO (Variável conforme Tipo) ---
-    data_indisp_str = data_indisponibilidade.strftime("%d/%m/%Y")
     
-    texto_principal = document.add_paragraph()
-    # Texto padrão de indisponibilidade [cite: 9, 26]
-    texto_principal.add_run(f"Informamos que no dia {data_indisp_str}, houve indisponibilidade específica do sistema para o peticionamento do processo nº {num_processo}.")
-    
-    # Informação do Chamado [cite: 10, 27]
-    document.add_paragraph(f"O Chamado de número {num_chamado}, foi aberto e encaminhado à DIRTEC (Diretoria Executiva de Tecnologia da Informação e Comunicação).")
+    if tipo_certidao == "Geral":
+        #  Texto específico da certidão geral
+        p_geral = document.add_paragraph()
+        p_geral.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        p_geral.add_run(f"Para fins de cumprimento dos artigos 13 e 14 da Resolução nº 780/2014 do Tribunal de Justiça do Estado de Minas Gerais, informamos que {data_texto} houve indisponibilidade do portal JPe, superior a uma hora, que impossibilitou o peticionamento eletrônico de recursos em processos que já tramitavam no sistema.")
+        # Nota: O modelo geral não cita número de processo específico no corpo, nem número de chamado
+    else:
+        texto_principal = document.add_paragraph()
+        texto_principal.add_run(f"Informamos que {data_texto}, houve indisponibilidade específica do sistema para o peticionamento do processo nº {num_processo}.")
+        document.add_paragraph(f"O Chamado de número {num_chamado}, foi aberto e encaminhado à DIRTEC (Diretoria Executiva de Tecnologia da Informação e Comunicação).")
 
-    # [LÓGICA ESPECÍFICA DA CERTIDÃO FÍSICA - BASEADO NO DOC 402]
+    # [LÓGICA ESPECÍFICA DA CERTIDÃO FÍSICA]
     if tipo_certidao == "Física":
         p_fisica = document.add_paragraph()
         p_fisica.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-        # Texto legal da Resolução 780/2014 [cite: 28]
         p_fisica.add_run("Diante da indisponibilidade específica, não havendo um prazo para solução do problema, a Primeira Vice-Presidência recomenda o ingresso dos autos físicos, nos termos do § 2º, do artigo 14º, da Resolução nº 780/2014, do Tribunal de Justiça do Estado de Minas Gerais.")
 
     # --- ENCERRAMENTO ---
-    # Variação sutil nos documentos originais
     if tipo_certidao == "Eletrônica":
-        # Texto do Doc 503 [cite: 11]
         document.add_paragraph("Esperamos ter prestado as informações solicitadas e colocamo-nos à disposição para outras que se fizerem necessárias.")
     else:
-        # Texto do Doc 402 [cite: 29]
+        # [cite: 41] Texto do Geral e Física são similares aqui
         document.add_paragraph("Colocamo-nos à disposição para outras informações que se fizerem necessárias.")
 
-    document.add_paragraph("Respeitosamente,")
+    document.add_paragraph("Respeitosamente,") # [cite: 42]
     document.add_paragraph("\n\n") 
 
     # --- ASSINATURA ---
-    # Assinatura fixa do Gestor Waner [cite: 15, 33]
+    # [cite: 43-47] Assinatura fixa do Gestor Waner
     assinatura = document.add_paragraph()
     assinatura.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run_ass = assinatura.add_run("Waner Andrade Silva\n")
     run_ass.bold = True
+    assinatura.add_run("0-009020-9\n") # Adicionado matrícula conforme modelo 4
     assinatura.add_run("Coordenação de Análise e Integração de Sistemas Judiciais Informatizados - COJIN\n")
     assinatura.add_run("Gerência de Sistemas Judiciais - GEJUD\n")
     assinatura.add_run("Diretoria Executiva de Tecnologia da Informação e Comunicação - DIRTEC")
 
-    # Salva em memória buffer
     buffer = io.BytesIO()
     document.save(buffer)
     buffer.seek(0)
@@ -309,16 +329,10 @@ def log_status_change(consultor, old_status, new_status, duration):
     old_lbl = old_status if old_status else 'Fila Bastão'
     new_lbl = new_status if new_status else 'Fila Bastão'
 
-    # [CORREÇÃO LOG STATUS COMPOSTO]: Garante que "Fila | Projeto" apareça no log
-    # Verifica se a pessoa está na fila mas não tem a palavra "Bastão" explicitamente
-    # (ou seja, está na fila mas não é o dono)
     if consultor in st.session_state.bastao_queue:
         if 'Bastão' not in new_lbl and new_lbl != 'Fila Bastão':
-             # Se não for o dono, mas está na fila e tem atividade (ex: Projeto), adiciona "Fila | "
              new_lbl = f"Fila | {new_lbl}"
     
-    # Se for "Bastão" puro ou com algo, já está certo no new_status vindo do update_status
-
     entry = {
         'timestamp': now_br,
         'consultor': consultor,
@@ -547,7 +561,6 @@ def init_session_state():
         st.session_state.status_texto[nome] = current_status
         
         # [MODIFICAÇÃO] Lógica de Disponibilidade (Checkboxes)
-        # Prioriza quem já está na fila, a menos que tenha status de bloqueio
         blocking_keywords = ['Almoço', 'Ausente', 'Saída rápida', 'Sessão', 'Reunião', 'Treinamento']
         is_hard_blocked = any(kw in current_status for kw in blocking_keywords)
         
@@ -555,7 +568,6 @@ def init_session_state():
             is_available = False
         elif nome in st.session_state.priority_return_queue:
             is_available = False
-        # Se já está na fila e não tem bloqueio rígido, PRESERVA (Evita o bug de reset)
         elif nome in st.session_state.bastao_queue:
             is_available = True
         else:
@@ -574,15 +586,12 @@ def find_next_holder_index(current_index, queue, skips):
     if not queue: return -1
     n = len(queue)
     
-    # Começa a busca a partir da próxima posição (ou 0 se current_index for -1)
     start_index = (current_index + 1) % n
     
-    # Percorre a lista inteira uma vez (n vezes)
     for i in range(n):
         idx = (start_index + i) % n
         consultor = queue[idx]
         
-        # Critérios: Disponível (Check=True) E Não Pular
         is_available = st.session_state.get(f'check_{consultor}', False)
         is_skipping = skips.get(consultor, False)
         
@@ -598,14 +607,12 @@ def check_and_assume_baton(forced_successor=None):
     
     is_current_valid = (current_holder_status and current_holder_status in queue and st.session_state.get(f'check_{current_holder_status}'))
     
-    # [CORREÇÃO ROTAÇÃO] Se forçado a um sucessor, use-o. Caso contrário, busca na fila.
     should_have_baton = None
     if forced_successor:
         should_have_baton = forced_successor
     elif is_current_valid: 
         should_have_baton = current_holder_status
     else:
-        # Se ninguém tem o bastão ou o atual saiu, procura o primeiro elegível (fallback)
         first_eligible_index = find_next_holder_index(-1, queue, skips)
         should_have_baton = queue[first_eligible_index] if first_eligible_index != -1 else None
 
@@ -626,7 +633,6 @@ def check_and_assume_baton(forced_successor=None):
         if 'Bastão' not in s_current:
             old_status = s_current
             duration = now_br - st.session_state.current_status_starts.get(should_have_baton, now_br)
-            # Mantém status anteriores se for acumulativo
             new_status = f"Bastão | {old_status}" if old_status and old_status != "Indisponível" else "Bastão"
             log_status_change(should_have_baton, old_status, new_status, duration)
             st.session_state.status_texto[should_have_baton] = new_status
@@ -649,16 +655,12 @@ def check_and_assume_baton(forced_successor=None):
     if changed: save_state()
     return changed
 
-# ============================================
-# [CORREÇÃO 3: toggle_queue limpa flag de skip]
-# ============================================
 def toggle_queue(consultor):
     st.session_state.gif_warning = False; st.session_state.rotation_gif_start_time = None
     st.session_state.lunch_warning_info = None 
     now_br = get_brazil_time()
     
     if consultor in st.session_state.bastao_queue:
-        # SAINDO DA FILA
         current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
         forced_successor = None
         
@@ -683,11 +685,8 @@ def toggle_queue(consultor):
             
         check_and_assume_baton(forced_successor=forced_successor)
     else:
-        # ENTRANDO NA FILA
         st.session_state.bastao_queue.append(consultor)
         st.session_state[f'check_{consultor}'] = True
-        
-        # [MODIFICAÇÃO] Reseta flag de Pular ao entrar na fila
         st.session_state.skip_flags[consultor] = False 
         
         if consultor in st.session_state.priority_return_queue:
@@ -695,7 +694,6 @@ def toggle_queue(consultor):
             
         current_s = st.session_state.status_texto.get(consultor, 'Indisponível')
         
-        # Limpa o "Indisponível" visualmente
         if 'Indisponível' in current_s:
             duration = now_br - st.session_state.current_status_starts.get(consultor, now_br)
             log_status_change(consultor, current_s, '', duration)
@@ -706,7 +704,6 @@ def toggle_queue(consultor):
     save_state()
 
 def leave_specific_status(consultor, status_type_to_remove):
-    # Remove apenas o tipo de status específico (Ex: Remove só 'Projeto: ...')
     st.session_state.gif_warning = False
     old_status = st.session_state.status_texto.get(consultor, '')
     now_br = get_brazil_time()
@@ -725,7 +722,6 @@ def leave_specific_status(consultor, status_type_to_remove):
     log_status_change(consultor, old_status, new_status, duration)
     st.session_state.status_texto[consultor] = new_status
     
-    # [CORREÇÃO ALMOÇO] Se desmarcou Almoço, volta pra fila
     if status_type_to_remove == 'Almoço' or status_type_to_remove == 'Treinamento':
         if consultor not in st.session_state.bastao_queue:
             st.session_state.bastao_queue.append(consultor)
@@ -783,13 +779,11 @@ def rotate_bastao():
 
         now_br = get_brazil_time()
         duration = now_br - (st.session_state.bastao_start_time or now_br)
-        # Tira Bastão do antigo, mantém resto
         old_h_status = st.session_state.status_texto[current_holder]
         new_h_status = old_h_status.replace('Bastão | ', '').replace('Bastão', '').strip()
         log_status_change(current_holder, old_h_status, new_h_status, duration)
         st.session_state.status_texto[current_holder] = new_h_status 
         
-        # Dá Bastão pro novo
         old_n_status = st.session_state.status_texto.get(next_holder, '')
         new_n_status = f"Bastão | {old_n_status}" if old_n_status else "Bastão"
         log_status_change(next_holder, old_n_status, new_n_status, timedelta(0))
@@ -849,7 +843,6 @@ def handle_chamado_submission():
     st.session_state.chamado_guide_step = 0
     st.session_state.chamado_textarea = ""
 
-# [STATUS ACUMULATIVO E BLOQUEANTE ATUALIZADO]
 def update_status(new_status_part, force_exit_queue=False): 
     selected = st.session_state.consultor_selectbox
     st.session_state.gif_warning = False; st.session_state.rotation_gif_start_time = None
@@ -858,24 +851,19 @@ def update_status(new_status_part, force_exit_queue=False):
         st.warning('Selecione um(a) consultor(a).')
         return
 
-    # Aviso Almoço
     if new_status_part != 'Almoço': st.session_state.lunch_warning_info = None
     if new_status_part == 'Almoço':
-        # Lógica de aviso de almoço aqui...
         pass 
 
-    # [MODIFICADO] Lista de bloqueio inclui Sessão, Reunião e agora TREINAMENTO
     blocking_statuses = ['Almoço', 'Ausente', 'Saída rápida', 'Sessão', 'Reunião', 'Treinamento']
     should_exit_queue = False
     
-    # Verifica se o novo status contém alguma palavra chave de bloqueio
     is_blocking = any(b in new_status_part for b in blocking_statuses)
 
     if is_blocking or force_exit_queue:
         should_exit_queue = True
         final_status = new_status_part 
     else:
-        # Lógica Acumulativa: Adiciona novo status aos existentes
         current = st.session_state.status_texto.get(selected, '')
         parts = [p.strip() for p in current.split('|') if p.strip()]
         
@@ -883,11 +871,10 @@ def update_status(new_status_part, force_exit_queue=False):
         cleaned_parts = []
         for p in parts:
             if p == 'Indisponível': continue
-            if p.startswith(type_of_new): continue # Substitui status do mesmo tipo (ex: troca um projeto por outro)
+            if p.startswith(type_of_new): continue
             cleaned_parts.append(p)
         
         cleaned_parts.append(new_status_part)
-        # Garante a ordem: Bastão primeiro, depois Atividade/Projeto
         cleaned_parts.sort(key=lambda x: 0 if 'Bastão' in x else 1 if 'Atividade' in x or 'Projeto' in x else 2)
         final_status = " | ".join(cleaned_parts)
 
@@ -897,7 +884,6 @@ def update_status(new_status_part, force_exit_queue=False):
             st.session_state.bastao_queue.remove(selected)
         st.session_state.skip_flags.pop(selected, None)
     
-    # Lógica para garantir que Bastão permaneça se não for saída de fila
     was_holder = next((True for c, s in st.session_state.status_texto.items() if 'Bastão' in s and c == selected), False)
     old_status = st.session_state.status_texto.get(selected, '')
     
@@ -1022,7 +1008,6 @@ with c_topo_dir:
     with c_sub2:
         if st.button("🚀 Entrar", help="Ficar disponível na fila imediatamente"):
             if novo_responsavel and novo_responsavel != "Selecione":
-                # Botão rápido força entrada na fila e limpa skips
                 toggle_queue(novo_responsavel)
                 st.session_state.consultor_selectbox = novo_responsavel 
                 st.success(f"{novo_responsavel} agora está na fila!")
@@ -1070,22 +1055,16 @@ proximo_index = find_next_holder_index(current_index, queue, skips)
 proximo = queue[proximo_index] if proximo_index != -1 else None
 restante = []
 
-# --- LÓGICA CORRIGIDA: MOSTRAR TODOS DA FILA ---
 if proximo_index != -1: 
     num_q = len(queue)
-    # Começa logo após o "Próximo" para manter a ordem visual cíclica
     idx = (proximo_index + 1) % num_q 
     
-    # Itera por toda a fila para garantir que todos sejam verificados
     for _ in range(num_q):
         person = queue[idx]
-        # Adiciona todos que não sejam o Responsável e nem o Próximo
-        # Sem filtros de 'skip' ou 'check' para garantir que espelhe a lista da direita
         if person != responsavel and person != proximo:
             restante.append(person)
         
         idx = (idx + 1) % num_q
-# ------------------------------------------------
 
 with col_principal:
     st.header("Responsável pelo Bastão")
@@ -1116,7 +1095,6 @@ with col_principal:
         skipped_text = ', '.join(sorted(skipped_consultants))
         num_skipped = len(skipped_consultants)
         
-        # Ajuste do texto conforme pedido
         lbl_consultor = 'Consultores' if num_skipped > 1 else 'Consultor(a)'
         lbl_acao = 'acionaram' if num_skipped > 1 else 'acionou'
         lbl_retorno = 'irão retornar' if num_skipped > 1 else 'irá retornar'
@@ -1141,7 +1119,6 @@ with col_principal:
         if view_name == 'chamados': st.session_state.chamado_guide_step = 1
 
     row1_c1, row1_c2, row1_c3, row1_c4 = st.columns(4)
-    # [LAYOUT] Adicionado espaço para o novo botão de Treinamento na segunda linha (6 colunas agora)
     row2_c1, row2_c2, row2_c3, row2_c4, row2_c5, row2_c6 = st.columns(6)
 
     row1_c1.button('🎯 Passar', on_click=rotate_bastao, use_container_width=True, help='Passa o bastão.')
@@ -1149,7 +1126,6 @@ with col_principal:
     row1_c3.button('📋 Atividades', on_click=toggle_view, args=('menu_atividades',), use_container_width=True)
     row1_c4.button('🏗️ Projeto', on_click=toggle_view, args=('menu_projetos',), use_container_width=True)
     
-    # [NOVO BOTÃO]
     row2_c1.button('🎓 Treinamento', on_click=toggle_view, args=('menu_treinamento',), use_container_width=True)
     row2_c2.button('📅 Reunião', on_click=toggle_view, args=('menu_reuniao',), use_container_width=True)
     row2_c3.button('🍽️ Almoço', on_click=update_status, args=('Almoço', True,), use_container_width=True)
@@ -1207,7 +1183,6 @@ with col_principal:
             with col_r2:
                 if st.button("Cancelar", use_container_width=True, key='cancel_reuniao'): st.session_state.active_view = None; st.rerun()
 
-    # [NOVO MENU] Menu Treinamento
     if st.session_state.active_view == 'menu_treinamento':
         with st.container(border=True):
             st.markdown("### Detalhes do Treinamento")
@@ -1218,7 +1193,6 @@ with col_principal:
                 if st.button("Confirmar Treinamento", type="primary", use_container_width=True):
                     if treinamento_desc:
                         status_final = f"Treinamento: {treinamento_desc}"
-                        # Force exit queue = True (Comportamento de bloqueio)
                         update_status(status_final, force_exit_queue=True) 
                         st.session_state.active_view = None; st.rerun()
                     else: st.warning("Digite o nome do treinamento.")
@@ -1244,7 +1218,6 @@ with col_principal:
     st.button('🔄 Atualizar (Manual)', on_click=manual_rerun, use_container_width=True)
     st.markdown("---")
     
-    # [LAYOUT ATUALIZADO] Nova linha de ferramentas com Certidão
     c_tool1, c_tool2, c_tool3, c_tool4, c_tool5, c_tool6, c_tool7 = st.columns(7)
     
     c_tool1.button("📑 Checklist", help="Gerador de Checklist Eproc", use_container_width=True, on_click=toggle_view, args=("checklist",))
@@ -1253,7 +1226,6 @@ with col_principal:
     c_tool4.button("⏰ H. Extras", help="Registrar Horas Extras", use_container_width=True, on_click=toggle_view, args=("hextras",))
     c_tool5.button("🧠 Descanso", help="Jogo e Ranking", use_container_width=True, on_click=toggle_view, args=("descanso",))
     c_tool6.button("🐛 Erro/Novidade", help="Relatar Erro ou Novidade", use_container_width=True, on_click=toggle_view, args=("erro_novidade",))
-    # [NOVO BOTÃO]
     c_tool7.button("🖨️ Certidão", help="Gerar Certidão de Indisponibilidade", use_container_width=True, on_click=toggle_view, args=("certidao",))
         
     if st.session_state.active_view == "checklist":
@@ -1361,8 +1333,23 @@ with col_principal:
             
             # Inputs
             tipo_cert = st.selectbox("Tipo de Certidão:", ["Geral", "Eletrônica", "Física"])
-            num_proc = st.text_input("Número do Processo:", placeholder="1.0000...")
-            dt_indis = st.date_input("Data da Indisponibilidade:", value=get_brazil_time().date())
+            
+            # Condicional para input de Data e Processo
+            if tipo_cert == "Geral":
+                tipo_periodo = st.radio("Período:", ["Dia Único", "Intervalo de Dias"], horizontal=True)
+                if tipo_periodo == "Dia Único":
+                    dt_indis = [st.date_input("Data da Indisponibilidade:", value=get_brazil_time().date())]
+                else:
+                    dt_indis = st.date_input("Selecione o Intervalo:", value=[], format="DD/MM/YYYY")
+                
+                # Certidão geral não exige processo no texto, mas mantemos o campo opcional ou desabilitado se quiser
+                num_proc = st.text_input("Número do Processo (Opcional):", placeholder="1.0000...")
+            else:
+                # Padrão antigo
+                dt_input = st.date_input("Data da Indisponibilidade:", value=get_brazil_time().date())
+                dt_indis = dt_input # Mantém compatibilidade com a função
+                num_proc = st.text_input("Número do Processo:", placeholder="1.0000...")
+
             chamado = st.text_input("Número do Chamado (ServiceNow/Jira):")
             
             consultor_logado = st.session_state.consultor_selectbox
@@ -1371,14 +1358,18 @@ with col_principal:
             if st.button("Gerar Documento Word", type="primary"):
                 if not consultor_logado or consultor_logado == "Selecione um nome":
                     st.error("Selecione um consultor no menu principal.")
-                elif not num_proc or not chamado:
-                    st.error("Preencha Processo e Chamado.")
+                elif not chamado:
+                    st.error("Preencha o número do Chamado.")
+                elif tipo_cert != "Geral" and not num_proc:
+                    st.error("Preencha o número do Processo.")
                 else:
                     # Gera o arquivo
                     arquivo_buffer = gerar_docx_certidao(tipo_cert, num_proc, dt_indis, chamado)
                     
                     # Nome do arquivo
-                    nome_arq = f"Certidao_{tipo_cert}_{num_proc.replace('/','-')}.docx"
+                    nome_arq = f"Certidao_{tipo_cert}.docx"
+                    if num_proc:
+                         nome_arq = f"Certidao_{tipo_cert}_{num_proc.replace('/','-')}.docx"
                     
                     # Guarda no session state para o download button aparecer
                     st.session_state['ultimo_docx'] = arquivo_buffer
@@ -1447,11 +1438,9 @@ with col_disponibilidade:
             match = re.search(r'Projeto: (.*)', status)
             if match: ui_lists['projeto_especifico'].append((nome, match.group(1).split('|')[0].strip()))
         
-        # [DISPLAY] Captura status de Treinamento
         if 'Treinamento:' in status:
             match = re.search(r'Treinamento: (.*)', status)
             desc_treinamento = match.group(1).split('|')[0].strip() if match else "Geral"
-            # Fallback se a descrição estiver vazia
             if not desc_treinamento: desc_treinamento = "Geral"
             ui_lists['treinamento_especifico'].append((nome, desc_treinamento))
             
@@ -1462,7 +1451,6 @@ with col_disponibilidade:
                 match = re.search(r'Atividade: (.*)', status)
                 if match: ui_lists['atividade_especifica'].append((nome, match.group(1).split('|')[0].strip()))
 
-    # --- RENDERIZAÇÃO FILA ---
     st.subheader(f'✅ Na Fila ({len(ui_lists["fila"])})')
     render_order = [c for c in queue if c in ui_lists["fila"]]
     if not render_order: st.markdown('_Ninguém na fila._')
@@ -1485,19 +1473,17 @@ with col_disponibilidade:
             col_nome.markdown(display, unsafe_allow_html=True)
     st.markdown('---')
 
-    # --- FUNÇÃO ATUALIZADA: Renderização Segura com HTML ---
     def render_section_detalhada(title, icon, lista_tuplas, tag_color_name, keyword_removal):
-        # Mapa de Cores Hexadecimal (Para HTML robusto)
         colors = {
-            'orange': '#FFECB3', # Amber 100
-            'blue': '#BBDEFB',   # Blue 100
-            'teal': '#B2DFDB',   # Teal 100 (CORREÇÃO: Isso evita o erro visual)
-            'violet': '#E1BEE7', # Purple 100
-            'green': '#C8E6C9',  # Green 100
-            'red': '#FFCDD2',    # Red 100
-            'grey': '#F5F5F5'    # Grey 100
+            'orange': '#FFECB3', 
+            'blue': '#BBDEFB',   
+            'teal': '#B2DFDB',   
+            'violet': '#E1BEE7', 
+            'green': '#C8E6C9',  
+            'red': '#FFCDD2',    
+            'grey': '#F5F5F5'    
         }
-        bg_hex = colors.get(tag_color_name, '#E0E0E0') # Fallback
+        bg_hex = colors.get(tag_color_name, '#E0E0E0') 
 
         st.subheader(f'{icon} {title} ({len(lista_tuplas)})')
         if not lista_tuplas: st.markdown(f'_Ninguém em {title.lower()}._')
@@ -1507,7 +1493,6 @@ with col_disponibilidade:
                 key_dummy = f'chk_status_{title}_{nome}' 
                 col_check.checkbox(' ', key=key_dummy, value=True, on_change=leave_specific_status, args=(nome, keyword_removal), label_visibility='collapsed')
                 
-                # HTML direto para evitar que o código de markdown vaze
                 html_badged = f"""
                 <div style="font-size: 16px; margin: 2px 0;">
                     <strong>{nome}</strong>
@@ -1550,7 +1535,7 @@ with col_disponibilidade:
 
     render_section_detalhada('Em Demanda', '📋', ui_lists['atividade_especifica'], 'orange', 'Atividade')
     render_section_detalhada('Projetos', '🏗️', ui_lists['projeto_especifico'], 'blue', 'Projeto')
-    render_section_detalhada('Treinamento', '🎓', ui_lists['treinamento_especifico'], 'teal', 'Treinamento') # Nova Seção Corrigida
+    render_section_detalhada('Treinamento', '🎓', ui_lists['treinamento_especifico'], 'teal', 'Treinamento') 
     render_section_detalhada('Reuniões', '📅', ui_lists['reuniao_especifica'], 'violet', 'Reunião')
     render_section_simples('Almoço', '🍽️', ui_lists['almoco'], 'red')
     render_section_detalhada('Sessão', '🎙️', ui_lists['sessao_especifica'], 'green', 'Sessão')
@@ -1565,7 +1550,6 @@ last_run_date = st.session_state.report_last_run_date.date() if isinstance(st.se
 if now_br.hour >= 20 and now_br.date() > last_run_date:
     print(f"TRIGGER: Enviando relatório diário. Agora (BRT): {now_br}, Última Execução: {st.session_state.report_last_run_date}")
     send_daily_report()
-    # --- ÁREA DE DIAGNÓSTICO (Apagar depois que funcionar) ---
 st.divider()
 st.subheader("🛠️ Teste de Conexão com Google Sheets")
 url_teste = st.text_input("URL do Web App (Verifique se não tem espaços):", value=SHEETS_WEBHOOK_URL)
@@ -1580,7 +1564,6 @@ if st.button("🧪 Testar Envio Manual"):
             "status_atual": "Teste B",
             "tempo_anterior": "00:00:00"
         }
-        # Tenta enviar sem threading para ver o erro
         response = requests.post(url_teste, json=payload_teste, timeout=10)
         
         st.write(f"**Status Code:** {response.status_code}")
