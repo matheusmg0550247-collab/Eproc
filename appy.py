@@ -134,7 +134,6 @@ def gerar_docx_certidao(tipo_certidao, num_processo, data_indisponibilidade_inpu
     num_parecer = int(datetime.now().strftime("%H%M")) 
     ano_atual = datetime.now().year
     
-    # "Parecer" para Geral, "Parecer Técnico" para outros
     tipo_parecer_txt = "Parecer" if tipo_certidao == "Geral" else "Parecer Técnico"
     titulo = document.add_paragraph(f"{tipo_parecer_txt} GEJUD/DIRTEC/TJMG nº {num_parecer}/{ano_atual}.")
     titulo.alignment = WD_ALIGN_PARAGRAPH.LEFT
@@ -183,7 +182,6 @@ def gerar_docx_certidao(tipo_certidao, num_processo, data_indisponibilidade_inpu
         p_geral.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         # Texto Geral com Hora
         hora_txt = hora_inicio.strftime("%H:%M") if hora_inicio else "00:00"
-        # [cite_start]Adaptação para o modelo "a partir de XXh" [cite: 40]
         p_geral.add_run(f"Para fins de cumprimento dos artigos 13 e 14 da Resolução nº 780/2014 do Tribunal de Justiça do Estado de Minas Gerais, informamos que {data_texto} houve indisponibilidade do portal JPe, superior a uma hora, a partir de {hora_txt}h, que impossibilitou o peticionamento eletrônico de recursos em processos que já tramitavam no sistema.")
     else:
         # Texto Padrão (Física/Eletrônica) com Processo e Chamado
@@ -196,7 +194,6 @@ def gerar_docx_certidao(tipo_certidao, num_processo, data_indisponibilidade_inpu
         p_motivo = document.add_paragraph()
         p_motivo.add_run(f"Descrição da Ocorrência/Motivo: {motivo_pedido}")
 
-    # Texto específico da Física
     if tipo_certidao == "Física":
         p_fisica = document.add_paragraph()
         p_fisica.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
@@ -1342,9 +1339,10 @@ with col_principal:
             # Inputs
             tipo_cert = st.selectbox("Tipo de Certidão:", ["Geral", "Eletrônica", "Física"])
             
-            # Condicional para input de Data e Hora (Geral)
+            # Condicional para input de Data
             dt_indis = []
             hora_inicio_geral = None
+            hora_texto = ""
             
             if tipo_cert == "Geral":
                 # Certidão Geral pede Data e HORA
@@ -1352,6 +1350,7 @@ with col_principal:
                 dt_input_raw = col_d.date_input("Data da Indisponibilidade:", value=get_brazil_time().date(), format="DD/MM/YYYY")
                 hora_inicio_geral = col_h.time_input("Horário de Início (a partir de):", value=dt_time(8, 0))
                 dt_indis = [dt_input_raw]
+                hora_texto = f"a partir das {hora_inicio_geral.strftime('%H:%M')}"
                 
                 st.info("ℹ️ Certidão Geral não requer número de processo ou chamado.")
                 num_proc = ""
@@ -1420,14 +1419,21 @@ with col_principal:
                         # Envia notificação ao chat
                         send_certidao_notification_to_chat(consultor_logado, tipo_cert)
                         
+                        # Data formatada para envio
+                        data_envio_sheets = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        if dt_indis and isinstance(dt_indis, list) and len(dt_indis) > 0:
+                             # Se for Geral, manda a data selecionada no input, não a de hoje
+                             data_envio_sheets = dt_indis[0].strftime("%Y-%m-%d")
+
                         # Salva no Sheets (POST)
                         payload = {
-                            "data_hora": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                            "data_hora_formatada": data_envio_sheets,
                             "consultor": consultor_logado,
                             "chamado": chamado,
                             "processo": num_proc,
                             "motivo": motivo_pedido,
-                            "tipo_certidao": tipo_cert
+                            "tipo_certidao": tipo_cert,
+                            "hora_texto": hora_texto # Usado apenas se for Geral
                         }
                         # Envio assíncrono para não travar a tela
                         threading.Thread(target=requests.post, args=(SHEETS_WEBHOOK_URL,), kwargs={'json': payload}).start()
