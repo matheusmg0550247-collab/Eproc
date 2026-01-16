@@ -66,8 +66,7 @@ GOOGLE_CHAT_WEBHOOK_ERRO_NOVIDADE = "https://chat.googleapis.com/v1/spaces/AAQAp
 # Webhook específico para Certidões
 GOOGLE_CHAT_WEBHOOK_CERTIDAO = "https://chat.googleapis.com/v1/spaces/AAQAZ8UfLjw/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=83659FzLIWIpx9919tlJz88Hb2fSGyHJof9rSKCHviA"
 
-# URL DO SEU APPS SCRIPT (Atualizado)
-SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbyDQssAsW0ZQg0xGpLcIVnJn4RKxsBvNkzYyTUg6SPOsMcgR9FQsbTG5EDFvXcDqbViTw/exec"
+SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxnty7WHtUs7Z7u_EmZrMjP4g8dZDSv_qRAJU3V09cF75K0elF2IFK20jZWHRYpJCrNXQ/exec"
 
 REG_USUARIO_OPCOES = ["Cartório", "Gabinete", "Externo"]
 REG_SISTEMA_OPCOES = ["Conveniados", "Outros", "Eproc", "Themis", "JPE", "SIAP"]
@@ -114,7 +113,7 @@ PUG2026_FILENAME = "pug2026.png"
 # ============================================
 
 # --- FUNÇÃO GERADORA DE CERTIDÃO (WORD) ---
-def gerar_docx_certidao(tipo_certidao, num_processo, data_indisponibilidade_input, num_chamado, motivo_pedido, hora_inicio=None):
+def gerar_docx_certidao(tipo_certidao, num_processo, data_indisponibilidade_input, num_chamado, motivo_pedido):
     document = Document()
     
     style = document.styles['Normal']
@@ -134,7 +133,6 @@ def gerar_docx_certidao(tipo_certidao, num_processo, data_indisponibilidade_inpu
     num_parecer = int(datetime.now().strftime("%H%M")) 
     ano_atual = datetime.now().year
     
-    # "Parecer" para Geral, "Parecer Técnico" para outros
     tipo_parecer_txt = "Parecer" if tipo_certidao == "Geral" else "Parecer Técnico"
     titulo = document.add_paragraph(f"{tipo_parecer_txt} GEJUD/DIRTEC/TJMG nº {num_parecer}/{ano_atual}.")
     titulo.alignment = WD_ALIGN_PARAGRAPH.LEFT
@@ -161,6 +159,7 @@ def gerar_docx_certidao(tipo_certidao, num_processo, data_indisponibilidade_inpu
 
     # --- TRATAMENTO DA DATA DE INDISPONIBILIDADE (TEXTO WORD) ---
     data_texto = ""
+    # Se for uma lista (intervalo ou único) ou data direta
     if isinstance(data_indisponibilidade_input, (list, tuple)):
         if len(data_indisponibilidade_input) > 1:
             inicio = data_indisponibilidade_input[0].strftime("%d/%m/%Y")
@@ -180,9 +179,8 @@ def gerar_docx_certidao(tipo_certidao, num_processo, data_indisponibilidade_inpu
     if tipo_certidao == "Geral":
         p_geral = document.add_paragraph()
         p_geral.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-        # Texto Geral com Hora
-        hora_txt = hora_inicio.strftime("%H:%M") if hora_inicio else "00:00"
-        p_geral.add_run(f"Para fins de cumprimento dos artigos 13 e 14 da Resolução nº 780/2014 do Tribunal de Justiça do Estado de Minas Gerais, informamos que {data_texto} houve indisponibilidade do portal JPe, superior a uma hora, a partir de {hora_txt}h, que impossibilitou o peticionamento eletrônico de recursos em processos que já tramitavam no sistema.")
+        # Texto Geral (Sem processo, sem chamado, sem horário específico além do "uma hora")
+        p_geral.add_run(f"Para fins de cumprimento dos artigos 13 e 14 da Resolução nº 780/2014 do Tribunal de Justiça do Estado de Minas Gerais, informamos que {data_texto} houve indisponibilidade do portal JPe, superior a uma hora, que impossibilitou o peticionamento eletrônico de recursos em processos que já tramitavam no sistema.")
     else:
         # Texto Padrão (Física/Eletrônica) com Processo e Chamado
         texto_principal = document.add_paragraph()
@@ -530,467 +528,6 @@ def send_daily_report():
     st.session_state['daily_logs'] = []
     st.session_state['bastao_counts'] = {nome: 0 for nome in CONSULTORES}
     save_state()
-
-# ============================================
-# [CORREÇÃO 1: init_session_state robusto]
-# ============================================
-def init_session_state():
-    persisted_state = load_state()
-    defaults = {
-        'bastao_start_time': None, 'report_last_run_date': datetime.min, 'rotation_gif_start_time': None,
-        'play_sound': False, 'gif_warning': False, 'lunch_warning_info': None, 'last_reg_status': None, 
-        'chamado_guide_step': 0, 'sessao_msg_preview': "", 'html_download_ready': False, 'html_content_cache': "", 
-        'auxilio_ativo': False, 'active_view': None, 'last_jira_number': "",
-        'simon_sequence': [], 'simon_user_input': [], 'simon_status': 'start', 'simon_level': 1
-    }
-    for key, default in defaults.items():
-        if key not in st.session_state: st.session_state[key] = persisted_state.get(key, default)
-
-    st.session_state['bastao_queue'] = persisted_state.get('bastao_queue', []).copy()
-    st.session_state['priority_return_queue'] = persisted_state.get('priority_return_queue', []).copy()
-    st.session_state['bastao_counts'] = persisted_state.get('bastao_counts', {}).copy()
-    st.session_state['skip_flags'] = persisted_state.get('skip_flags', {}).copy()
-    st.session_state['status_texto'] = persisted_state.get('status_texto', {}).copy()
-    st.session_state['current_status_starts'] = persisted_state.get('current_status_starts', {}).copy()
-    st.session_state['daily_logs'] = persisted_state.get('daily_logs', []).copy() 
-    st.session_state['auxilio_ativo'] = persisted_state.get('auxilio_ativo', False)
-    st.session_state['simon_ranking'] = persisted_state.get('simon_ranking', [])
-
-    now_br = get_brazil_time()
-    for nome in CONSULTORES:
-        st.session_state.bastao_counts.setdefault(nome, 0)
-        st.session_state.skip_flags.setdefault(nome, False)
-        
-        current_status = st.session_state.status_texto.get(nome, 'Indisponível') 
-        if current_status is None: current_status = 'Indisponível'
-        st.session_state.status_texto[nome] = current_status
-        
-        # [MODIFICAÇÃO] Lógica de Disponibilidade (Checkboxes)
-        blocking_keywords = ['Almoço', 'Ausente', 'Saída rápida', 'Sessão', 'Reunião', 'Treinamento']
-        is_hard_blocked = any(kw in current_status for kw in blocking_keywords)
-        
-        if is_hard_blocked:
-            is_available = False
-        elif nome in st.session_state.priority_return_queue:
-            is_available = False
-        elif nome in st.session_state.bastao_queue:
-            is_available = True
-        else:
-            is_available = 'Indisponível' not in current_status
-
-        st.session_state[f'check_{nome}'] = is_available
-        
-        if nome not in st.session_state.current_status_starts: st.session_state.current_status_starts[nome] = now_br
-
-    check_and_assume_baton()
-
-# ============================================
-# [CORREÇÃO 2: find_next_holder_index com busca circular]
-# ============================================
-def find_next_holder_index(current_index, queue, skips):
-    if not queue: return -1
-    n = len(queue)
-    
-    start_index = (current_index + 1) % n
-    
-    for i in range(n):
-        idx = (start_index + i) % n
-        consultor = queue[idx]
-        
-        is_available = st.session_state.get(f'check_{consultor}', False)
-        is_skipping = skips.get(consultor, False)
-        
-        if is_available and not is_skipping:
-            return idx
-            
-    return -1
-
-def check_and_assume_baton(forced_successor=None):
-    queue = st.session_state.bastao_queue
-    skips = st.session_state.skip_flags
-    current_holder_status = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
-    
-    is_current_valid = (current_holder_status and current_holder_status in queue and st.session_state.get(f'check_{current_holder_status}'))
-    
-    should_have_baton = None
-    if forced_successor:
-        should_have_baton = forced_successor
-    elif is_current_valid: 
-        should_have_baton = current_holder_status
-    else:
-        first_eligible_index = find_next_holder_index(-1, queue, skips)
-        should_have_baton = queue[first_eligible_index] if first_eligible_index != -1 else None
-
-    changed = False
-    previous_holder = current_holder_status 
-    now_br = get_brazil_time()
-
-    for c in CONSULTORES:
-        s_text = st.session_state.status_texto.get(c, '')
-        if c != should_have_baton and 'Bastão' in s_text:
-            duration = now_br - st.session_state.current_status_starts.get(c, now_br)
-            log_status_change(c, 'Bastão', 'Indisponível', duration)
-            st.session_state.status_texto[c] = 'Indisponível'
-            changed = True
-
-    if should_have_baton:
-        s_current = st.session_state.status_texto.get(should_have_baton, '')
-        if 'Bastão' not in s_current:
-            old_status = s_current
-            duration = now_br - st.session_state.current_status_starts.get(should_have_baton, now_br)
-            new_status = f"Bastão | {old_status}" if old_status and old_status != "Indisponível" else "Bastão"
-            log_status_change(should_have_baton, old_status, new_status, duration)
-            st.session_state.status_texto[should_have_baton] = new_status
-            st.session_state.bastao_start_time = now_br
-            if previous_holder != should_have_baton: 
-                st.session_state.play_sound = True 
-                send_chat_notification_internal(should_have_baton, 'Bastão') 
-            if st.session_state.skip_flags.get(should_have_baton):
-                st.session_state.skip_flags[should_have_baton] = False
-            changed = True
-    elif not should_have_baton:
-        if current_holder_status:
-            duration = now_br - st.session_state.current_status_starts.get(current_holder_status, now_br)
-            log_status_change(current_holder_status, 'Bastão', 'Indisponível', duration)
-            st.session_state.status_texto[current_holder_status] = 'Indisponível' 
-            changed = True
-        if st.session_state.bastao_start_time is not None: changed = True
-        st.session_state.bastao_start_time = None
-
-    if changed: save_state()
-    return changed
-
-def toggle_queue(consultor):
-    st.session_state.gif_warning = False; st.session_state.rotation_gif_start_time = None
-    st.session_state.lunch_warning_info = None 
-    now_br = get_brazil_time()
-    
-    if consultor in st.session_state.bastao_queue:
-        current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
-        forced_successor = None
-        
-        if consultor == current_holder:
-            current_idx = -1
-            try: current_idx = st.session_state.bastao_queue.index(consultor)
-            except ValueError: pass
-            
-            if current_idx != -1:
-                next_idx = find_next_holder_index(current_idx, st.session_state.bastao_queue, st.session_state.skip_flags)
-                if next_idx != -1:
-                    forced_successor = st.session_state.bastao_queue[next_idx]
-                    
-        st.session_state.bastao_queue.remove(consultor)
-        st.session_state[f'check_{consultor}'] = False
-        current_s = st.session_state.status_texto.get(consultor, '')
-        
-        if current_s == '' or current_s == 'Bastão':
-            duration = now_br - st.session_state.current_status_starts.get(consultor, now_br)
-            log_status_change(consultor, current_s, 'Indisponível', duration)
-            st.session_state.status_texto[consultor] = 'Indisponível'
-            
-        check_and_assume_baton(forced_successor=forced_successor)
-    else:
-        st.session_state.bastao_queue.append(consultor)
-        st.session_state[f'check_{consultor}'] = True
-        st.session_state.skip_flags[consultor] = False 
-        
-        if consultor in st.session_state.priority_return_queue:
-            st.session_state.priority_return_queue.remove(consultor)
-            
-        current_s = st.session_state.status_texto.get(consultor, 'Indisponível')
-        
-        if 'Indisponível' in current_s:
-            duration = now_br - st.session_state.current_status_starts.get(consultor, now_br)
-            log_status_change(consultor, current_s, '', duration)
-            st.session_state.status_texto[consultor] = ''
-            
-        check_and_assume_baton()
-
-    save_state()
-
-def leave_specific_status(consultor, status_type_to_remove):
-    st.session_state.gif_warning = False
-    old_status = st.session_state.status_texto.get(consultor, '')
-    now_br = get_brazil_time()
-    duration = now_br - st.session_state.current_status_starts.get(consultor, now_br)
-    
-    parts = [p.strip() for p in old_status.split('|')]
-    new_parts = []
-    for p in parts:
-        if status_type_to_remove in p: continue
-        if not p: continue
-        new_parts.append(p)
-    
-    new_status = " | ".join(new_parts)
-    if not new_status and consultor not in st.session_state.bastao_queue: new_status = 'Indisponível'
-    
-    log_status_change(consultor, old_status, new_status, duration)
-    st.session_state.status_texto[consultor] = new_status
-    
-    if status_type_to_remove == 'Almoço' or status_type_to_remove == 'Treinamento':
-        if consultor not in st.session_state.bastao_queue:
-            st.session_state.bastao_queue.append(consultor)
-        st.session_state[f'check_{consultor}'] = True
-        st.session_state.skip_flags[consultor] = False
-    
-    check_and_assume_baton()
-    save_state()
-
-def enter_from_indisponivel(consultor):
-    st.session_state.gif_warning = False
-    if consultor not in st.session_state.bastao_queue:
-        st.session_state.bastao_queue.append(consultor)
-    st.session_state[f'check_{consultor}'] = True
-    st.session_state.skip_flags[consultor] = False
-    old_status = st.session_state.status_texto.get(consultor, 'Indisponível')
-    now_br = get_brazil_time()
-    duration = now_br - st.session_state.current_status_starts.get(consultor, now_br)
-    log_status_change(consultor, old_status, '', duration)
-    st.session_state.status_texto[consultor] = ''
-    check_and_assume_baton()
-    save_state()
-
-def rotate_bastao(): 
-    selected = st.session_state.consultor_selectbox
-    st.session_state.gif_warning = False; st.session_state.rotation_gif_start_time = None
-    st.session_state.lunch_warning_info = None 
-    if not selected or selected == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
-    queue = st.session_state.bastao_queue
-    skips = st.session_state.skip_flags
-    current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
-    
-    if selected != current_holder: st.session_state.gif_warning = True; return 
-
-    current_index = -1
-    try: current_index = queue.index(current_holder)
-    except ValueError:
-        if check_and_assume_baton(): pass 
-        return
-
-    eligible_in_queue = [p for p in queue if st.session_state.get(f'check_{p}')]
-    skippers_ahead = [p for p in eligible_in_queue if skips.get(p, False) and p != current_holder]
-    if len(skippers_ahead) > 0 and len(skippers_ahead) == len([p for p in eligible_in_queue if p != current_holder]):
-        for c in queue: st.session_state.skip_flags[c] = False
-        skips = st.session_state.skip_flags 
-        st.toast("Ciclo reiniciado! Todos os próximos pularam, fila resetada.", icon="🔄")
-
-    next_idx = find_next_holder_index(current_index, queue, skips)
-    if next_idx != -1:
-        next_holder = queue[next_idx]
-        if next_idx > current_index: skipped_over = queue[current_index+1 : next_idx]
-        else: skipped_over = queue[current_index+1:] + queue[:next_idx]
-        for person in skipped_over: st.session_state.skip_flags[person] = False 
-        st.session_state.skip_flags[next_holder] = False
-
-        now_br = get_brazil_time()
-        duration = now_br - (st.session_state.bastao_start_time or now_br)
-        old_h_status = st.session_state.status_texto[current_holder]
-        new_h_status = old_h_status.replace('Bastão | ', '').replace('Bastão', '').strip()
-        log_status_change(current_holder, old_h_status, new_h_status, duration)
-        st.session_state.status_texto[current_holder] = new_h_status 
-        
-        old_n_status = st.session_state.status_texto.get(next_holder, '')
-        new_n_status = f"Bastão | {old_n_status}" if old_n_status else "Bastão"
-        log_status_change(next_holder, old_n_status, new_n_status, timedelta(0))
-        st.session_state.status_texto[next_holder] = new_n_status
-        st.session_state.bastao_start_time = now_br
-        
-        st.session_state.bastao_counts[current_holder] = st.session_state.bastao_counts.get(current_holder, 0) + 1
-        st.session_state.play_sound = True 
-        st.session_state.rotation_gif_start_time = now_br
-        send_chat_notification_internal(next_holder, 'Bastão')
-        save_state()
-    else:
-        st.warning('Não há próximo(a) consultor(a) elegível na fila no momento.')
-        check_and_assume_baton() 
-
-def toggle_skip(): 
-    selected = st.session_state.consultor_selectbox
-    st.session_state.gif_warning = False; st.session_state.rotation_gif_start_time = None
-    st.session_state.lunch_warning_info = None 
-    if not selected or selected == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
-    if not st.session_state.get(f'check_{selected}'): st.warning(f'{selected} não está disponível para marcar/desmarcar.'); return
-    current_skip_status = st.session_state.skip_flags.get(selected, False)
-    st.session_state.skip_flags[selected] = not current_skip_status
-    current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
-    if selected == current_holder and st.session_state.skip_flags[selected]: save_state(); rotate_bastao(); return 
-    save_state() 
-
-def manual_rerun():
-    st.session_state.gif_warning = False; st.session_state.rotation_gif_start_time = None
-    st.session_state.lunch_warning_info = None 
-    st.rerun() 
-    
-def on_auxilio_change(): save_state()
-
-def handle_sessao_submission(consultor_sel, camara_sel, data_obj):
-    if not data_obj: st.error("Por favor, selecione uma data."); return False
-    data_formatada = data_obj.strftime("%d/%m/%Y")
-    data_nome_arquivo = data_obj.strftime("%d-%m-%Y")
-    email_setor = CAMARAS_DICT.get(camara_sel, "")
-    nome_consultor_txt = consultor_sel if consultor_sel and consultor_sel != "Selecione um nome" else "[NOME DO(A) CONSULTOR(A)]"
-    texto_mensagem = f"Prezada equipe do {camara_sel},\n\nMeu nome é {nome_consultor_txt}, sou assistente de processos judiciais da CESUPE/TJMG e serei o(a) responsável pelo acompanhamento técnico da sessão de julgamento agendada para o dia {data_formatada}.\n\nCom o objetivo de agilizar o atendimento e a verificação de eventuais demandas, encaminharei um formulário em HTML para preenchimento de algumas informações prévias. As respostas retornarão diretamente para mim, permitindo a análise antecipada da situação e, sempre que possível, a definição prévia da orientação ou solução a ser adotada. O preenchimento não é obrigatório, mas contribuirá para tornar o suporte mais eficaz.\n\nRessalto que continuamos disponíveis para sanar quaisquer dúvidas por meio do nosso suporte. Caso eu esteja indisponível no momento do contato, retornarei o mais breve possível.\n\nApós a realização da sessão, o suporte técnico voltará a ser prestado de forma rotineira pelo nosso setor. Havendo dúvidas ou necessidade de suporte, entre em contato conosco pelo telefone **3232-2640**.\n\nPermaneço à disposição e agradeço a colaboração.\n\nAtenciosamente,\n{nome_consultor_txt}\nAssistente de Processos Judiciais – CESUPE/TJMG\n\nEmail do setor: {email_setor}"
-    success = send_sessao_to_chat(consultor_sel, texto_mensagem)
-    if success:
-        st.session_state.last_reg_status = "success_sessao"
-        html_content = gerar_html_checklist(consultor_sel, camara_sel, data_formatada)
-        st.session_state.html_content_cache = html_content
-        st.session_state.html_download_ready = True
-        st.session_state.html_filename = f"Checklist_{data_nome_arquivo}.html"
-        return True
-    else: st.session_state.last_reg_status = "error_sessao"; st.session_state.html_download_ready = False; return False
-
-def set_chamado_step(step_num): st.session_state.chamado_guide_step = step_num
-
-def handle_chamado_submission():
-    st.toast("Chamado simulado com sucesso.", icon="✅")
-    st.session_state.last_reg_status = "success_chamado" 
-    st.session_state.chamado_guide_step = 0
-    st.session_state.chamado_textarea = ""
-
-def update_status(new_status_part, force_exit_queue=False): 
-    selected = st.session_state.consultor_selectbox
-    st.session_state.gif_warning = False; st.session_state.rotation_gif_start_time = None
-    
-    if not selected or selected == 'Selecione um nome': 
-        st.warning('Selecione um(a) consultor(a).')
-        return
-
-    if new_status_part != 'Almoço': st.session_state.lunch_warning_info = None
-    if new_status_part == 'Almoço':
-        pass 
-
-    blocking_statuses = ['Almoço', 'Ausente', 'Saída rápida', 'Sessão', 'Reunião', 'Treinamento']
-    should_exit_queue = False
-    
-    is_blocking = any(b in new_status_part for b in blocking_statuses)
-
-    if is_blocking or force_exit_queue:
-        should_exit_queue = True
-        final_status = new_status_part 
-    else:
-        current = st.session_state.status_texto.get(selected, '')
-        parts = [p.strip() for p in current.split('|') if p.strip()]
-        
-        type_of_new = new_status_part.split(':')[0]
-        cleaned_parts = []
-        for p in parts:
-            if p == 'Indisponível': continue
-            if p.startswith(type_of_new): continue
-            cleaned_parts.append(p)
-        
-        cleaned_parts.append(new_status_part)
-        cleaned_parts.sort(key=lambda x: 0 if 'Bastão' in x else 1 if 'Atividade' in x or 'Projeto' in x else 2)
-        final_status = " | ".join(cleaned_parts)
-
-    if should_exit_queue:
-        st.session_state[f'check_{selected}'] = False 
-        if selected in st.session_state.bastao_queue: 
-            st.session_state.bastao_queue.remove(selected)
-        st.session_state.skip_flags.pop(selected, None)
-    
-    was_holder = next((True for c, s in st.session_state.status_texto.items() if 'Bastão' in s and c == selected), False)
-    old_status = st.session_state.status_texto.get(selected, '')
-    
-    if was_holder and not should_exit_queue:
-        if 'Bastão' not in final_status:
-            final_status = f"Bastão | {final_status}"
-
-    now_br = get_brazil_time()
-    duration = now_br - st.session_state.current_status_starts.get(selected, now_br)
-    log_status_change(selected, old_status, final_status, duration)
-    st.session_state.status_texto[selected] = final_status
-    
-    if new_status_part == 'Saída rápida':
-        if selected not in st.session_state.priority_return_queue: st.session_state.priority_return_queue.append(selected)
-    elif selected in st.session_state.priority_return_queue: st.session_state.priority_return_queue.remove(selected)
-    
-    if was_holder: check_and_assume_baton() 
-    save_state() 
-
-def handle_horas_extras_submission(consultor_sel, data, inicio, tempo, motivo):
-    if not consultor_sel or consultor_sel == "Selecione um nome": st.error("Selecione um consultor."); return
-    if send_horas_extras_to_chat(consultor_sel, data, inicio, tempo, motivo):
-        st.success("Horas extras registradas com sucesso!")
-        st.session_state.active_view = None 
-        time.sleep(1)
-        st.rerun()
-    else: st.error("Erro ao enviar. Verifique o Webhook.")
-
-def handle_atendimento_submission(consultor, data, usuario, nome_setor, sistema, descricao, canal, desfecho, jira_opcional=""):
-    if not consultor or consultor == "Selecione um nome": st.error("Selecione um consultor."); return
-    if send_atendimento_to_chat(consultor, data, usuario, nome_setor, sistema, descricao, canal, desfecho, jira_opcional):
-        st.success("Atendimento registrado com sucesso!")
-        st.session_state.active_view = None 
-        time.sleep(1)
-        st.rerun()
-    else: st.error("Erro ao enviar. Verifique o Webhook.")
-
-def handle_simon_game():
-    COLORS = ["🔴", "🔵", "🟢", "🟡"]
-    st.markdown("### 🧠 Jogo da Memória (Simon)")
-    st.caption("Repita a sequência de cores!")
-    if st.session_state.simon_status == 'start':
-        if st.button("▶️ Iniciar Jogo", use_container_width=True):
-            st.session_state.simon_sequence = [random.choice(COLORS)]
-            st.session_state.simon_user_input = []
-            st.session_state.simon_level = 1
-            st.session_state.simon_status = 'showing'
-            st.rerun()
-    elif st.session_state.simon_status == 'showing':
-        st.info(f"Nível {st.session_state.simon_level}: Memorize a sequência!")
-        cols = st.columns(len(st.session_state.simon_sequence))
-        for i, color in enumerate(st.session_state.simon_sequence):
-            with cols[i]: st.markdown(f"<h1 style='text-align: center;'>{color}</h1>", unsafe_allow_html=True)
-        st.markdown("---")
-        if st.button("🙈 Já decorei! Responder", type="primary", use_container_width=True):
-            st.session_state.simon_status = 'playing'
-            st.rerun()
-    elif st.session_state.simon_status == 'playing':
-        st.markdown(f"**Nível {st.session_state.simon_level}** - Clique na ordem:")
-        c1, c2, c3, c4 = st.columns(4)
-        pressed = None
-        if c1.button("🔴", use_container_width=True): pressed = "🔴"
-        if c2.button("🔵", use_container_width=True): pressed = "🔵"
-        if c3.button("🟢", use_container_width=True): pressed = "🟢"
-        if c4.button("🟡", use_container_width=True): pressed = "🟡"
-        if pressed:
-            st.session_state.simon_user_input.append(pressed)
-            current_idx = len(st.session_state.simon_user_input) - 1
-            if st.session_state.simon_user_input[current_idx] != st.session_state.simon_sequence[current_idx]:
-                st.session_state.simon_status = 'lost'
-                st.rerun()
-            elif len(st.session_state.simon_user_input) == len(st.session_state.simon_sequence):
-                st.success("Correto! Próximo nível...")
-                time.sleep(0.5)
-                st.session_state.simon_sequence.append(random.choice(COLORS))
-                st.session_state.simon_user_input = []
-                st.session_state.simon_level += 1
-                st.session_state.simon_status = 'showing'
-                st.rerun()
-        if st.session_state.simon_user_input: st.markdown(f"Sua resposta: {' '.join(st.session_state.simon_user_input)}")
-    elif st.session_state.simon_status == 'lost':
-        st.error(f"❌ Errou! Você chegou ao Nível {st.session_state.simon_level}.")
-        st.markdown(f"Sequência correta era: {' '.join(st.session_state.simon_sequence)}")
-        consultor = st.session_state.consultor_selectbox
-        if consultor and consultor != 'Selecione um nome':
-            score = st.session_state.simon_level
-            current_ranking = st.session_state.simon_ranking
-            found = False
-            for entry in current_ranking:
-                if entry['nome'] == consultor:
-                    if score > entry['score']: entry['score'] = score
-                    found = True; break
-            if not found: current_ranking.append({'nome': consultor, 'score': score})
-            st.session_state.simon_ranking = sorted(current_ranking, key=lambda x: x['score'], reverse=True)[:5]
-            save_state(); st.success(f"Pontuação salva para {consultor}!")
-        else: st.warning("Selecione seu nome no menu superior para salvar no Ranking.")
-        if st.button("Tentar Novamente"): st.session_state.simon_status = 'start'; st.rerun()
-    st.markdown("---")
-    st.subheader("🏆 Ranking Global (Top 5)")
-    ranking = st.session_state.simon_ranking
-    if not ranking: st.markdown("_Nenhum recorde ainda._")
-    else: df_rank = pd.DataFrame(ranking); st.table(df_rank)
 
 # ============================================
 # 4. EXECUÇÃO PRINCIPAL DO STREAMLIT APP
@@ -1341,17 +878,11 @@ with col_principal:
             
             # Condicional para input de Data
             dt_indis = []
-            hora_inicio_geral = None
-            hora_texto = ""
             
             if tipo_cert == "Geral":
                 # Certidão Geral pede Data e HORA
-                col_d, col_h = st.columns(2)
-                dt_input_raw = col_d.date_input("Data da Indisponibilidade:", value=get_brazil_time().date(), format="DD/MM/YYYY")
-                hora_inicio_geral = col_h.time_input("Horário de Início (a partir de):", value=dt_time(8, 0))
+                dt_input_raw = st.date_input("Data da Indisponibilidade:", value=get_brazil_time().date(), format="DD/MM/YYYY")
                 dt_indis = [dt_input_raw]
-                hora_texto = f"a partir das {hora_inicio_geral.strftime('%H:%M')}"
-                
                 st.info("ℹ️ Certidão Geral não requer número de processo ou chamado.")
                 num_proc = ""
                 chamado = ""
@@ -1389,56 +920,21 @@ with col_principal:
                         st.error("Selecione uma data válida."); erro = True
                 
                 if not erro:
-                    # VERIFICAÇÃO DE DUPLICIDADE (Apenas se não for Geral e tiver processo)
-                    pode_gerar = True
-                    if tipo_cert != "Geral" and num_proc:
-                        try:
-                            r = requests.get(SHEETS_WEBHOOK_URL, params={'processo': num_proc}, timeout=5)
-                            dados_get = r.json()
-                            if dados_get.get('encontrado'):
-                                detalhes = dados_get.get('dados')
-                                st.warning(f"⚠️ Atenção: Já existe uma certidão para o processo {num_proc}!")
-                                st.write(f"**Feita por:** {detalhes.get('consultor')} em {detalhes.get('data_registro')}")
-                                st.write(f"**Motivo:** {detalhes.get('motivo')}")
-                                if not st.checkbox("Estou ciente e quero gerar uma nova cópia"):
-                                    pode_gerar = False
-                        except: pass 
-
-                    if pode_gerar:
-                        # Gera o arquivo
-                        arquivo_buffer = gerar_docx_certidao(tipo_cert, num_proc, dt_indis, chamado, motivo_pedido, hora_inicio_geral)
-                        
-                        # Nome do arquivo
-                        nome_arq = f"Certidao_{tipo_cert}.docx"
-                        if num_proc:
-                             nome_arq = f"Certidao_{tipo_cert}_{num_proc.replace('/','-')}.docx"
-                        
-                        st.session_state['ultimo_docx'] = arquivo_buffer
-                        st.session_state['ultimo_nome_docx'] = nome_arq
-                        
-                        # Envia notificação ao chat
-                        send_certidao_notification_to_chat(consultor_logado, tipo_cert)
-                        
-                        # Data formatada para envio
-                        data_envio_sheets = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        if dt_indis and isinstance(dt_indis, list) and len(dt_indis) > 0:
-                             # Se for Geral, manda a data selecionada no input, não a de hoje
-                             data_envio_sheets = dt_indis[0].strftime("%Y-%m-%d")
-
-                        # Salva no Sheets (POST)
-                        payload = {
-                            "data_hora_formatada": data_envio_sheets,
-                            "consultor": consultor_logado,
-                            "chamado": chamado,
-                            "processo": num_proc,
-                            "motivo": motivo_pedido,
-                            "tipo_certidao": tipo_cert,
-                            "hora_texto": hora_texto # Usado apenas se for Geral
-                        }
-                        # Envio assíncrono para não travar a tela
-                        threading.Thread(target=requests.post, args=(SHEETS_WEBHOOK_URL,), kwargs={'json': payload}).start()
-                        
-                        st.success("Certidão gerada e registrada com sucesso! Clique abaixo para baixar.")
+                    # Gera o arquivo
+                    arquivo_buffer = gerar_docx_certidao(tipo_cert, num_proc, dt_indis, chamado, motivo_pedido)
+                    
+                    # Nome do arquivo
+                    nome_arq = f"Certidao_{tipo_cert}.docx"
+                    if num_proc:
+                         nome_arq = f"Certidao_{tipo_cert}_{num_proc.replace('/','-')}.docx"
+                    
+                    st.session_state['ultimo_docx'] = arquivo_buffer
+                    st.session_state['ultimo_nome_docx'] = nome_arq
+                    
+                    # Envia notificação ao chat
+                    send_certidao_notification_to_chat(consultor_logado, tipo_cert)
+                    
+                    st.success("Certidão gerada com sucesso! Clique abaixo para baixar.")
 
             # Botão de Download
             if 'ultimo_docx' in st.session_state and st.session_state['ultimo_docx'] is not None:
