@@ -50,12 +50,10 @@ def get_global_state_cache():
         'lunch_warning_info': None,
         'auxilio_ativo': False, 
         'daily_logs': [],
-        # --- Ranking Global do Jogo ---
         'simon_ranking': [] 
     }
 
 # --- Constantes (Webhooks) ---
-# [SEGURANÇA] Idealmente, mova estas chaves para st.secrets em produção
 GOOGLE_CHAT_WEBHOOK_BACKUP = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU"
 CHAT_WEBHOOK_BASTAO = "" 
 GOOGLE_CHAT_WEBHOOK_REGISTRO = "https://chat.googleapis.com/v1/spaces/AAQAVvsU4Lg/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=hSghjEZq8-1EmlfHdSoPRq_nTSpYc0usCs23RJOD-yk"
@@ -65,7 +63,9 @@ GOOGLE_CHAT_WEBHOOK_CHECKLIST_HTML = "https://chat.googleapis.com/v1/spaces/AAQA
 GOOGLE_CHAT_WEBHOOK_HORAS_EXTRAS = "https://chat.googleapis.com/v1/spaces/AAQA0V8TAhs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=Zl7KMv0PLrm5c7IMZZdaclfYoc-je9ilDDAlDfqDMAU"
 GOOGLE_CHAT_WEBHOOK_ERRO_NOVIDADE = "https://chat.googleapis.com/v1/spaces/AAQAp4gdyUE/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=vnI4C_jTeF0UQINXiVYpRrnEsYaO4-Nnvs8RC-PTj0k"
 
-# URL do Web App da Planilha
+# [NOVO] Webhook específico para Certidões
+GOOGLE_CHAT_WEBHOOK_CERTIDAO = "https://chat.googleapis.com/v1/spaces/AAQAZ8UfLjw/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=83659FzLIWIpx9919tlJz88Hb2fSGyHJof9rSKCHviA"
+
 SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxnty7WHtUs7Z7u_EmZrMjP4g8dZDSv_qRAJU3V09cF75K0elF2IFK20jZWHRYpJCrNXQ/exec"
 
 REG_USUARIO_OPCOES = ["Cartório", "Gabinete", "Externo"]
@@ -92,8 +92,6 @@ OPCOES_ATIVIDADES_STATUS = [
     "HP", "E-mail", "WhatsApp Plantão", 
     "Homologação", "Redação Documentos", "Outros"
 ]
-ATIVIDADES_COM_DETALHE = ["Homologação", "Redação Documentos", "Outros"]
-
 OPCOES_PROJETOS = [
     "Soma", "Treinamentos Eproc", "Manuais Eproc", 
     "Cartilhas Gabinetes", "Notebook Lm", "Inteligência artifical cartórios"
@@ -102,8 +100,6 @@ OPCOES_PROJETOS = [
 GIF_BASTAO_HOLDER = "https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExa3Uwazd5cnNra2oxdDkydjZkcHdqcWN2cng0Y2N0cmNmN21vYXVzMiZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/3rXs5J0hZkXwTZjuvM/giphy.gif"
 BASTAO_EMOJI = "🥂" 
 APP_URL_CLOUD = 'https://controle-bastao-cesupe.streamlit.app'
-STATUS_SAIDA_PRIORIDADE = ['Saída rápida']
-# [ALTERAÇÃO] Adicionado Treinamento como status de saída
 STATUSES_DE_SAIDA = ['Almoço', 'Saída rápida', 'Ausente', 'Sessão', 'Treinamento'] 
 GIF_URL_WARNING = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExY2pjMDN0NGlvdXp1aHZ1ejJqMnY5MG1yZmN0d3NqcDl1bTU1dDJrciZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/fXnRObM8Q0RkOmR5nf/giphy.gif'
 GIF_URL_ROTATION = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExdmx4azVxbGt4Mnk1cjMzZm5sMmp1YThteGJsMzcyYmhsdmFoczV0aSZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/JpkZEKWY0s9QI4DGvF/giphy.gif'
@@ -117,28 +113,26 @@ PUG2026_FILENAME = "pug2026.png"
 # ============================================
 
 # --- FUNÇÃO GERADORA DE CERTIDÃO (WORD) ---
-def gerar_docx_certidao(tipo_certidao, num_processo, data_indisponibilidade_input, num_chamado):
+def gerar_docx_certidao(tipo_certidao, num_processo, data_indisponibilidade_input, num_chamado, motivo_pedido):
     document = Document()
     
-    # Configuração de Fonte Padrão para o documento
     style = document.styles['Normal']
     font = style.font
     font.name = 'Arial'
     font.size = Pt(12)
 
-    # --- CABEÇALHO (Padronizado para todos ) ---
+    # --- CABEÇALHO ---
     head = document.add_paragraph()
     head.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run_tj = head.add_run("TRIBUNAL DE JUSTIÇA DO ESTADO DE MINAS GERAIS\n")
     run_tj.bold = True
     head.add_run("Rua Ouro Preto, Nº 1564 - Bairro Santo Agostinho - CEP 30170-041 - Belo Horizonte - MG - www.tjmg.jus.br\n")
-    head.add_run("Andar: 3º 3º e 4º PV\n\n")
+    head.add_run("Andar: 3º e 4º PV\n\n")
 
     # --- TÍTULO DO PARECER ---
     num_parecer = int(datetime.now().strftime("%H%M")) 
     ano_atual = datetime.now().year
     
-    #  A Certidão Geral usa apenas "Parecer", as outras "Parecer Técnico"
     tipo_parecer_txt = "Parecer" if tipo_certidao == "Geral" else "Parecer Técnico"
     titulo = document.add_paragraph(f"{tipo_parecer_txt} GEJUD/DIRTEC/TJMG nº {num_parecer}/{ano_atual}.")
     titulo.alignment = WD_ALIGN_PARAGRAPH.LEFT
@@ -146,7 +140,6 @@ def gerar_docx_certidao(tipo_certidao, num_processo, data_indisponibilidade_inpu
 
     # --- ASSUNTO ---
     if tipo_certidao == "Geral":
-        # [cite: 37] Texto específico da certidão geral
         sistema_texto = "JPe – 2ª Instância" 
     elif tipo_certidao == "Eletrônica":
         sistema_texto = "JPe - 2ª Instância"
@@ -155,47 +148,45 @@ def gerar_docx_certidao(tipo_certidao, num_processo, data_indisponibilidade_inpu
         
     document.add_paragraph(f'Assunto: Notifica erro no "{sistema_texto}" ao peticionar.')
 
-    document.add_paragraph("Exmo(a). Senhor(a) Relator(a).") # [cite: 39] Ponto final ao invés de vírgula no Geral, mas mantendo padrão
+    document.add_paragraph("Exmo(a). Senhor(a) Relator(a).")
 
     # --- DATA E LOCAL ---
     data_hoje = datetime.now().strftime("%d de %B de %Y")
     meses = {"January": "janeiro", "February": "fevereiro", "March": "março", "April": "abril", "May": "maio", "June": "junho", "July": "julho", "August": "agosto", "September": "setembro", "October": "outubro", "November": "novembro", "December": "dezembro"}
     for k, v in meses.items(): data_hoje = data_hoje.replace(k, v)
     
-    document.add_paragraph(f"Belo Horizonte, {data_hoje}") # [cite: 38]
+    document.add_paragraph(f"Belo Horizonte, {data_hoje}")
 
-    # --- TRATAMENTO DA DATA (Período ou Dia Único) ---
+    # --- TRATAMENTO DA DATA DE INDISPONIBILIDADE ---
     data_texto = ""
     if isinstance(data_indisponibilidade_input, (list, tuple)) and len(data_indisponibilidade_input) > 1:
-        # É um intervalo
         inicio = data_indisponibilidade_input[0].strftime("%d/%m/%Y")
         fim = data_indisponibilidade_input[1].strftime("%d/%m/%Y")
         data_texto = f"no período de {inicio} a {fim}"
     elif isinstance(data_indisponibilidade_input, (list, tuple)) and len(data_indisponibilidade_input) == 1:
-        # Lista com 1 elemento
         d = data_indisponibilidade_input[0]
         data_texto = f"em {d.strftime('%d/%m/%Y')}"
     elif isinstance(data_indisponibilidade_input, (date, datetime)):
-        # Objeto data direto
         data_texto = f"em {data_indisponibilidade_input.strftime('%d/%m/%Y')}"
     else:
-        # Fallback
         data_texto = "em data não especificada"
 
-    # --- CORPO DO TEXTO (Variável conforme Tipo) ---
-    
+    # --- CORPO DO TEXTO ---
     if tipo_certidao == "Geral":
-        #  Texto específico da certidão geral
         p_geral = document.add_paragraph()
         p_geral.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        # Texto Geral (Sem processo, sem chamado)
         p_geral.add_run(f"Para fins de cumprimento dos artigos 13 e 14 da Resolução nº 780/2014 do Tribunal de Justiça do Estado de Minas Gerais, informamos que {data_texto} houve indisponibilidade do portal JPe, superior a uma hora, que impossibilitou o peticionamento eletrônico de recursos em processos que já tramitavam no sistema.")
-        # Nota: O modelo geral não cita número de processo específico no corpo, nem número de chamado
     else:
         texto_principal = document.add_paragraph()
         texto_principal.add_run(f"Informamos que {data_texto}, houve indisponibilidade específica do sistema para o peticionamento do processo nº {num_processo}.")
         document.add_paragraph(f"O Chamado de número {num_chamado}, foi aberto e encaminhado à DIRTEC (Diretoria Executiva de Tecnologia da Informação e Comunicação).")
 
-    # [LÓGICA ESPECÍFICA DA CERTIDÃO FÍSICA]
+    # Inclusão do Motivo em todas as certidões
+    if motivo_pedido:
+        p_motivo = document.add_paragraph()
+        p_motivo.add_run(f"Descrição da Ocorrência/Motivo: {motivo_pedido}")
+
     if tipo_certidao == "Física":
         p_fisica = document.add_paragraph()
         p_fisica.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
@@ -205,19 +196,17 @@ def gerar_docx_certidao(tipo_certidao, num_processo, data_indisponibilidade_inpu
     if tipo_certidao == "Eletrônica":
         document.add_paragraph("Esperamos ter prestado as informações solicitadas e colocamo-nos à disposição para outras que se fizerem necessárias.")
     else:
-        # [cite: 41] Texto do Geral e Física são similares aqui
         document.add_paragraph("Colocamo-nos à disposição para outras informações que se fizerem necessárias.")
 
-    document.add_paragraph("Respeitosamente,") # [cite: 42]
+    document.add_paragraph("Respeitosamente,")
     document.add_paragraph("\n\n") 
 
     # --- ASSINATURA ---
-    # [cite: 43-47] Assinatura fixa do Gestor Waner
     assinatura = document.add_paragraph()
     assinatura.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run_ass = assinatura.add_run("Waner Andrade Silva\n")
     run_ass.bold = True
-    assinatura.add_run("0-009020-9\n") # Adicionado matrícula conforme modelo 4
+    assinatura.add_run("0-009020-9\n") 
     assinatura.add_run("Coordenação de Análise e Integração de Sistemas Judiciais Informatizados - COJIN\n")
     assinatura.add_run("Gerência de Sistemas Judiciais - GEJUD\n")
     assinatura.add_run("Diretoria Executiva de Tecnologia da Informação e Comunicação - DIRTEC")
@@ -226,6 +215,23 @@ def gerar_docx_certidao(tipo_certidao, num_processo, data_indisponibilidade_inpu
     document.save(buffer)
     buffer.seek(0)
     return buffer
+
+def send_certidao_notification_to_chat(consultor, tipo, motivo):
+    if not GOOGLE_CHAT_WEBHOOK_CERTIDAO: return False
+    
+    # Construção da mensagem de notificação (sem link de download, pois não há armazenamento em nuvem)
+    # Explica que o arquivo está disponível para quem gerou na interface
+    msg = (
+        f"🖨️ **Nova Certidão Gerada**\n\n"
+        f"👤 **Gerado por:** {consultor}\n"
+        f"📄 **Tipo:** {tipo}\n"
+        f"📝 **Motivo:** {motivo}\n"
+        f"⚠️ *O arquivo foi gerado e baixado localmente pelo consultor.*"
+    )
+    
+    chat_message = {"text": msg}
+    threading.Thread(target=_send_webhook_thread, args=(GOOGLE_CHAT_WEBHOOK_CERTIDAO, chat_message)).start()
+    return True
 
 @st.cache_data
 def get_img_as_base64(file_path):
@@ -313,19 +319,16 @@ def log_status_change(consultor, old_status, new_status, duration):
     print(f'LOG: {consultor} de "{old_status or "-"}" para "{new_status or "-"}" após {duration}')
     if not isinstance(duration, timedelta): duration = timedelta(0)
 
-    # 1. REGRA DO HORÁRIO: Início às 08:00
     now_br = get_brazil_time()
     start_t = st.session_state.current_status_starts.get(consultor, now_br)
     today_8am = now_br.replace(hour=8, minute=0, second=0, microsecond=0)
     final_duration = duration
     
-    # Se começou antes das 8h e agora é depois das 8h, conta a partir das 8h
     if start_t < today_8am and now_br >= today_8am:
          final_duration = now_br - today_8am
          if final_duration.total_seconds() < 0:
              final_duration = timedelta(0)
     
-    # 2. DEFINIÇÃO DO RÓTULO DO STATUS
     old_lbl = old_status if old_status else 'Fila Bastão'
     new_lbl = new_status if new_status else 'Fila Bastão'
 
@@ -1326,7 +1329,7 @@ with col_principal:
                         st.rerun()
                     else: st.error("Erro no envio.")
     
-    # [NOVA VIEW CERTIDÃO]
+    # [VIEW CERTIDÃO ATUALIZADA]
     elif st.session_state.active_view == "certidao":
         with st.container(border=True):
             st.header("🖨️ Gerador de Certidão de Indisponibilidade")
@@ -1334,47 +1337,56 @@ with col_principal:
             # Inputs
             tipo_cert = st.selectbox("Tipo de Certidão:", ["Geral", "Eletrônica", "Física"])
             
-            # Condicional para input de Data e Processo
-            if tipo_cert == "Geral":
-                tipo_periodo = st.radio("Período:", ["Dia Único", "Intervalo de Dias"], horizontal=True)
-                if tipo_periodo == "Dia Único":
-                    dt_indis = [st.date_input("Data da Indisponibilidade:", value=get_brazil_time().date())]
-                else:
-                    dt_indis = st.date_input("Selecione o Intervalo:", value=[], format="DD/MM/YYYY")
-                
-                # Certidão geral não exige processo no texto, mas mantemos o campo opcional ou desabilitado se quiser
-                num_proc = st.text_input("Número do Processo (Opcional):", placeholder="1.0000...")
+            # Condicional para input de Data
+            tipo_periodo = st.radio("Período:", ["Dia Único", "Intervalo de Dias"], horizontal=True)
+            if tipo_periodo == "Dia Único":
+                dt_input_raw = st.date_input("Data da Indisponibilidade:", value=get_brazil_time().date(), format="DD/MM/YYYY")
+                dt_indis = [dt_input_raw]
             else:
-                # Padrão antigo
-                dt_input = st.date_input("Data da Indisponibilidade:", value=get_brazil_time().date())
-                dt_indis = dt_input # Mantém compatibilidade com a função
-                num_proc = st.text_input("Número do Processo:", placeholder="1.0000...")
-
-            chamado = st.text_input("Número do Chamado (ServiceNow/Jira):")
+                dt_indis = st.date_input("Selecione o Intervalo:", value=[], format="DD/MM/YYYY")
             
+            # Condicional para Processo e Chamado
+            num_proc = ""
+            chamado = ""
+            
+            if tipo_cert != "Geral":
+                num_proc = st.text_input("Número do Processo:", placeholder="1.0000...")
+                chamado = st.text_input("Número do Chamado (ServiceNow/Jira):")
+            else:
+                st.info("ℹ️ Certidão Geral não requer número de processo ou chamado.")
+                
+            # Motivo (obrigatório para todos)
+            motivo_pedido = st.text_area("Motivo do Pedido / Descrição da Ocorrência:", placeholder="Descreva brevemente a causa da indisponibilidade...")
+
             consultor_logado = st.session_state.consultor_selectbox
             
             # Botão de Gerar
             if st.button("Gerar Documento Word", type="primary"):
                 if not consultor_logado or consultor_logado == "Selecione um nome":
                     st.error("Selecione um consultor no menu principal.")
-                elif not chamado:
-                    st.error("Preencha o número do Chamado.")
-                elif tipo_cert != "Geral" and not num_proc:
-                    st.error("Preencha o número do Processo.")
+                elif tipo_cert != "Geral" and (not num_proc or not chamado):
+                     st.error("Preencha Processo e Chamado para este tipo de certidão.")
+                elif not motivo_pedido:
+                    st.error("Por favor, informe o motivo do pedido.")
+                elif isinstance(dt_indis, list) and not dt_indis: # Validação lista vazia
+                     st.error("Selecione uma data válida.")
                 else:
                     # Gera o arquivo
-                    arquivo_buffer = gerar_docx_certidao(tipo_cert, num_proc, dt_indis, chamado)
+                    arquivo_buffer = gerar_docx_certidao(tipo_cert, num_proc, dt_indis, chamado, motivo_pedido)
                     
                     # Nome do arquivo
                     nome_arq = f"Certidao_{tipo_cert}.docx"
                     if num_proc:
                          nome_arq = f"Certidao_{tipo_cert}_{num_proc.replace('/','-')}.docx"
                     
-                    # Guarda no session state para o download button aparecer
+                    # Guarda no session state
                     st.session_state['ultimo_docx'] = arquivo_buffer
                     st.session_state['ultimo_nome_docx'] = nome_arq
-                    st.success("Certidão gerada com sucesso! Baixe abaixo.")
+                    
+                    # Envia notificação ao chat (Sem link de download, apenas aviso)
+                    send_certidao_notification_to_chat(consultor_logado, tipo_cert, motivo_pedido)
+                    
+                    st.success("Certidão gerada com sucesso! Clique abaixo para baixar.")
 
             # Botão de Download (aparece se o arquivo foi gerado)
             if 'ultimo_docx' in st.session_state and st.session_state['ultimo_docx'] is not None:
