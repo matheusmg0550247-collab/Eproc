@@ -15,10 +15,16 @@ import threading
 import random
 import base64
 import os
+import io
+
+# --- NOVOS IMPORTS PARA O WORD ---
+from docx import Document
+from docx.shared import Pt, Cm
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 # --- Constantes de Consultores ---
 CONSULTORES = sorted([
-  "Barbara Mara", "Bruno Glaicon", "Claudia Luiza", "Douglas Paiva", "Fábio Alves", "Glayce Torres", "Isabela Dias", "Isac Candido", "Ivana Guimarães", "Leonardo Damaceno", "Marcelo PenaGuerra", "Michael Douglas", "Morôni", "Pablo Victor Lenti Mol", "Ranyer Segal", "Sarah Leal", "Victoria Lisboa"
+    "Barbara Mara", "Bruno Glaicon", "Claudia Luiza", "Douglas Paiva", "Fábio Alves", "Glayce Torres", "Isabela Dias", "Isac Candido", "Ivana Guimarães", "Leonardo Damaceno", "Marcelo PenaGuerra", "Michael Douglas", "Morôni", "Pablo Victor Lenti Mol", "Ranyer Segal", "Sarah Leal", "Victoria Lisboa"
 ])
 
 # --- FUNÇÃO DE HORÁRIO BRASIL (UTC-3) ---
@@ -110,6 +116,97 @@ PUG2026_FILENAME = "pug2026.png"
 # 2. FUNÇÕES AUXILIARES GLOBAIS
 # ============================================
 
+# --- FUNÇÃO GERADORA DE CERTIDÃO (WORD) ---
+def gerar_docx_certidao(tipo_certidao, num_processo, data_indisponibilidade, num_chamado):
+    document = Document()
+    
+    # Configuração de Fonte Padrão para o documento
+    style = document.styles['Normal']
+    font = style.font
+    font.name = 'Arial'
+    font.size = Pt(12)
+
+    # --- CABEÇALHO (Baseado nos docs 402 e 503) ---
+    head = document.add_paragraph()
+    head.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    # Negrito para o nome do Tribunal [cite: 2, 19]
+    run_tj = head.add_run("TRIBUNAL DE JUSTIÇA DO ESTADO DE MINAS GERAIS\n")
+    run_tj.bold = True
+    # Endereço padrão [cite: 3, 20]
+    head.add_run("Rua Ouro Preto, Nº 1564 - Bairro Santo Agostinho - CEP 30170-041 - Belo Horizonte - MG - www.tjmg.jus.br\n")
+    head.add_run("Andar: 3º e 4º PV\n\n")
+
+    # --- TÍTULO DO PARECER ---
+    # Gerando um número fictício para o parecer baseado na hora atual para não ficar vazio
+    num_parecer = int(datetime.now().strftime("%H%M")) 
+    ano_atual = datetime.now().year
+    
+    titulo = document.add_paragraph(f"Parecer Técnico GEJUD/DIRTEC/TJMG nº {num_parecer}/{ano_atual}.")
+    titulo.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    titulo.runs[0].bold = True
+
+    # --- ASSUNTO ---
+    # Se for "Eletrônica" ou "Geral", usamos texto padrão. Se especificar 2ª Instância, ajusta.
+    # Baseado no Doc 503 (Eletrônico): "JPe - 2ª Instância" [cite: 6]
+    # Baseado no Doc 402 (Físico): "JPe" [cite: 23]
+    sistema_texto = "JPe - 2ª Instância" if tipo_certidao == "Eletrônica" else "JPe"
+    document.add_paragraph(f'Assunto: Notifica erro no "{sistema_texto}" ao peticionar.')
+
+    document.add_paragraph("Exmo(a). Senhor(a) Relator(a),")
+
+    # --- DATA E LOCAL ---
+    # Data atual por extenso
+    data_hoje = datetime.now().strftime("%d de %B de %Y")
+    meses = {"January": "janeiro", "February": "fevereiro", "March": "março", "April": "abril", "May": "maio", "June": "junho", "July": "julho", "August": "agosto", "September": "setembro", "October": "outubro", "November": "novembro", "December": "dezembro"}
+    for k, v in meses.items(): data_hoje = data_hoje.replace(k, v)
+    
+    p_data = document.add_paragraph(f"Belo Horizonte, {data_hoje}")
+
+    # --- CORPO DO TEXTO (Variável conforme Tipo) ---
+    data_indisp_str = data_indisponibilidade.strftime("%d/%m/%Y")
+    
+    texto_principal = document.add_paragraph()
+    # Texto padrão de indisponibilidade [cite: 9, 26]
+    texto_principal.add_run(f"Informamos que no dia {data_indisp_str}, houve indisponibilidade específica do sistema para o peticionamento do processo nº {num_processo}.")
+    
+    # Informação do Chamado [cite: 10, 27]
+    document.add_paragraph(f"O Chamado de número {num_chamado}, foi aberto e encaminhado à DIRTEC (Diretoria Executiva de Tecnologia da Informação e Comunicação).")
+
+    # [LÓGICA ESPECÍFICA DA CERTIDÃO FÍSICA - BASEADO NO DOC 402]
+    if tipo_certidao == "Física":
+        p_fisica = document.add_paragraph()
+        p_fisica.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        # Texto legal da Resolução 780/2014 [cite: 28]
+        p_fisica.add_run("Diante da indisponibilidade específica, não havendo um prazo para solução do problema, a Primeira Vice-Presidência recomenda o ingresso dos autos físicos, nos termos do § 2º, do artigo 14º, da Resolução nº 780/2014, do Tribunal de Justiça do Estado de Minas Gerais.")
+
+    # --- ENCERRAMENTO ---
+    # Variação sutil nos documentos originais
+    if tipo_certidao == "Eletrônica":
+        # Texto do Doc 503 [cite: 11]
+        document.add_paragraph("Esperamos ter prestado as informações solicitadas e colocamo-nos à disposição para outras que se fizerem necessárias.")
+    else:
+        # Texto do Doc 402 [cite: 29]
+        document.add_paragraph("Colocamo-nos à disposição para outras informações que se fizerem necessárias.")
+
+    document.add_paragraph("Respeitosamente,")
+    document.add_paragraph("\n\n") 
+
+    # --- ASSINATURA ---
+    # Assinatura fixa do Gestor Waner [cite: 15, 33]
+    assinatura = document.add_paragraph()
+    assinatura.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run_ass = assinatura.add_run("Waner Andrade Silva\n")
+    run_ass.bold = True
+    assinatura.add_run("Coordenação de Análise e Integração de Sistemas Judiciais Informatizados - COJIN\n")
+    assinatura.add_run("Gerência de Sistemas Judiciais - GEJUD\n")
+    assinatura.add_run("Diretoria Executiva de Tecnologia da Informação e Comunicação - DIRTEC")
+
+    # Salva em memória buffer
+    buffer = io.BytesIO()
+    document.save(buffer)
+    buffer.seek(0)
+    return buffer
+
 @st.cache_data
 def get_img_as_base64(file_path):
     try:
@@ -152,11 +249,12 @@ def save_state():
 def load_state():
     global_data = get_global_state_cache()
     loaded_logs = global_data.get('daily_logs', [])
-    if loaded_logs and isinstance(loaded_logs[0], dict):
-             deserialized_logs = loaded_logs
-    else:
+    if isinstance(loaded_logs, list):
+         deserialized_logs = loaded_logs
+    elif isinstance(loaded_logs, str):
         try: deserialized_logs = json.loads(loaded_logs)
-        except: deserialized_logs = loaded_logs 
+        except: deserialized_logs = []
+    else: deserialized_logs = []
     
     final_logs = []
     for log in deserialized_logs:
@@ -1146,13 +1244,17 @@ with col_principal:
     st.button('🔄 Atualizar (Manual)', on_click=manual_rerun, use_container_width=True)
     st.markdown("---")
     
-    c_tool1, c_tool2, c_tool3, c_tool4, c_tool5, c_tool6 = st.columns(6)
+    # [LAYOUT ATUALIZADO] Nova linha de ferramentas com Certidão
+    c_tool1, c_tool2, c_tool3, c_tool4, c_tool5, c_tool6, c_tool7 = st.columns(7)
+    
     c_tool1.button("📑 Checklist", help="Gerador de Checklist Eproc", use_container_width=True, on_click=toggle_view, args=("checklist",))
     c_tool2.button("🆘 Chamados", help="Guia de Abertura de Chamados", use_container_width=True, on_click=toggle_view, args=("chamados",))
     c_tool3.button("📝 Atendimento", help="Registrar Atendimento", use_container_width=True, on_click=toggle_view, args=("atendimentos",))
     c_tool4.button("⏰ H. Extras", help="Registrar Horas Extras", use_container_width=True, on_click=toggle_view, args=("hextras",))
     c_tool5.button("🧠 Descanso", help="Jogo e Ranking", use_container_width=True, on_click=toggle_view, args=("descanso",))
     c_tool6.button("🐛 Erro/Novidade", help="Relatar Erro ou Novidade", use_container_width=True, on_click=toggle_view, args=("erro_novidade",))
+    # [NOVO BOTÃO]
+    c_tool7.button("🖨️ Certidão", help="Gerar Certidão de Indisponibilidade", use_container_width=True, on_click=toggle_view, args=("certidao",))
         
     if st.session_state.active_view == "checklist":
         with st.container(border=True):
@@ -1251,6 +1353,46 @@ with col_principal:
                         time.sleep(1.5)
                         st.rerun()
                     else: st.error("Erro no envio.")
+    
+    # [NOVA VIEW CERTIDÃO]
+    elif st.session_state.active_view == "certidao":
+        with st.container(border=True):
+            st.header("🖨️ Gerador de Certidão de Indisponibilidade")
+            
+            # Inputs
+            tipo_cert = st.selectbox("Tipo de Certidão:", ["Geral", "Eletrônica", "Física"])
+            num_proc = st.text_input("Número do Processo:", placeholder="1.0000...")
+            dt_indis = st.date_input("Data da Indisponibilidade:", value=get_brazil_time().date())
+            chamado = st.text_input("Número do Chamado (ServiceNow/Jira):")
+            
+            consultor_logado = st.session_state.consultor_selectbox
+            
+            # Botão de Gerar
+            if st.button("Gerar Documento Word", type="primary"):
+                if not consultor_logado or consultor_logado == "Selecione um nome":
+                    st.error("Selecione um consultor no menu principal.")
+                elif not num_proc or not chamado:
+                    st.error("Preencha Processo e Chamado.")
+                else:
+                    # Gera o arquivo
+                    arquivo_buffer = gerar_docx_certidao(tipo_cert, num_proc, dt_indis, chamado)
+                    
+                    # Nome do arquivo
+                    nome_arq = f"Certidao_{tipo_cert}_{num_proc.replace('/','-')}.docx"
+                    
+                    # Guarda no session state para o download button aparecer
+                    st.session_state['ultimo_docx'] = arquivo_buffer
+                    st.session_state['ultimo_nome_docx'] = nome_arq
+                    st.success("Certidão gerada com sucesso! Baixe abaixo.")
+
+            # Botão de Download (aparece se o arquivo foi gerado)
+            if 'ultimo_docx' in st.session_state and st.session_state['ultimo_docx'] is not None:
+                st.download_button(
+                    label="⬇️ Baixar Certidão (.docx)",
+                    data=st.session_state['ultimo_docx'],
+                    file_name=st.session_state['ultimo_nome_docx'],
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                )
     
     st.markdown("---")
     st.markdown("### 📚 Links Úteis - Notebooks LM Cesupe")
