@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+# ============================================
+# 1. IMPORTS E DEFINIÇÕES GLOBAIS
+# ============================================
 import streamlit as st
 import pandas as pd
 import requests
@@ -13,8 +16,12 @@ import base64
 import os
 import io
 
+# --- IMPORTS DO BANCO DE DADOS E UTILS ---
 from repository import load_state_from_db, save_state_to_db
-from utils import (get_brazil_time, get_secret, send_to_chat, gerar_docx_certidao, get_img_as_base64)
+from utils import (
+    get_brazil_time, get_secret, send_to_chat, gerar_docx_certidao, 
+    get_img_as_base64
+)
 
 # --- CONSTANTES ---
 CONSULTORES = sorted([
@@ -53,6 +60,7 @@ GIF_URL_NEDRY = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExMGNkMGx3YnNkc
 SOUND_URL = "https://github.com/matheusmg0550247-collab/controle-bastao-eproc2/raw/main/doorbell-223669.mp3"
 PUG2026_FILENAME = "pug2026.png"
 
+# Webhooks
 GOOGLE_CHAT_WEBHOOK_BACKUP = get_secret("chat", "backup")
 CHAT_WEBHOOK_BASTAO = get_secret("chat", "bastao")
 GOOGLE_CHAT_WEBHOOK_REGISTRO = get_secret("chat", "registro")
@@ -180,8 +188,7 @@ def find_next_holder_index(current_index, queue, skips):
         if st.session_state.get(f'check_{consultor}', False) and not skips.get(consultor, False): return idx
     return -1
 
-# --- CORREÇÃO AQUI: EXCLUDE_CONSULTANT ---
-def check_and_assume_baton(forced_successor=None, exclude_consultant=None):
+def check_and_assume_baton(forced_successor=None):
     queue, skips = st.session_state.bastao_queue, st.session_state.skip_flags
     current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
     is_valid = (current_holder and current_holder in queue and st.session_state.get(f'check_{current_holder}'))
@@ -193,15 +200,12 @@ def check_and_assume_baton(forced_successor=None, exclude_consultant=None):
 
     changed = False; now = get_brazil_time()
     
-    # 1. Limpeza dos Antigos
     for c in CONSULTORES:
-        # Se o consultor não é o novo alvo E não é quem a gente deve proteger (quem clicou almoço)
-        if c != target and c != exclude_consultant and 'Bastão' in st.session_state.status_texto.get(c, ''):
+        if c != target and 'Bastão' in st.session_state.status_texto.get(c, ''):
             log_status_change(c, 'Bastão', 'Indisponível', now - st.session_state.current_status_starts.get(c, now))
             st.session_state.status_texto[c] = 'Indisponível'
             changed = True
 
-    # 2. Definição do Novo Dono
     if target:
         curr_s = st.session_state.status_texto.get(target, '')
         if 'Bastão' not in curr_s:
@@ -213,10 +217,8 @@ def check_and_assume_baton(forced_successor=None, exclude_consultant=None):
             st.session_state.skip_flags[target] = False; changed = True
             
     elif not target and current_holder:
-        # Se não tem ninguém pra assumir, o atual perde o bastão (se não for o excluído)
-        if current_holder != exclude_consultant:
-            log_status_change(current_holder, 'Bastão', 'Indisponível', now - st.session_state.current_status_starts.get(current_holder, now))
-            st.session_state.status_texto[current_holder] = 'Indisponível'; changed = True
+        log_status_change(current_holder, 'Bastão', 'Indisponível', now - st.session_state.current_status_starts.get(current_holder, now))
+        st.session_state.status_texto[current_holder] = 'Indisponível'; changed = True
 
     if changed: save_state()
     return changed
@@ -396,7 +398,11 @@ def update_status(new_status_part, force_exit_queue=False):
     blocking = ['Almoço', 'Ausente', 'Saída rápida', 'Sessão', 'Reunião', 'Treinamento']
     should_exit = force_exit_queue or any(b in new_status_part for b in blocking)
     
-    # --- CORREÇÃO DE LÓGICA DE SAÍDA ---
+    # 1. Captura Estado Inicial
+    current = st.session_state.status_texto.get(selected, '')
+    is_holder = 'Bastão' in current
+    
+    # 2. Lógica de Saída da Fila
     forced_successor = None
     if should_exit and selected in st.session_state.bastao_queue:
         current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
@@ -405,7 +411,14 @@ def update_status(new_status_part, force_exit_queue=False):
             nxt = find_next_holder_index(idx, st.session_state.bastao_queue, st.session_state.skip_flags)
             if nxt != -1: forced_successor = st.session_state.bastao_queue[nxt]
 
-    current = st.session_state.status_texto.get(selected, '')
+        st.session_state[f'check_{selected}'] = False
+        st.session_state.bastao_queue.remove(selected)
+        st.session_state.skip_flags.pop(selected, None)
+    
+    # 3. Rotação do Bastão (Pode definir status Indisponível, mas vamos corrigir)
+    if is_holder: check_and_assume_baton(forced_successor)
+
+    # 4. Construção do Status Final
     parts = [p.strip() for p in current.split('|') if p.strip()]
     type_new = new_status_part.split(':')[0]
     clean = [p for p in parts if p != 'Indisponível' and not p.startswith(type_new)]
@@ -413,26 +426,19 @@ def update_status(new_status_part, force_exit_queue=False):
     clean.sort(key=lambda x: 0 if 'Bastão' in x else 1 if 'Atividade' in x or 'Projeto' in x else 2)
     final_status = " | ".join(clean)
     
-    if should_exit:
-        st.session_state[f'check_{selected}'] = False
-        if selected in st.session_state.bastao_queue: st.session_state.bastao_queue.remove(selected)
-        st.session_state.skip_flags.pop(selected, None)
-    
-    is_holder = 'Bastão' in current
+    # Se tinha bastão e não saiu, mantém. Se saiu, perde o bastão no texto.
     if is_holder and not should_exit and 'Bastão' not in final_status: final_status = f"Bastão | {final_status}"
     
+    # 5. SOBRESCRITA FINAL (CORREÇÃO DO BUG)
+    # Independente do que check_and_assume_baton fez, forçamos o status correto agora.
     now_br = get_brazil_time()
     log_status_change(selected, current, final_status, now_br - st.session_state.current_status_starts.get(selected, now_br))
-    
-    # 1. ATUALIZA O STATUS DO USUÁRIO
     st.session_state.status_texto[selected] = final_status
     
     if new_status_part == 'Saída rápida':
         if selected not in st.session_state.priority_return_queue: st.session_state.priority_return_queue.append(selected)
     elif selected in st.session_state.priority_return_queue: st.session_state.priority_return_queue.remove(selected)
     
-    # 2. CHAMA O GIRA BASTÃO (Com proteção para não sobrescrever o status de quem saiu)
-    if is_holder: check_and_assume_baton(forced_successor, exclude_consultant=selected)
     save_state()
 
 def auto_manage_time():
