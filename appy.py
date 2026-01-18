@@ -375,7 +375,6 @@ def rotate_bastao():
         send_chat_notification_internal(next_holder, 'Bastão'); save_state()
     else: st.warning('Ninguém elegível.'); check_and_assume_baton()
 
-# --- CORREÇÃO DO TOGGLE SKIP (ADICIONADO RERUN) ---
 def toggle_skip():
     selected = st.session_state.consultor_selectbox
     if not selected or selected == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
@@ -385,13 +384,10 @@ def toggle_skip():
     novo_estado = not st.session_state.skip_flags.get(selected, False)
     st.session_state.skip_flags[selected] = novo_estado
     
-    if novo_estado:
-        st.toast(f"⏭️ {selected} pulou a vez!", icon="⏭️")
-    else:
-        st.toast(f"✅ {selected} voltou para a fila!", icon="✅")
+    if novo_estado: st.toast(f"⏭️ {selected} pulou a vez!", icon="⏭️")
+    else: st.toast(f"✅ {selected} voltou para a fila!", icon="✅")
         
-    save_state()
-    st.rerun() # ATUALIZA A TELA IMEDIATAMENTE
+    save_state(); st.rerun()
 
 def update_status(new_status_part, force_exit_queue=False):
     ensure_daily_reset()
@@ -401,9 +397,10 @@ def update_status(new_status_part, force_exit_queue=False):
     current = st.session_state.status_texto.get(selected, '')
     blocking = ['Almoço', 'Ausente', 'Saída rápida', 'Sessão', 'Reunião', 'Treinamento']
     should_exit = force_exit_queue or any(b in new_status_part for b in blocking)
-    is_holder = 'Bastão' in current
     
+    is_holder = 'Bastão' in current
     forced_succ = None
+    
     if should_exit and selected in st.session_state.bastao_queue:
         holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
         if selected == holder:
@@ -511,10 +508,22 @@ with col_principal:
         st.caption(f"⏱️ Tempo com o bastão: **{format_time_duration(dur)}**")
     else: st.markdown('<h2>(Ninguém com o bastão)</h2>', unsafe_allow_html=True)
     
+    # --- AJUSTE: EXIBIR QUEM PULOU A VEZ ---
+    pularam_nomes = [p for p in queue if skips.get(p, False)]
+    restante_sem_pular = [p for p in restante if not skips.get(p, False)]
+
     st.markdown("###"); st.header("Próximos da Fila")
     if proximo: st.markdown(f'### 1º: **{proximo}**')
-    if restante: st.markdown(f'#### 2º em diante: {", ".join(restante)}')
-    elif not proximo: st.markdown('*Ninguém elegível.*')
+    
+    if restante_sem_pular: 
+        st.markdown(f'#### 2º em diante: {", ".join(restante_sem_pular)}')
+    
+    # Exibe quem pulou em destaque laranja
+    if pularam_nomes:
+        st.markdown(f'##### ⏭️ Pularam a vez: {", ".join(pularam_nomes)}')
+    
+    elif not proximo and not pularam_nomes: 
+        st.markdown('*Ninguém elegível.*')
 
     st.markdown("###"); st.header("**Consultor(a)**")
     st.selectbox('Selecione:', ['Selecione um nome'] + CONSULTORES, key='consultor_selectbox', label_visibility='collapsed')
