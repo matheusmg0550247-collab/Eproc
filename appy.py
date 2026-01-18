@@ -7,11 +7,15 @@ from datetime import datetime, timedelta
 from operator import itemgetter
 from streamlit_autorefresh import st_autorefresh
 import json
-import re
+import base64
+import io
+
 from repository import load_state_from_db, save_state_to_db
 from utils import (get_brazil_time, get_secret, send_to_chat, gerar_docx_certidao, get_img_as_base64)
 
-# --- CONSTANTES ---
+# ============================================
+# 1. CONFIGURAÇÕES E CONSTANTES
+# ============================================
 CONSULTORES = sorted([
     "Alex Paulo", "Dirceu Gonçalves", "Douglas De Souza", "Farley Leandro", "Gleis Da Silva", 
     "Hugo Leonardo", "Igor Dayrell", "Jerry Marcos", "Jonatas Gomes", "Leandro Victor", 
@@ -48,10 +52,15 @@ GIF_URL_NEDRY = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExMGNkMGx3YnNkc
 SOUND_URL = "https://github.com/matheusmg0550247-collab/controle-bastao-eproc2/raw/main/doorbell-223669.mp3"
 PUG2026_FILENAME = "pug2026.png"
 
+# Webhooks
 GOOGLE_CHAT_WEBHOOK_BACKUP = get_secret("chat", "backup")
 CHAT_WEBHOOK_BASTAO = get_secret("chat", "bastao")
 GOOGLE_CHAT_WEBHOOK_REGISTRO = get_secret("chat", "registro")
 SHEETS_WEBHOOK_URL = get_secret("sheets", "url")
+
+# ============================================
+# 2. FUNÇÕES DE SUPORTE E BANCO
+# ============================================
 
 def save_state():
     try:
@@ -76,6 +85,7 @@ def format_time_duration(duration):
     return f'{h:02}:{m:02}:{s:02}'
 
 def _send_webhook_sync(url, payload):
+    if not url: return
     try: requests.post(url, json=payload, headers={'Content-Type': 'application/json'}, timeout=3)
     except: pass
 
@@ -87,20 +97,19 @@ def send_log_to_sheets(timestamp_str, consultor, old_status, new_status, duratio
 def log_status_change(consultor, old_status, new_status, duration):
     if not isinstance(duration, timedelta): duration = timedelta(0)
     now_br = get_brazil_time()
+    final_duration = duration
     old_lbl = old_status if old_status else 'Fila Bastão'
     new_lbl = new_status if new_status else 'Fila Bastão'
     if consultor in st.session_state.bastao_queue:
         if 'Bastão' not in new_lbl and new_lbl != 'Fila Bastão': new_lbl = f"Fila | {new_lbl}"
-    entry = {'timestamp': now_br, 'consultor': consultor, 'old_status': old_lbl, 'new_status': new_lbl, 'duration': duration, 'duration_s': duration.total_seconds()}
+    entry = {'timestamp': now_br, 'consultor': consultor, 'old_status': old_lbl, 'new_status': new_lbl, 'duration': final_duration, 'duration_s': final_duration.total_seconds()}
     st.session_state.daily_logs.append(entry)
     timestamp_str = now_br.strftime("%d/%m/%Y %H:%M:%S")
-    duration_str = format_time_duration(duration)
+    duration_str = format_time_duration(final_duration)
     send_log_to_sheets(timestamp_str, consultor, old_lbl, new_lbl, duration_str)
     st.session_state.current_status_starts[consultor] = now_br
 
-# --- HANDLER GLOBAL ---
-def on_auxilio_change(): save_state()
-
+# --- FUNÇÕES DE NOTIFICAÇÃO ---
 def send_chat_notification_internal(consultor, status):
     if CHAT_WEBHOOK_BASTAO and status == 'Bastão':
         msg = f"🎉 **BASTÃO GIRADO!** 🎉 \n\n- **Novo(a) Responsável:** {consultor}\n- **Acesse o Painel:** {APP_URL_CLOUD}"
@@ -133,8 +142,7 @@ def play_sound_html(): return f'<audio autoplay="true"><source src="{SOUND_URL}"
 def render_fireworks(): st.markdown("""<style>...</style>""", unsafe_allow_html=True)
 def gerar_html_checklist(c, m, d): return "..."
 def gerar_docx_certidao(t, n, d, c, m): 
-    import io; from docx import Document; from docx.shared import Pt
-    document = Document(); buffer = io.BytesIO(); document.save(buffer); buffer.seek(0); return buffer
+    from docx import Document; import io; document = Document(); buffer = io.BytesIO(); document.save(buffer); buffer.seek(0); return buffer
 
 def send_daily_report():
     logs = load_logs(); bastao_counts = st.session_state.bastao_counts.copy()
@@ -160,6 +168,10 @@ def send_daily_report():
     st.session_state['daily_logs'] = []; st.session_state['bastao_counts'] = {nome: 0 for nome in CONSULTORES}
     save_state()
 
+# ============================================
+# 3. LÓGICA DO BASTÃO E FILA (DEFINIDA ANTES DA UI)
+# ============================================
+
 def find_next_holder_index(current_index, queue, skips):
     if not queue: return -1
     n = len(queue); start_index = (current_index + 1) % n
@@ -169,18 +181,9 @@ def find_next_holder_index(current_index, queue, skips):
         if st.session_state.get(f'check_{consultor}', False) and not skips.get(consultor, False): return idx
     return -1
 
-# --- CORREÇÃO CRÍTICA AQUI ---
 def check_and_assume_baton(forced_successor=None, immune_consultant=None):
-    """
-    immune_consultant: Nome do consultor que acabou de realizar uma ação (ex: Almoço).
-    A função NÃO vai alterar o status desse consultor, mesmo que ele tenha saído do bastão.
-    """
     queue, skips = st.session_state.bastao_queue, st.session_state.skip_flags
     current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
-    
-    # Se o holder atual for o imune (quem clicou almoço), precisamos forçar a saída dele
-    # mas SEM alterar o status "Almoço" que ele acabou de setar.
-    
     is_valid = (current_holder and current_holder in queue and st.session_state.get(f'check_{current_holder}'))
     
     target = forced_successor if forced_successor else (current_holder if is_valid else None)
@@ -190,17 +193,12 @@ def check_and_assume_baton(forced_successor=None, immune_consultant=None):
 
     changed = False; now = get_brazil_time()
     
-    # 1. Limpeza dos Antigos Holders
     for c in CONSULTORES:
-        # PULA se for o consultor imune (quem clicou no botão)
-        if c == immune_consultant: continue
-        
-        # Se não é o alvo e tem bastão, tira o bastão
-        if c != target and 'Bastão' in st.session_state.status_texto.get(c, ''):
-            log_status_change(c, 'Bastão', 'Indisponível', now - st.session_state.current_status_starts.get(c, now))
-            st.session_state.status_texto[c] = 'Indisponível'; changed = True
+        if c != immune_consultant: # Proteção para não resetar quem saiu manualmente
+            if c != target and 'Bastão' in st.session_state.status_texto.get(c, ''):
+                log_status_change(c, 'Bastão', 'Indisponível', now - st.session_state.current_status_starts.get(c, now))
+                st.session_state.status_texto[c] = 'Indisponível'; changed = True
 
-    # 2. Definição do Novo Dono
     if target:
         curr_s = st.session_state.status_texto.get(target, '')
         if 'Bastão' not in curr_s:
@@ -212,7 +210,6 @@ def check_and_assume_baton(forced_successor=None, immune_consultant=None):
             st.session_state.skip_flags[target] = False; changed = True
             
     elif not target and current_holder:
-        # Se não tem ninguém pra assumir e o atual não é o imune, tira o bastão
         if current_holder != immune_consultant:
             log_status_change(current_holder, 'Bastão', 'Indisponível', now - st.session_state.current_status_starts.get(current_holder, now))
             st.session_state.status_texto[current_holder] = 'Indisponível'; changed = True
@@ -223,37 +220,41 @@ def check_and_assume_baton(forced_successor=None, immune_consultant=None):
 def init_session_state():
     if 'db_loaded' not in st.session_state:
         try:
-            db_data = load_state_from_db(); 
-            if db_data: 
+            db_data = load_state_from_db()
+            if db_data:
                 for key, value in db_data.items(): st.session_state[key] = value
         except: pass
         st.session_state['db_loaded'] = True
-    # Reset de data se necessário
     if 'report_last_run_date' in st.session_state and isinstance(st.session_state['report_last_run_date'], str):
         try: st.session_state['report_last_run_date'] = datetime.fromisoformat(st.session_state['report_last_run_date'])
         except: st.session_state['report_last_run_date'] = datetime.min
-        
     now = get_brazil_time()
-    # Inicializa defaults se faltar algo
-    defaults = {'bastao_start_time': None, 'report_last_run_date': datetime.min, 'rotation_gif_start_time': None, 'play_sound': False, 'gif_warning': False, 'lunch_warning_info': None, 'last_reg_status': None, 'chamado_guide_step': 0, 'auxilio_ativo': False, 'active_view': None, 'last_jira_number': "", 'consultor_selectbox': "Selecione um nome", 'status_texto': {n: 'Indisponível' for n in CONSULTORES}, 'bastao_queue': [], 'skip_flags': {}, 'current_status_starts': {n: now for n in CONSULTORES}, 'bastao_counts': {n: 0 for n in CONSULTORES}, 'priority_return_queue': [], 'daily_logs': [], 'simon_ranking': []}
-    for k, v in defaults.items(): 
-        if k not in st.session_state: st.session_state[k] = v
-        
-    # Garante estrutura básica
+    defaults = {
+        'bastao_start_time': None, 'report_last_run_date': datetime.min, 'rotation_gif_start_time': None,
+        'play_sound': False, 'gif_warning': False, 'lunch_warning_info': None, 'last_reg_status': None,
+        'chamado_guide_step': 0, 'sessao_msg_preview': "", 'html_download_ready': False, 'html_content_cache': "",
+        'auxilio_ativo': False, 'active_view': None, 'last_jira_number': "",
+        'simon_sequence': [], 'simon_user_input': [], 'simon_status': 'start', 'simon_level': 1,
+        'consultor_selectbox': "Selecione um nome",
+        'status_texto': {nome: 'Indisponível' for nome in CONSULTORES},
+        'bastao_queue': [], 'skip_flags': {}, 'current_status_starts': {nome: now for nome in CONSULTORES},
+        'bastao_counts': {nome: 0 for nome in CONSULTORES}, 'priority_return_queue': [], 'daily_logs': [], 'simon_ranking': []
+    }
+    for key, default in defaults.items():
+        if key not in st.session_state: st.session_state[key] = default
     for nome in CONSULTORES:
-        if nome not in st.session_state.status_texto: st.session_state.status_texto[nome] = 'Indisponível'
-        st.session_state.bastao_counts.setdefault(nome, 0)
-        st.session_state.skip_flags.setdefault(nome, False)
-        
-        # Checkbox logic recovery
-        curr = st.session_state.status_texto[nome]
-        is_blocked = any(x in curr for x in ['Almoço', 'Ausente', 'Saída', 'Sessão', 'Reunião', 'Treinamento'])
-        in_prio = nome in st.session_state.priority_return_queue
-        in_queue = nome in st.session_state.bastao_queue
-        st.session_state[f'check_{nome}'] = True if in_queue else (False if is_blocked or in_prio else ('Indisponível' not in curr))
-        
+        st.session_state.bastao_counts.setdefault(nome, 0); st.session_state.skip_flags.setdefault(nome, False)
+        current_status = st.session_state.status_texto.get(nome, 'Indisponível')
+        if current_status is None: current_status = 'Indisponível'
+        st.session_state.status_texto[nome] = current_status
+        blocking = ['Almoço', 'Ausente', 'Saída rápida', 'Sessão', 'Reunião', 'Treinamento']
+        is_hard_blocked = any(kw in current_status for kw in blocking)
+        if is_hard_blocked: is_available = False
+        elif nome in st.session_state.priority_return_queue: is_available = False
+        elif nome in st.session_state.bastao_queue: is_available = True
+        else: is_available = 'Indisponível' not in current_status
+        st.session_state[f'check_{nome}'] = is_available
         if nome not in st.session_state.current_status_starts: st.session_state.current_status_starts[nome] = now
-        
     check_and_assume_baton()
 
 def reset_day_state():
@@ -266,65 +267,57 @@ def reset_day_state():
 
 def ensure_daily_reset():
     now_br = get_brazil_time(); last_run = st.session_state.report_last_run_date
-    if now_br.date() > last_run.date():
-        reset_day_state(); st.toast("☀️ Novo dia detectado! Fila limpa.", icon="🧹"); save_state()
+    if now_br.date() > last_run.date(): reset_day_state(); st.toast("☀️ Novo dia detectado! Fila limpa.", icon="🧹"); save_state()
 
-# --- AÇÕES ---
+# --- AÇÕES DA UI (DEFINIDAS ANTES DA RENDERIZAÇÃO) ---
+
+def on_auxilio_change(): save_state()
+
 def toggle_queue(consultor):
     now_hour = get_brazil_time().hour
-    if now_hour >= 20 or now_hour < 6: st.toast("💤 Fora do expediente!", icon="🌙"); time.sleep(1); st.rerun(); return
+    if now_hour >= 20 or now_hour < 6:
+        st.toast("💤 Fora do expediente (20h às 06h)! Ação bloqueada.", icon="🌙")
+        st.session_state[f'check_{consultor}'] = False; time.sleep(1); st.rerun(); return False
     ensure_daily_reset(); st.session_state.gif_warning = False; now_br = get_brazil_time()
-    
     if consultor in st.session_state.bastao_queue:
-        # Saindo da fila
-        holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
-        succ = None
-        if consultor == holder:
+        current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
+        forced_successor = None
+        if consultor == current_holder:
             idx = st.session_state.bastao_queue.index(consultor)
             nxt = find_next_holder_index(idx, st.session_state.bastao_queue, st.session_state.skip_flags)
-            if nxt != -1: succ = st.session_state.bastao_queue[nxt]
-        
+            if nxt != -1: forced_successor = st.session_state.bastao_queue[nxt]
         st.session_state.bastao_queue.remove(consultor)
         st.session_state[f'check_{consultor}'] = False
-        
-        curr = st.session_state.status_texto.get(consultor, '')
-        if not curr or curr == 'Bastão':
-            log_status_change(consultor, curr, 'Indisponível', now_br - st.session_state.current_status_starts.get(consultor, now_br))
+        current_s = st.session_state.status_texto.get(consultor, '')
+        if current_s == '' or current_s == 'Bastão':
+            log_status_change(consultor, current_s, 'Indisponível', now_br - st.session_state.current_status_starts.get(consultor, now_br))
             st.session_state.status_texto[consultor] = 'Indisponível'
-            
-        check_and_assume_baton(succ)
+        check_and_assume_baton(forced_successor)
     else:
-        # Entrando
         st.session_state.bastao_queue.append(consultor)
         st.session_state[f'check_{consultor}'] = True
         st.session_state.skip_flags[consultor] = False
         if consultor in st.session_state.priority_return_queue: st.session_state.priority_return_queue.remove(consultor)
-        
-        curr = st.session_state.status_texto.get(consultor, 'Indisponível')
-        if 'Indisponível' in curr:
-            log_status_change(consultor, curr, '', now_br - st.session_state.current_status_starts.get(consultor, now_br))
+        current_s = st.session_state.status_texto.get(consultor, 'Indisponível')
+        if 'Indisponível' in current_s:
+            log_status_change(consultor, current_s, '', now_br - st.session_state.current_status_starts.get(consultor, now_br))
             st.session_state.status_texto[consultor] = ''
         check_and_assume_baton()
-    save_state()
+    save_state(); return True
 
 def leave_specific_status(consultor, status_type_to_remove):
-    ensure_daily_reset(); st.session_state.gif_warning = False
-    old = st.session_state.status_texto.get(consultor, '')
-    now_br = get_brazil_time(); dur = now_br - st.session_state.current_status_starts.get(consultor, now_br)
-    
-    parts = [p.strip() for p in old.split('|')]
+    ensure_daily_reset(); st.session_state.gif_warning = False; old_status = st.session_state.status_texto.get(consultor, '')
+    now_br = get_brazil_time(); duration = now_br - st.session_state.current_status_starts.get(consultor, now_br)
+    parts = [p.strip() for p in old_status.split('|')]
     new_parts = [p for p in parts if status_type_to_remove not in p and p]
-    new_s = " | ".join(new_parts)
-    if not new_s and consultor not in st.session_state.bastao_queue: new_s = 'Indisponível'
-    
-    log_status_change(consultor, old, new_s, dur)
-    st.session_state.status_texto[consultor] = new_s
-    
-    if status_type_to_remove in ['Almoço', 'Treinamento']:
+    new_status = " | ".join(new_parts)
+    if not new_status and consultor not in st.session_state.bastao_queue: new_status = 'Indisponível'
+    log_status_change(consultor, old_status, new_status, duration)
+    st.session_state.status_texto[consultor] = new_status
+    if status_type_to_remove == 'Almoço' or status_type_to_remove == 'Treinamento':
         if consultor not in st.session_state.bastao_queue: st.session_state.bastao_queue.append(consultor)
         st.session_state[f'check_{consultor}'] = True
         st.session_state.skip_flags[consultor] = False
-    
     check_and_assume_baton(); save_state()
 
 def enter_from_indisponivel(consultor):
@@ -334,109 +327,97 @@ def enter_from_indisponivel(consultor):
     if consultor not in st.session_state.bastao_queue: st.session_state.bastao_queue.append(consultor)
     st.session_state[f'check_{consultor}'] = True
     st.session_state.skip_flags[consultor] = False
-    old = st.session_state.status_texto.get(consultor, 'Indisponível')
-    dur = get_brazil_time() - st.session_state.current_status_starts.get(consultor, get_brazil_time())
-    log_status_change(consultor, old, '', dur)
+    old_status = st.session_state.status_texto.get(consultor, 'Indisponível')
+    duration = get_brazil_time() - st.session_state.current_status_starts.get(consultor, get_brazil_time())
+    log_status_change(consultor, old_status, '', duration)
     st.session_state.status_texto[consultor] = ''
     check_and_assume_baton(); save_state()
 
 def rotate_bastao():
-    ensure_daily_reset(); sel = st.session_state.consultor_selectbox
-    if not sel or sel == 'Selecione um nome': st.warning('Selecione um consultor.'); return
-    holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
-    if sel != holder: st.session_state.gif_warning = True; return
-    
-    q = st.session_state.bastao_queue; idx = q.index(holder) if holder in q else -1
-    if idx == -1: check_and_assume_baton(); return
-    
-    next_idx = find_next_holder_index(idx, q, st.session_state.skip_flags)
+    ensure_daily_reset(); selected = st.session_state.consultor_selectbox
+    if not selected or selected == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
+    queue = st.session_state.bastao_queue; skips = st.session_state.skip_flags
+    current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
+    if selected != current_holder: st.session_state.gif_warning = True; return
+    current_index = queue.index(current_holder) if current_holder in queue else -1
+    if current_index == -1: check_and_assume_baton(); return
+    eligible_in_queue = [p for p in queue if st.session_state.get(f'check_{p}')]
+    skippers_ahead = [p for p in eligible_in_queue if skips.get(p, False) and p != current_holder]
+    if len(skippers_ahead) > 0 and len(skippers_ahead) == len([p for p in eligible_in_queue if p != current_holder]):
+        for c in queue: st.session_state.skip_flags[c] = False
+        skips = st.session_state.skip_flags
+        st.toast("Ciclo reiniciado!", icon="🔄")
+    next_idx = find_next_holder_index(current_index, queue, skips)
     if next_idx != -1:
-        nh = q[next_idx]
-        # Skippers logic...
-        if next_idx > idx: skipped = q[idx+1:next_idx]
-        else: skipped = q[idx+1:] + q[:next_idx]
-        for p in skipped: st.session_state.skip_flags[p] = False
-        st.session_state.skip_flags[nh] = False
-        
-        now = get_brazil_time()
-        # Holder sai
-        old_h_s = st.session_state.status_texto[holder]
-        new_h_s = old_h_s.replace('Bastão | ', '').replace('Bastão', '').strip()
-        log_status_change(holder, old_h_s, new_h_s, now - (st.session_state.bastao_start_time or now))
-        st.session_state.status_texto[holder] = new_h_s
-        
-        # New holder entra
-        old_n_s = st.session_state.status_texto.get(nh, '')
-        new_n_s = f"Bastão | {old_n_s}" if old_n_s else "Bastão"
-        log_status_change(nh, old_n_s, new_n_s, timedelta(0))
-        st.session_state.status_texto[nh] = new_n_s
-        st.session_state.bastao_start_time = now
-        st.session_state.bastao_counts[holder] = st.session_state.bastao_counts.get(holder, 0) + 1
-        st.session_state.play_sound = True; st.session_state.rotation_gif_start_time = now
-        send_chat_notification_internal(nh, 'Bastão'); save_state()
-    else:
-        st.warning('Ninguém elegível na fila.'); check_and_assume_baton()
+        next_holder = queue[next_idx]
+        if next_idx > current_index: skipped_over = queue[current_index+1 : next_idx]
+        else: skipped_over = queue[current_index+1:] + queue[:next_idx]
+        for person in skipped_over: st.session_state.skip_flags[person] = False
+        st.session_state.skip_flags[next_holder] = False
+        now_br = get_brazil_time()
+        old_h_status = st.session_state.status_texto[current_holder]
+        new_h_status = old_h_status.replace('Bastão | ', '').replace('Bastão', '').strip()
+        log_status_change(current_holder, old_h_status, new_h_status, now_br - (st.session_state.bastao_start_time or now_br))
+        st.session_state.status_texto[current_holder] = new_h_status
+        old_n_status = st.session_state.status_texto.get(next_holder, '')
+        new_n_status = f"Bastão | {old_n_status}" if old_n_status else "Bastão"
+        log_status_change(next_holder, old_n_status, new_n_status, timedelta(0))
+        st.session_state.status_texto[next_holder] = new_n_status
+        st.session_state.bastao_start_time = now_br
+        st.session_state.bastao_counts[current_holder] = st.session_state.bastao_counts.get(current_holder, 0) + 1
+        st.session_state.play_sound = True; st.session_state.rotation_gif_start_time = now_br
+        send_chat_notification_internal(next_holder, 'Bastão'); save_state()
+    else: st.warning('Ninguém elegível.'); check_and_assume_baton()
 
 def toggle_skip():
-    sel = st.session_state.consultor_selectbox
-    if not sel or sel == 'Selecione um nome': st.warning('Selecione um consultor.'); return
-    if not st.session_state.get(f'check_{sel}'): st.warning(f'{sel} indisponível.'); return
-    st.session_state.skip_flags[sel] = not st.session_state.skip_flags.get(sel, False); save_state()
+    selected = st.session_state.consultor_selectbox
+    if not selected or selected == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
+    if not st.session_state.get(f'check_{selected}'): st.warning(f'{selected} não está disponível.'); return
+    st.session_state.skip_flags[selected] = not st.session_state.skip_flags.get(selected, False); save_state()
 
 def update_status(new_status_part, force_exit_queue=False):
     ensure_daily_reset()
-    sel = st.session_state.consultor_selectbox
-    if not sel or sel == 'Selecione um nome': st.warning('Selecione um consultor.'); return
+    selected = st.session_state.consultor_selectbox
+    st.session_state.gif_warning = False
+    if not selected or selected == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
+    blocking = ['Almoço', 'Ausente', 'Saída rápida', 'Sessão', 'Reunião', 'Treinamento']
+    should_exit = force_exit_queue or any(b in new_status_part for b in blocking)
     
-    # 1. Definir o Status Final STRING antes de qualquer coisa
-    current = st.session_state.status_texto.get(sel, '')
+    forced_succ = None
+    if should_exit and selected in st.session_state.bastao_queue:
+        holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
+        if selected == holder:
+            idx = st.session_state.bastao_queue.index(selected)
+            nxt = find_next_holder_index(idx, st.session_state.bastao_queue, st.session_state.skip_flags)
+            if nxt != -1: forced_succ = st.session_state.bastao_queue[nxt]
+        
+        st.session_state[f'check_{selected}'] = False
+        st.session_state.bastao_queue.remove(selected)
+        st.session_state.skip_flags.pop(selected, None)
+    
+    current = st.session_state.status_texto.get(selected, '')
+    is_holder = 'Bastão' in current
     parts = [p.strip() for p in current.split('|') if p.strip()]
     type_new = new_status_part.split(':')[0]
     clean = [p for p in parts if p != 'Indisponível' and not p.startswith(type_new)]
     clean.append(new_status_part)
-    # Ordena: Bastão -> Atividade -> Outros
     clean.sort(key=lambda x: 0 if 'Bastão' in x else 1 if 'Atividade' in x or 'Projeto' in x else 2)
     final_status = " | ".join(clean)
     
-    # 2. Lógica de Saída da Fila e Rotação
-    blocking = ['Almoço', 'Ausente', 'Saída rápida', 'Sessão', 'Reunião', 'Treinamento']
-    should_exit = force_exit_queue or any(b in new_status_part for b in blocking)
+    if is_holder and not should_exit and 'Bastão' not in final_status: final_status = f"Bastão | {final_status}"
     
-    is_holder = 'Bastão' in current
-    forced_succ = None
-    
-    if should_exit and sel in st.session_state.bastao_queue:
-        # Se for o holder, descobre sucessor
-        holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
-        if sel == holder:
-            idx = st.session_state.bastao_queue.index(sel)
-            nxt = find_next_holder_index(idx, st.session_state.bastao_queue, st.session_state.skip_flags)
-            if nxt != -1: forced_succ = st.session_state.bastao_queue[nxt]
-        
-        # Remove da fila
-        st.session_state[f'check_{sel}'] = False
-        st.session_state.bastao_queue.remove(sel)
-        st.session_state.skip_flags.pop(sel, None)
-    
-    # 3. Se tinha bastão e não saiu, mantém o texto Bastão
-    if is_holder and not should_exit and 'Bastão' not in final_status:
-        final_status = f"Bastão | {final_status}"
-    
-    # 4. APLICA A MUDANÇA DE STATUS (Log + Estado)
-    # Importante: Fazemos isso ANTES de chamar check_and_assume_baton
     now_br = get_brazil_time()
-    log_status_change(sel, current, final_status, now_br - st.session_state.current_status_starts.get(sel, now_br))
-    st.session_state.status_texto[sel] = final_status
+    log_status_change(selected, current, final_status, now_br - st.session_state.current_status_starts.get(selected, now_br))
+    
+    # 1. ATUALIZA STATUS MANUAL
+    st.session_state.status_texto[selected] = final_status
     
     if new_status_part == 'Saída rápida':
-        if sel not in st.session_state.priority_return_queue: st.session_state.priority_return_queue.append(sel)
-    elif sel in st.session_state.priority_return_queue: st.session_state.priority_return_queue.remove(sel)
+        if selected not in st.session_state.priority_return_queue: st.session_state.priority_return_queue.append(selected)
+    elif selected in st.session_state.priority_return_queue: st.session_state.priority_return_queue.remove(selected)
     
-    # 5. GIRA O BASTÃO COM IMUNIDADE
-    # Passamos 'sel' como immune_consultant para que a função de rotação NÃO coloque ele como Indisponível
-    if is_holder: 
-        check_and_assume_baton(forced_succ, immune_consultant=sel)
-        
+    # 2. GIRA BASTÃO (COM IMUNIDADE PARA QUEM SAIU)
+    if is_holder: check_and_assume_baton(forced_succ, immune_consultant=selected)
     save_state()
 
 def auto_manage_time():
@@ -450,9 +431,25 @@ def auto_manage_time():
             save_state()
 
 def manual_rerun(): st.session_state.gif_warning = False; st.rerun()
+def toggle_view(v): 
+    st.session_state.active_view = v if st.session_state.active_view != v else None
+    if v == 'chamados': st.session_state.chamado_guide_step = 1
+def handle_sessao_submission(c, cam, d): 
+    if not d: st.error("Data inválida."); return
+    if send_sessao_to_chat_fn(c, f"Prezada equipe do {cam},\n\nSou {c} e acompanharei a sessão de {d.strftime('%d/%m/%Y')}."):
+        st.session_state.last_reg_status = "success_sessao"; st.session_state.html_content_cache = gerar_html_checklist(c, cam, d.strftime('%d/%m/%Y')); st.session_state.html_download_ready = True
+    else: st.session_state.last_reg_status = "error_sessao"
+def handle_chamado_submission(): st.toast("Chamado simulado!", icon="✅"); st.session_state.last_reg_status = "success_chamado"; st.session_state.chamado_guide_step = 0
+def handle_horas_extras_submission(c, d, i, t, m): 
+    if send_horas_extras_to_chat(c, d, i, t, m): st.success("Enviado!"); st.session_state.active_view = None; time.sleep(1); st.rerun()
+    else: st.error("Erro.")
+def handle_atendimento_submission(c, d, u, n, s, desc, can, des, j=""): 
+    if send_atendimento_to_chat(c, d, u, n, s, desc, can, des, j): st.success("Enviado!"); st.session_state.active_view = None; time.sleep(1); st.rerun()
+    else: st.error("Erro.")
+def set_chamado_step(n): st.session_state.chamado_guide_step = n
 
 # ============================================
-# LAYOUT
+# 4. EXECUÇÃO DA INTERFACE
 # ============================================
 st.set_page_config(page_title="Controle Bastão Cesupe 2026", layout="wide", page_icon="🥂")
 init_session_state(); auto_manage_time()
@@ -465,130 +462,157 @@ with c_topo_esq:
     st.markdown(f"""<div style="display: flex; align-items: center; gap: 15px;"><h1 style="margin: 0; padding: 0; font-size: 2.2rem; color: #FFD700; text-shadow: 1px 1px 2px #B8860B;">Controle Bastão Cesupe 2026 {BASTAO_EMOJI}</h1><img src="{src}" style="width: 120px; height: 120px; border-radius: 50%; border: 3px solid #FFD700; object-fit: cover;"></div>""", unsafe_allow_html=True)
 
 with c_topo_dir:
-    c1, c2 = st.columns([2, 1], vertical_alignment="bottom")
-    sel_fast = c1.selectbox("Assumir (Rápido)", ["Selecione"]+CONSULTORES, label_visibility="collapsed", key="quick")
-    if c2.button("🚀 Entrar", use_container_width=True) and sel_fast != "Selecione":
-        if toggle_queue(sel_fast): st.session_state.consultor_selectbox = sel_fast; st.rerun()
+    c_sub1, c_sub2 = st.columns([2, 1], vertical_alignment="bottom")
+    with c_sub1: novo_responsavel = st.selectbox("Assumir Bastão (Rápido)", options=["Selecione"] + CONSULTORES, label_visibility="collapsed", key="quick_enter")
+    with c_sub2:
+        if st.button("🚀 Entrar", use_container_width=True):
+            if novo_responsavel != "Selecione":
+                if toggle_queue(novo_responsavel):
+                    st.session_state.consultor_selectbox = novo_responsavel; st.success(f"{novo_responsavel} agora está na fila!"); st.rerun()
 
 st.markdown("<hr style='border: 1px solid #FFD700; margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
 
 if st.session_state.rotation_gif_start_time:
     if (datetime.now() - st.session_state.rotation_gif_start_time).total_seconds() < 20: st.image(GIF_URL_ROTATION, width=200)
     else: st.session_state.rotation_gif_start_time = None; save_state()
+
 if st.session_state.get('play_sound'): st.components.v1.html(play_sound_html(), height=0, width=0); st.session_state.play_sound = False
-st_autorefresh(interval=8000, key='auto')
+st_autorefresh(interval=8000, key='auto_rerun')
 
-col_main, col_side = st.columns([1.5, 1])
-queue = st.session_state.bastao_queue
-holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
-idx_h = queue.index(holder) if holder in queue else -1
-idx_p = find_next_holder_index(idx_h, queue, st.session_state.skip_flags)
-prox = queue[idx_p] if idx_p != -1 else None
-rest = [queue[(idx_p + 1 + i) % len(queue)] for i in range(len(queue)) if queue[(idx_p + 1 + i) % len(queue)] not in [holder, prox]] if idx_p != -1 else []
+col_principal, col_disponibilidade = st.columns([1.5, 1])
+queue, skips = st.session_state.bastao_queue, st.session_state.skip_flags
+responsavel = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
+curr_idx = queue.index(responsavel) if responsavel in queue else -1
+prox_idx = find_next_holder_index(curr_idx, queue, skips)
+proximo = queue[prox_idx] if prox_idx != -1 else None
+restante = [queue[(prox_idx + 1 + i) % len(queue)] for i in range(len(queue)) if queue[(prox_idx + 1 + i) % len(queue)] not in [responsavel, proximo]] if prox_idx != -1 else []
 
-with col_main:
+with col_principal:
     st.header("Responsável pelo Bastão")
-    if holder:
-        st.markdown(f"""<div style="background: linear-gradient(135deg, #FFF8DC 0%, #FFFFFF 100%); border: 3px solid #FFD700; padding: 25px; border-radius: 15px; display: flex; align-items: center; box-shadow: 0 4px 15px rgba(255, 215, 0, 0.3); margin-bottom: 20px;"><div style="flex-shrink: 0; margin-right: 25px;"><img src="{GIF_BASTAO_HOLDER}" style="width: 90px; height: 90px; border-radius: 50%; object-fit: cover; border: 2px solid #FFD700;"></div><div><span style="font-size: 14px; color: #555; font-weight: bold; text-transform: uppercase; letter-spacing: 1.5px;">Atualmente com:</span><br><span style="font-size: 42px; font-weight: 800; color: #000080; line-height: 1.1;">{holder}</span></div></div>""", unsafe_allow_html=True)
+    if responsavel:
+        st.markdown(f"""<div style="background: linear-gradient(135deg, #FFF8DC 0%, #FFFFFF 100%); border: 3px solid #FFD700; padding: 25px; border-radius: 15px; display: flex; align-items: center; box-shadow: 0 4px 15px rgba(255, 215, 0, 0.3); margin-bottom: 20px;"><div style="flex-shrink: 0; margin-right: 25px;"><img src="{GIF_BASTAO_HOLDER}" style="width: 90px; height: 90px; border-radius: 50%; object-fit: cover; border: 2px solid #FFD700;"></div><div><span style="font-size: 14px; color: #555; font-weight: bold; text-transform: uppercase; letter-spacing: 1.5px;">Atualmente com:</span><br><span style="font-size: 42px; font-weight: 800; color: #000080; line-height: 1.1;">{responsavel}</span></div></div>""", unsafe_allow_html=True)
         dur = get_brazil_time() - (st.session_state.bastao_start_time or get_brazil_time())
-        st.caption(f"⏱️ Tempo: **{format_time_duration(dur)}**")
-    else: st.markdown('<h2>(Ninguém)</h2>', unsafe_allow_html=True)
+        st.caption(f"⏱️ Tempo com o bastão: **{format_time_duration(dur)}**")
+    else: st.markdown('<h2>(Ninguém com o bastão)</h2>', unsafe_allow_html=True)
     
-    st.markdown("###"); st.header("Próximos")
-    if prox: st.markdown(f'### 1º: **{prox}**')
-    if rest: st.markdown(f'#### 2º+: {", ".join(rest)}')
-    
+    st.markdown("###"); st.header("Próximos da Fila")
+    if proximo: st.markdown(f'### 1º: **{proximo}**')
+    if restante: st.markdown(f'#### 2º em diante: {", ".join(restante)}')
+    elif not proximo: st.markdown('*Ninguém elegível.*')
+
     st.markdown("###"); st.header("**Consultor(a)**")
     st.selectbox('Selecione:', ['Selecione um nome'] + CONSULTORES, key='consultor_selectbox', label_visibility='collapsed')
-    st.markdown("#### Ações:")
-    
-    r1, r2, r3, r4 = st.columns(4); r2_1, r2_2, r2_3, r2_4, r2_5, r2_6 = st.columns(6)
-    r1.button('🎯 Passar', on_click=rotate_bastao, use_container_width=True)
-    r2.button('⏭️ Pular', on_click=toggle_skip, use_container_width=True)
-    r3.button('📋 Ativ.', on_click=toggle_view, args=('menu_atividades',), use_container_width=True)
-    r4.button('🏗️ Proj.', on_click=toggle_view, args=('menu_projetos',), use_container_width=True)
-    r2_1.button('🎓 Treino', on_click=toggle_view, args=('menu_treinamento',), use_container_width=True)
-    r2_2.button('📅 Reunião', on_click=toggle_view, args=('menu_reuniao',), use_container_width=True)
-    r2_3.button('🍽️ Almoço', on_click=update_status, args=('Almoço', True), use_container_width=True)
-    r2_4.button('🎙️ Sessão', on_click=toggle_view, args=('menu_sessao',), use_container_width=True)
-    r2_5.button('🚶 Saída', on_click=update_status, args=('Saída rápida', True), use_container_width=True)
-    r2_6.button('👤 Ausente', on_click=update_status, args=('Ausente', True), use_container_width=True)
+    st.markdown("#### "); st.markdown("**Ações:**")
+    r1c1, r1c2, r1c3, r1c4 = st.columns(4); r2c1, r2c2, r2c3, r2c4, r2c5, r2c6 = st.columns(6)
+    r1c1.button('🎯 Passar', on_click=rotate_bastao, use_container_width=True)
+    r1c2.button('⏭️ Pular', on_click=toggle_skip, use_container_width=True)
+    r1c3.button('📋 Atividades', on_click=toggle_view, args=('menu_atividades',), use_container_width=True)
+    r1c4.button('🏗️ Projeto', on_click=toggle_view, args=('menu_projetos',), use_container_width=True)
+    r2c1.button('🎓 Treinamento', on_click=toggle_view, args=('menu_treinamento',), use_container_width=True)
+    r2c2.button('📅 Reunião', on_click=toggle_view, args=('menu_reuniao',), use_container_width=True)
+    r2c3.button('🍽️ Almoço', on_click=update_status, args=('Almoço', True), use_container_width=True)
+    r2c4.button('🎙️ Sessão', on_click=toggle_view, args=('menu_sessao',), use_container_width=True)
+    r2c5.button('🚶 Saída', on_click=update_status, args=('Saída rápida', True), use_container_width=True)
+    r2c6.button('👤 Ausente', on_click=update_status, args=('Ausente', True), use_container_width=True)
 
     if st.session_state.active_view:
         with st.container(border=True):
-            av = st.session_state.active_view
-            if av == 'menu_atividades':
-                c1, c2 = st.columns(2); sel = c1.multiselect("Tipo", OPCOES_ATIVIDADES_STATUS); txt = c2.text_input("Det.")
-                if st.button("OK", type="primary"): update_status(f"Atividade: {', '.join(sel)} {txt}"); st.session_state.active_view=None; st.rerun()
-            elif av == 'menu_projetos':
-                if st.button("OK", type="primary"): update_status(f"Projeto: {st.selectbox('Proj.', OPCOES_PROJETOS)}"); st.session_state.active_view=None; st.rerun()
-            elif av in ['menu_reuniao', 'menu_treinamento', 'menu_sessao']:
-                t = av.split('_')[1].capitalize(); d = st.text_input("Qual?")
-                if st.button("OK", type="primary"): update_status(f"{t}: {d}", True); st.session_state.active_view=None; st.rerun()
-            if st.button("Cancelar"): st.session_state.active_view=None; st.rerun()
+            if st.session_state.active_view == 'menu_atividades':
+                c_a1, c_a2 = st.columns([1, 1]); atividades_escolhidas = c_a1.multiselect("Tipo:", OPCOES_ATIVIDADES_STATUS); texto_extra = c_a2.text_input("Detalhe:")
+                if st.button("Confirmar", type="primary", use_container_width=True): 
+                    if atividades_escolhidas: update_status(f"Atividade: {', '.join(atividades_escolhidas)}" + (f" - {texto_extra}" if texto_extra else "")); st.session_state.active_view = None; st.rerun()
+            elif st.session_state.active_view == 'menu_projetos':
+                if st.button("Confirmar", type="primary", use_container_width=True): update_status(f"Projeto: {st.selectbox('Projeto:', OPCOES_PROJETOS)}"); st.session_state.active_view = None; st.rerun()
+            elif st.session_state.active_view == 'menu_reuniao':
+                desc = st.text_input("Qual?"); 
+                if st.button("Confirmar", type="primary", use_container_width=True): update_status(f"Reunião: {desc}", True); st.session_state.active_view = None; st.rerun()
+            elif st.session_state.active_view == 'menu_treinamento':
+                desc = st.text_input("Qual?"); 
+                if st.button("Confirmar", type="primary", use_container_width=True): update_status(f"Treinamento: {desc}", True); st.session_state.active_view = None; st.rerun()
+            elif st.session_state.active_view == 'menu_sessao':
+                desc = st.text_input("Qual?"); 
+                if st.button("Confirmar", type="primary", use_container_width=True): update_status(f"Sessão: {desc}", True); st.session_state.active_view = None; st.rerun()
+            if st.button("Cancelar", use_container_width=True): st.session_state.active_view = None; st.rerun()
 
-    st.markdown("####"); st.button('🔄 Atualizar', on_click=manual_rerun, use_container_width=True); st.markdown("---")
-    
-    t1, t2, t3, t4, t5, t6, t7 = st.columns(7)
-    t1.button("📑", on_click=toggle_view, args=("checklist",), help="Checklist")
-    t2.button("🆘", on_click=toggle_view, args=("chamados",), help="Chamados")
-    t3.button("📝", on_click=toggle_view, args=("atendimentos",), help="Atend.")
-    t4.button("⏰", on_click=toggle_view, args=("hextras",), help="Extras")
-    t5.button("🧠", on_click=toggle_view, args=("descanso",), help="Descanso")
-    t6.button("🐛", on_click=toggle_view, args=("erro_novidade",), help="Erro")
-    t7.button("🖨️", on_click=toggle_view, args=("certidao",), help="Certidão")
+    st.markdown("####"); st.button('🔄 Atualizar (Manual)', on_click=manual_rerun, use_container_width=True); st.markdown("---")
+    c_tool1, c_tool2, c_tool3, c_tool4, c_tool5, c_tool6, c_tool7 = st.columns(7)
+    c_tool1.button("📑 Checklist", on_click=toggle_view, args=("checklist",), use_container_width=True)
+    c_tool2.button("🆘 Chamados", on_click=toggle_view, args=("chamados",), use_container_width=True)
+    c_tool3.button("📝 Atend.", on_click=toggle_view, args=("atendimentos",), use_container_width=True)
+    c_tool4.button("⏰ H. Extras", on_click=toggle_view, args=("hextras",), use_container_width=True)
+    c_tool5.button("🧠 Descanso", on_click=toggle_view, args=("descanso",), use_container_width=True)
+    c_tool6.button("🐛 Erro", on_click=toggle_view, args=("erro_novidade",), use_container_width=True)
+    c_tool7.button("🖨️ Certidão", on_click=toggle_view, args=("certidao",), use_container_width=True)
 
     if st.session_state.active_view == "checklist":
         with st.container(border=True):
-            st.header("Checklist"); d = st.date_input("Data"); c = st.selectbox("Câmara", CAMARAS_OPCOES)
-            if st.button("Gerar", type="primary"): handle_sessao_submission(st.session_state.consultor_selectbox, c, d)
-            if st.session_state.get('html_download_ready'): st.download_button("Baixar", st.session_state.html_content_cache, "Checklist.html")
-    # (Outros menus simplificados para caber, lógica mantida)
+            st.header("Gerador de Checklist"); data_eproc = st.date_input("Data:", value=get_brazil_time().date()); camara_eproc = st.selectbox("Câmara:", CAMARAS_OPCOES)
+            if st.button("Gerar HTML", type="primary", use_container_width=True): handle_sessao_submission(st.session_state.consultor_selectbox, camara_eproc, data_eproc)
+            if st.session_state.get('html_download_ready'): st.download_button("⬇️ Baixar HTML", st.session_state.html_content_cache, "Checklist.html", "text/html")
+    elif st.session_state.active_view == "chamados":
+        with st.container(border=True): st.header("Chamados"); st.write("Passos..."); st.button("Simular", on_click=handle_chamado_submission)
+    elif st.session_state.active_view == "certidao":
+        with st.container(border=True):
+            st.header("Certidão"); tipo = st.selectbox("Tipo:", ["Geral", "Eletrônica", "Física"])
+            if st.button("Gerar", type="primary", use_container_width=True): st.success("Gerado!") 
 
-with col_side:
-    st.markdown("###"); st.toggle("Auxílio", key='auxilio_ativo', on_change=on_auxilio_change)
-    if st.session_state.get('auxilio_ativo'): st.warning("Ativo!"); st.image(GIF_URL_NEDRY, width=200)
+    elif st.session_state.active_view == "atendimentos":
+        with st.container(border=True):
+            st.markdown("### Registro de Atendimento")
+            at_data = st.date_input("Data:", value=get_brazil_time().date(), key="at_data")
+            at_usuario = st.selectbox("Usuário:", REG_USUARIO_OPCOES, key="at_user")
+            at_nome_setor = st.text_input("Nome/Setor:", key="at_setor")
+            at_sistema = st.selectbox("Sistema:", REG_SISTEMA_OPCOES, key="at_sys")
+            at_descricao = st.text_input("Descrição:", key="at_desc")
+            at_canal = st.selectbox("Canal:", REG_CANAL_OPCOES, key="at_channel")
+            at_desfecho = st.selectbox("Desfecho:", REG_DESFECHO_OPCOES, key="at_outcome")
+            at_jira = st.text_input("Jira:", key="at_jira")
+            if st.button("Enviar", type="primary"): handle_atendimento_submission(st.session_state.consultor_selectbox, at_data, at_usuario, at_nome_setor, at_sistema, at_descricao, at_canal, at_desfecho, at_jira)
+
+with col_disponibilidade:
+    st.markdown("###"); st.toggle("Auxílio HP/Emails/Whatsapp", key='auxilio_ativo', on_change=on_auxilio_change)
+    if st.session_state.get('auxilio_ativo'): st.warning("HP/Emails/Whatsapp irão para bastão"); st.image(GIF_URL_NEDRY, width=300)
     st.markdown("---"); st.header('Status')
-    
-    # Listas UI
-    lists = {k: [] for k in ['fila','almoco','saida','ausente','indisponivel','atividades','projetos','reuniao','treino','sessao']}
-    for n in CONSULTORES:
-        s = st.session_state.status_texto.get(n, 'Indisponível')
-        if n in queue: lists['fila'].append(n)
-        elif s == 'Almoço': lists['almoco'].append(n)
-        elif s == 'Ausente': lists['ausente'].append(n)
-        elif s == 'Saída rápida': lists['saida'].append(n)
-        elif s == 'Indisponível': lists['indisponivel'].append(n)
-        elif 'Atividade:' in s or s=='Atendimento': lists['atividades'].append((n, s))
-        elif 'Projeto:' in s: lists['projetos'].append((n, s))
-        elif 'Reunião:' in s: lists['reuniao'].append((n, s))
-        elif 'Treinamento:' in s: lists['treino'].append((n, s))
-        elif 'Sessão:' in s: lists['sessao'].append((n, s))
+    ui_lists = {'fila': [], 'almoco': [], 'saida': [], 'ausente': [], 'atividade_especifica': [], 'sessao_especifica': [], 'projeto_especifico': [], 'reuniao_especifica': [], 'treinamento_especifico': [], 'indisponivel': []}
+    for nome in CONSULTORES:
+        if nome in st.session_state.bastao_queue: ui_lists['fila'].append(nome)
+        status = st.session_state.status_texto.get(nome, 'Indisponível')
+        if not status: pass
+        elif status == 'Almoço': ui_lists['almoco'].append(nome)
+        elif status == 'Ausente': ui_lists['ausente'].append(nome)
+        elif status == 'Saída rápida': ui_lists['saida'].append(nome)
+        elif status == 'Indisponível' and nome not in st.session_state.bastao_queue: ui_lists['indisponivel'].append(nome)
+        if 'Sessão:' in status: ui_lists['sessao_especifica'].append((nome, status.split(': ')[1].split('|')[0]))
+        if 'Reunião:' in status: ui_lists['reuniao_especifica'].append((nome, status.split(': ')[1].split('|')[0]))
+        if 'Projeto:' in status: ui_lists['projeto_especifico'].append((nome, status.split(': ')[1].split('|')[0]))
+        if 'Treinamento:' in status: ui_lists['treinamento_especifico'].append((nome, status.split(': ')[1].split('|')[0]))
+        if 'Atividade:' in status or status == 'Atendimento': ui_lists['atividade_especifica'].append((nome, status.split(': ')[1].split('|')[0] if ':' in status else 'Atendimento'))
 
-    st.subheader(f'✅ Fila ({len(lists["fila"])})')
-    for n in [c for c in queue if c in lists['fila']]:
+    st.subheader(f'✅ Na Fila ({len(ui_lists["fila"])})')
+    for nome in [c for c in queue if c in ui_lists["fila"]]:
         c1, c2 = st.columns([0.85, 0.15])
-        c2.checkbox(' ', key=f'chk_fila_{n}', value=True, on_change=toggle_queue, args=(n,), label_visibility='collapsed')
-        bg = "#FFD700" if n == holder else "transparent"; cl = "black" if n == holder else "inherit"
-        c1.markdown(f'<span style="background-color:{bg};color:{cl};padding:2px;border-radius:4px">{n}</span>', unsafe_allow_html=True)
+        c2.checkbox(' ', key=f'chk_fila_{nome}', value=True, on_change=toggle_queue, args=(nome,), label_visibility='collapsed')
+        extra = " 📋" if "Atividade" in st.session_state.status_texto.get(nome, '') else ""
+        if nome == responsavel: c1.markdown(f'<span style="background-color:#FFD700;color:black;padding:2px;border-radius:5px;">🥂 {nome}</span>', unsafe_allow_html=True)
+        else: c1.markdown(f'**{nome}**{extra}')
     st.markdown('---')
 
-    def show_sect(t, i, l, c, tag):
-        st.subheader(f'{i} {t} ({len(l)})')
-        for item in sorted(l, key=lambda x: x[0] if isinstance(x, tuple) else x):
-            n = item[0] if isinstance(item, tuple) else item; d = item[1] if isinstance(item, tuple) else t
+    def render_section(title, icon, items, color, tag):
+        st.subheader(f'{icon} {title} ({len(items)})')
+        for item in sorted(items, key=lambda x: x[0] if isinstance(x, tuple) else x):
+            n = item[0] if isinstance(item, tuple) else item; d = item[1] if isinstance(item, tuple) else title
             c1, c2 = st.columns([0.85, 0.15])
-            if t == 'Indisponível': c2.checkbox(' ', key=f'k_i_{n}', value=False, on_change=enter_from_indisponivel, args=(n,), label_visibility='collapsed')
-            else: c2.checkbox(' ', key=f'k_o_{n}', value=True, on_change=leave_specific_status, args=(n, tag), label_visibility='collapsed')
-            c1.markdown(f'**{n}** <span style="background:{c};font-size:11px;padding:2px;border-radius:4px">{d}</span>', unsafe_allow_html=True)
+            if title == 'Indisponível': c2.checkbox(' ', key=f'chk_simp_{title}_{n}', value=False, on_change=enter_from_indisponivel, args=(n,), label_visibility='collapsed')
+            else: c2.checkbox(' ', key=f'chk_st_{title}_{n}', value=True, on_change=leave_specific_status, args=(n, tag), label_visibility='collapsed')
+            c1.markdown(f'<div style="margin:2px"><strong>{n}</strong><span style="background-color:{color};padding:2px 6px;border-radius:6px;font-size:12px;margin-left:6px">{d}</span></div>', unsafe_allow_html=True)
         st.markdown('---')
 
-    show_sect('Demanda', '📋', lists['atividades'], '#FFECB3', 'Atividade')
-    show_sect('Projetos', '🏗️', lists['projetos'], '#BBDEFB', 'Projeto')
-    show_sect('Treino', '🎓', lists['treino'], '#B2DFDB', 'Treinamento')
-    show_sect('Reunião', '📅', lists['reuniao'], '#E1BEE7', 'Reunião')
-    show_sect('Almoço', '🍽️', lists['almoco'], '#FFCDD2', 'Almoço')
-    show_sect('Sessão', '🎙️', lists['sessao'], '#C8E6C9', 'Sessão')
-    show_sect('Saída', '🚶', lists['saida'], '#FFCDD2', 'Saída')
-    show_sect('Ausente', '👤', lists['ausente'], '#E1BEE7', 'Ausente')
-    show_sect('Indisponível', '❌', lists['indisponivel'], '#F5F5F5', 'Indisponível')
+    render_section('Em Demanda', '📋', ui_lists['atividade_especifica'], '#FFECB3', 'Atividade')
+    render_section('Projetos', '🏗️', ui_lists['projeto_especifico'], '#BBDEFB', 'Projeto')
+    render_section('Treinamento', '🎓', ui_lists['treinamento_especifico'], '#B2DFDB', 'Treinamento')
+    render_section('Reuniões', '📅', ui_lists['reuniao_especifica'], '#E1BEE7', 'Reunião')
+    render_section('Almoço', '🍽️', ui_lists['almoco'], '#FFCDD2', 'Almoço')
+    render_section('Sessão', '🎙️', ui_lists['sessao_especifica'], '#C8E6C9', 'Sessão')
+    render_section('Saída rápida', '🚶', ui_lists['saida'], '#FFCDD2', 'Saída rápida')
+    render_section('Ausente', '👤', ui_lists['ausente'], '#E1BEE7', 'Ausente')
+    render_section('Indisponível', '❌', ui_lists['indisponivel'], '#F5F5F5', 'Indisponível')
