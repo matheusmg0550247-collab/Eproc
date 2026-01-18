@@ -18,13 +18,13 @@ import os
 import io
 
 # --- IMPORTS DO BANCO DE DADOS (SUPABASE) ---
-# Certifique-se que o arquivo repository.py está na mesma pasta
 from repository import load_state_from_db, save_state_to_db
 
-# --- IMPORTS PARA O WORD ---
-from docx import Document
-from docx.shared import Pt
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+# --- IMPORTS DO UTILS (Helpers) ---
+from utils import (
+    get_brazil_time, get_secret, send_to_chat, gerar_docx_certidao, 
+    get_img_as_base64
+)
 
 # --- CONSTANTES DE CONSULTORES ---
 CONSULTORES = sorted([
@@ -33,29 +33,7 @@ CONSULTORES = sorted([
     "Luiz Henrique", "Marcelo Dos Santos", "Marina Silva", "Marina Torres", "Vanessa Ligiane"
 ])
 
-# ============================================
-# SEGURANÇA E WEBHOOKS (ST.SECRETS)
-# ============================================
-
-def get_secret(section, key):
-    try: return st.secrets[section][key]
-    except: return ""
-
-def get_brazil_time():
-    return datetime.utcnow() - timedelta(hours=3)
-
-# Webhooks
-GOOGLE_CHAT_WEBHOOK_BACKUP = get_secret("chat", "backup")
-CHAT_WEBHOOK_BASTAO = get_secret("chat", "bastao")
-GOOGLE_CHAT_WEBHOOK_REGISTRO = get_secret("chat", "registro")
-GOOGLE_CHAT_WEBHOOK_CHAMADO = get_secret("chat", "chamado")
-GOOGLE_CHAT_WEBHOOK_SESSAO = get_secret("chat", "sessao")
-GOOGLE_CHAT_WEBHOOK_CHECKLIST_HTML = get_secret("chat", "checklist")
-GOOGLE_CHAT_WEBHOOK_HORAS_EXTRAS = get_secret("chat", "extras")
-GOOGLE_CHAT_WEBHOOK_ERRO_NOVIDADE = get_secret("chat", "erro")
-SHEETS_WEBHOOK_URL = get_secret("sheets", "url")
-
-# --- Opções Visuais ---
+# --- CONSTANTES GERAIS ---
 REG_USUARIO_OPCOES = ["Cartório", "Gabinete", "Externo"]
 REG_SISTEMA_OPCOES = ["Conveniados", "Outros", "Eproc", "Themis", "JPE", "SIAP"]
 REG_CANAL_OPCOES = ["Presencial", "Telefone", "Email", "Whatsapp", "Outros"]
@@ -79,6 +57,7 @@ CAMARAS_OPCOES = sorted(list(CAMARAS_DICT.keys()))
 OPCOES_ATIVIDADES_STATUS = ["HP", "E-mail", "WhatsApp Plantão", "Homologação", "Redação Documentos", "Outros"]
 OPCOES_PROJETOS = ["Soma", "Treinamentos Eproc", "Manuais Eproc", "Cartilhas Gabinetes", "Notebook Lm", "Inteligência artifical cartórios"]
 
+# --- IMAGENS E ASSETS ---
 GIF_BASTAO_HOLDER = "https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExa3Uwazd5cnNra2oxdDkydjZkcHdqcWN2cng0Y2N0cmNmN21vYXVzMiZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/3rXs5J0hZkXwTZjuvM/giphy.gif"
 BASTAO_EMOJI = "🥂" 
 APP_URL_CLOUD = 'https://controle-bastao-cesupe.streamlit.app'
@@ -89,13 +68,17 @@ GIF_URL_WARNING = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExY2pjMDN0NGl
 SOUND_URL = "https://github.com/matheusmg0550247-collab/controle-bastao-eproc2/raw/main/doorbell-223669.mp3"
 PUG2026_FILENAME = "pug2026.png"
 
+# Webhook Sheets
+SHEETS_WEBHOOK_URL = get_secret("sheets", "url")
+
 # ============================================
-# 2. PERSISTÊNCIA E AUXILIARES
+# 2. PERSISTÊNCIA E LOGS
 # ============================================
 
 def save_state():
     """Salva o estado atual no Supabase via repository.py"""
     try:
+        # Monta o dicionário com tudo o que precisamos salvar
         state_to_save = {
             'status_texto': st.session_state.status_texto,
             'bastao_queue': st.session_state.bastao_queue,
@@ -114,14 +97,6 @@ def save_state():
         save_state_to_db(state_to_save)
     except Exception as e:
         print(f"Erro ao salvar estado: {e}")
-
-@st.cache_data
-def get_img_as_base64(file_path):
-    try:
-        with open(file_path, "rb") as f:
-            data = f.read()
-        return base64.b64encode(data).decode()
-    except: return None
 
 def load_logs(): return st.session_state.daily_logs
 
@@ -169,40 +144,43 @@ def log_status_change(consultor, old_status, new_status, duration):
     duration_str = format_time_duration(final_duration)
     send_log_to_sheets(timestamp_str, consultor, old_lbl, new_lbl, duration_str)
     
+    if consultor not in st.session_state.current_status_starts:
+        st.session_state.current_status_starts[consultor] = now_br
     st.session_state.current_status_starts[consultor] = now_br
 
 # --- FUNCIONALIDADES DE WEBHOOK E CHAT ---
 def send_chat_notification_internal(consultor, status):
-    if CHAT_WEBHOOK_BASTAO and status == 'Bastão':
+    if status == 'Bastão':
         msg = f"🎉 **BASTÃO GIRADO!** 🎉 \n\n- **Novo(a) Responsável:** {consultor}\n- **Acesse o Painel:** {APP_URL_CLOUD}"
-        threading.Thread(target=_send_webhook_thread, args=(CHAT_WEBHOOK_BASTAO, {"text": msg})).start()
+        send_to_chat("bastao", msg)
         return True
     return False
 
 def send_horas_extras_to_chat(consultor, data, inicio, tempo, motivo):
-    if not GOOGLE_CHAT_WEBHOOK_HORAS_EXTRAS: return False
     msg = f"⏰ **Registro de Horas Extras**\n\n👤 **Consultor:** {consultor}\n📅 **Data:** {data.strftime('%d/%m/%Y')}\n🕐 **Início:** {inicio.strftime('%H:%M')}\n⏱️ **Tempo Total:** {tempo}\n📝 **Motivo:** {motivo}"
-    threading.Thread(target=_send_webhook_thread, args=(GOOGLE_CHAT_WEBHOOK_HORAS_EXTRAS, {"text": msg})).start()
+    send_to_chat("extras", msg)
     return True
 
 def send_atendimento_to_chat(consultor, data, usuario, nome_setor, sistema, descricao, canal, desfecho, jira_opcional=""):
-    if not GOOGLE_CHAT_WEBHOOK_REGISTRO: return False
     jira_str = f"\n🔢 **Jira:** CESUPE-{jira_opcional}" if jira_opcional else ""
     msg = f"📋 **Novo Registro de Atendimento**\n\n👤 **Consultor:** {consultor}\n📅 **Data:** {data.strftime('%d/%m/%Y')}\n👥 **Usuário:** {usuario}\n🏢 **Nome/Setor:** {nome_setor}\n💻 **Sistema:** {sistema}\n📝 **Descrição:** {descricao}\n📞 **Canal:** {canal}\n✅ **Desfecho:** {desfecho}{jira_str}"
-    threading.Thread(target=_send_webhook_thread, args=(GOOGLE_CHAT_WEBHOOK_REGISTRO, {"text": msg})).start()
+    send_to_chat("registro", msg)
     return True
 
 def handle_erro_novidade_submission(consultor, titulo, objetivo, relato, resultado):
-    if not GOOGLE_CHAT_WEBHOOK_ERRO_NOVIDADE: return False
     data_envio = get_brazil_time().strftime("%d/%m/%Y %H:%M")
     msg = f"🐛 **Novo Relato de Erro/Novidade**\n📅 **Data:** {data_envio}\n\n👤 **Autor:** {consultor}\n📌 **Título:** {titulo}\n\n🎯 **Objetivo:**\n{objetivo}\n\n🧪 **Relato:**\n{relato}\n\n🏁 **Resultado:**\n{resultado}"
-    threading.Thread(target=_send_webhook_thread, args=(GOOGLE_CHAT_WEBHOOK_ERRO_NOVIDADE, {"text": msg})).start()
+    send_to_chat("erro", msg)
     return True
 
-def send_sessao_to_chat(consultor, texto_mensagem):
-    if not GOOGLE_CHAT_WEBHOOK_SESSAO: return False
+def send_sessao_to_chat_fn(consultor, texto_mensagem):
     if not consultor or consultor == 'Selecione um nome': return False
-    threading.Thread(target=_send_webhook_thread, args=(GOOGLE_CHAT_WEBHOOK_SESSAO, {'text': texto_mensagem})).start()
+    send_to_chat("sessao", texto_mensagem)
+    return True
+
+def send_certidao_notification_to_chat(consultor, tipo):
+    msg = f"Consultor {consultor} solicitou uma certidão ({tipo}) de indisponibilidade. Modelo em word encontra-se na pasta do servidor para envio."
+    send_to_chat("certidao", msg)
     return True
 
 # --- HTML & VISUAL HELPERS ---
@@ -224,21 +202,6 @@ def render_fireworks():
 def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
     consultor_formatado = f"@{consultor_nome}" if not consultor_nome.startswith("@") else consultor_nome
     return f'<!DOCTYPE html><html lang="pt-br"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Acompanhamento de Sessão - {camara_nome}</title></head><body><div style="font-family: Arial, sans-serif; padding: 20px;"><h2>Checklist Gerado para {camara_nome}</h2><p>Responsável: {consultor_formatado}</p><p>Data: {data_sessao_formatada}</p><p><em>(Versão simplificada para visualização.)</em></p></div></body></html>'
-
-def gerar_docx_certidao(tipo_certidao, num_processo, data_indisponibilidade_input, num_chamado, motivo_pedido):
-    document = Document()
-    style = document.styles['Normal']
-    font = style.font
-    font.name = 'Arial'
-    font.size = Pt(12)
-    # ... (Geração simplificada para economizar espaço, mas funcional)
-    document.add_paragraph(f"Certidão: {tipo_certidao}")
-    document.add_paragraph(f"Processo: {num_processo}")
-    document.add_paragraph(f"Motivo: {motivo_pedido}")
-    buffer = io.BytesIO()
-    document.save(buffer)
-    buffer.seek(0)
-    return buffer
 
 def send_daily_report():
     logs = load_logs()
@@ -264,7 +227,7 @@ def send_daily_report():
                 if s != 'Bastão': report_text += f"- {s}: **{format_time_duration(t)}**\n"
             report_text += "\n"
     if not has_data: report_text += "Nenhuma atividade registrada."
-    if GOOGLE_CHAT_WEBHOOK_BACKUP: threading.Thread(target=_send_webhook_thread, args=(GOOGLE_CHAT_WEBHOOK_BACKUP, {'text': report_text})).start()
+    send_to_chat("backup", report_text)
     st.session_state['report_last_run_date'] = now_br
     st.session_state['daily_logs'] = []
     st.session_state['bastao_counts'] = {nome: 0 for nome in CONSULTORES}
@@ -399,6 +362,7 @@ def auto_manage_time():
             st.toast("🛑 Expediente encerrado (20h). Fila limpa.", icon="zzz")
 
 def toggle_queue(consultor):
+    # Regra 20h
     if get_brazil_time().hour >= 20:
         st.toast("🚫 Expediente encerrado! Não é possível entrar na fila.", icon="🌙")
         st.session_state[f'check_{consultor}'] = False
@@ -511,7 +475,7 @@ def toggle_view(v):
     st.session_state.active_view = v if st.session_state.active_view != v else None
     if v == 'chamados': st.session_state.chamado_guide_step = 1
 
-# [FUNÇÕES QUE FALTAVAM E CAUSAVAM NAME ERROR]
+# [FUNÇÕES QUE FALTAVAM]
 def enter_from_indisponivel(consultor):
     st.session_state.gif_warning = False
     if consultor not in st.session_state.bastao_queue:
@@ -706,7 +670,7 @@ with col_principal:
     st.button('🔄 Atualizar (Manual)', on_click=manual_rerun, use_container_width=True)
     st.markdown("---")
     
-    c_tool1, c_tool2, c_tool3, c_tool4, c_tool5, c_tool6 = st.columns(6)
+    c_tool1, c_tool2, c_tool3, c_tool4, c_tool5, c_tool6, c_tool7 = st.columns(7)
     
     c_tool1.button("📑 Checklist", help="Gerador de Checklist Eproc", use_container_width=True, on_click=toggle_view, args=("checklist",))
     c_tool2.button("🆘 Chamados", help="Guia de Abertura de Chamados", use_container_width=True, on_click=toggle_view, args=("chamados",))
@@ -714,6 +678,7 @@ with col_principal:
     c_tool4.button("⏰ H. Extras", help="Registrar Horas Extras", use_container_width=True, on_click=toggle_view, args=("hextras",))
     c_tool5.button("🧠 Descanso", help="Jogo e Ranking", use_container_width=True, on_click=toggle_view, args=("descanso",))
     c_tool6.button("🐛 Erro/Novidade", help="Relatar Erro ou Novidade", use_container_width=True, on_click=toggle_view, args=("erro_novidade",))
+    c_tool7.button("🖨️ Certidão", help="Gerar Certidão de Indisponibilidade", use_container_width=True, on_click=toggle_view, args=("certidao",))
         
     if st.session_state.active_view == "checklist":
         with st.container(border=True):
