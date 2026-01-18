@@ -1,7 +1,4 @@
 # -*- coding: utf-8 -*-
-# ============================================
-# 1. IMPORTS E DEFINIÇÕES GLOBAIS
-# ============================================
 import streamlit as st
 import pandas as pd
 import requests
@@ -16,12 +13,8 @@ import base64
 import os
 import io
 
-# --- IMPORTS DO BANCO DE DADOS E UTILS ---
 from repository import load_state_from_db, save_state_to_db
-from utils import (
-    get_brazil_time, get_secret, send_to_chat, gerar_docx_certidao, 
-    get_img_as_base64
-)
+from utils import (get_brazil_time, get_secret, send_to_chat, gerar_docx_certidao, get_img_as_base64)
 
 # --- CONSTANTES ---
 CONSULTORES = sorted([
@@ -60,14 +53,13 @@ GIF_URL_NEDRY = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExMGNkMGx3YnNkc
 SOUND_URL = "https://github.com/matheusmg0550247-collab/controle-bastao-eproc2/raw/main/doorbell-223669.mp3"
 PUG2026_FILENAME = "pug2026.png"
 
-# Webhooks
 GOOGLE_CHAT_WEBHOOK_BACKUP = get_secret("chat", "backup")
 CHAT_WEBHOOK_BASTAO = get_secret("chat", "bastao")
 GOOGLE_CHAT_WEBHOOK_REGISTRO = get_secret("chat", "registro")
 SHEETS_WEBHOOK_URL = get_secret("sheets", "url")
 
 # ============================================
-# 2. FUNÇÕES AUXILIARES E DE LÓGICA
+# 2. LÓGICA E ESTADO
 # ============================================
 
 def save_state():
@@ -117,7 +109,9 @@ def log_status_change(consultor, old_status, new_status, duration):
     send_log_to_sheets(timestamp_str, consultor, old_lbl, new_lbl, duration_str)
     st.session_state.current_status_starts[consultor] = now_br
 
-# --- FUNÇÕES DE NOTIFICAÇÃO ---
+# --- HANDLER GLOBAL ---
+def on_auxilio_change(): save_state()
+
 def send_chat_notification_internal(consultor, status):
     if CHAT_WEBHOOK_BASTAO and status == 'Bastão':
         msg = f"🎉 **BASTÃO GIRADO!** 🎉 \n\n- **Novo(a) Responsável:** {consultor}\n- **Acesse o Painel:** {APP_URL_CLOUD}"
@@ -147,7 +141,7 @@ def send_certidao_notification_to_chat(consultor, tipo):
     send_to_chat("certidao", msg); return True
 
 def play_sound_html(): return f'<audio autoplay="true"><source src="{SOUND_URL}" type="audio/mpeg"></audio>'
-def render_fireworks(): st.markdown("""<style>...</style>""", unsafe_allow_html=True) # Resumido
+def render_fireworks(): st.markdown("""<style>...</style>""", unsafe_allow_html=True)
 def gerar_html_checklist(c, m, d): return "..."
 def gerar_docx_certidao(t, n, d, c, m): 
     document = Document(); buffer = io.BytesIO(); document.save(buffer); buffer.seek(0); return buffer
@@ -186,30 +180,44 @@ def find_next_holder_index(current_index, queue, skips):
         if st.session_state.get(f'check_{consultor}', False) and not skips.get(consultor, False): return idx
     return -1
 
-def check_and_assume_baton(forced_successor=None):
+# --- CORREÇÃO AQUI: EXCLUDE_CONSULTANT ---
+def check_and_assume_baton(forced_successor=None, exclude_consultant=None):
     queue, skips = st.session_state.bastao_queue, st.session_state.skip_flags
     current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
     is_valid = (current_holder and current_holder in queue and st.session_state.get(f'check_{current_holder}'))
+    
     target = forced_successor if forced_successor else (current_holder if is_valid else None)
     if not target and not is_valid:
         idx = find_next_holder_index(-1, queue, skips)
         target = queue[idx] if idx != -1 else None
+
     changed = False; now = get_brazil_time()
+    
+    # 1. Limpeza dos Antigos
     for c in CONSULTORES:
-        if c != target and 'Bastão' in st.session_state.status_texto.get(c, ''):
+        # Se o consultor não é o novo alvo E não é quem a gente deve proteger (quem clicou almoço)
+        if c != target and c != exclude_consultant and 'Bastão' in st.session_state.status_texto.get(c, ''):
             log_status_change(c, 'Bastão', 'Indisponível', now - st.session_state.current_status_starts.get(c, now))
-            st.session_state.status_texto[c] = 'Indisponível'; changed = True
+            st.session_state.status_texto[c] = 'Indisponível'
+            changed = True
+
+    # 2. Definição do Novo Dono
     if target:
         curr_s = st.session_state.status_texto.get(target, '')
         if 'Bastão' not in curr_s:
             old_s = curr_s; new_s = f"Bastão | {old_s}" if old_s and old_s != "Indisponível" else "Bastão"
             log_status_change(target, old_s, new_s, now - st.session_state.current_status_starts.get(target, now))
             st.session_state.status_texto[target] = new_s; st.session_state.bastao_start_time = now
-            if current_holder != target: st.session_state.play_sound = True; send_chat_notification_internal(target, 'Bastão')
+            if current_holder != target: 
+                st.session_state.play_sound = True; send_chat_notification_internal(target, 'Bastão')
             st.session_state.skip_flags[target] = False; changed = True
+            
     elif not target and current_holder:
-        log_status_change(current_holder, 'Bastão', 'Indisponível', now - st.session_state.current_status_starts.get(current_holder, now))
-        st.session_state.status_texto[current_holder] = 'Indisponível'; changed = True
+        # Se não tem ninguém pra assumir, o atual perde o bastão (se não for o excluído)
+        if current_holder != exclude_consultant:
+            log_status_change(current_holder, 'Bastão', 'Indisponível', now - st.session_state.current_status_starts.get(current_holder, now))
+            st.session_state.status_texto[current_holder] = 'Indisponível'; changed = True
+
     if changed: save_state()
     return changed
 
@@ -262,7 +270,6 @@ def reset_day_state():
     for n in CONSULTORES: st.session_state[f'check_{n}'] = False
 
 def ensure_daily_reset():
-    """Garante que o dia seja resetado ANTES de qualquer ação."""
     now_br = get_brazil_time()
     last_run = st.session_state.report_last_run_date
     if now_br.date() > last_run.date():
@@ -270,13 +277,7 @@ def ensure_daily_reset():
         st.toast("☀️ Novo dia detectado! Fila limpa.", icon="🧹")
         save_state()
 
-# ============================================
-# 3. HANDLERS DE AÇÃO
-# ============================================
-
-# DEFINIÇÃO IMPORTANTE: Esta função precisa estar visível globalmente
-def on_auxilio_change(): save_state()
-
+# --- AÇÕES DE BOTÕES E REGRAS ---
 def toggle_queue(consultor):
     now_hour = get_brazil_time().hour
     if now_hour >= 20 or now_hour < 6:
@@ -395,6 +396,7 @@ def update_status(new_status_part, force_exit_queue=False):
     blocking = ['Almoço', 'Ausente', 'Saída rápida', 'Sessão', 'Reunião', 'Treinamento']
     should_exit = force_exit_queue or any(b in new_status_part for b in blocking)
     
+    # --- CORREÇÃO DE LÓGICA DE SAÍDA ---
     forced_successor = None
     if should_exit and selected in st.session_state.bastao_queue:
         current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
@@ -421,12 +423,16 @@ def update_status(new_status_part, force_exit_queue=False):
     
     now_br = get_brazil_time()
     log_status_change(selected, current, final_status, now_br - st.session_state.current_status_starts.get(selected, now_br))
+    
+    # 1. ATUALIZA O STATUS DO USUÁRIO
     st.session_state.status_texto[selected] = final_status
+    
     if new_status_part == 'Saída rápida':
         if selected not in st.session_state.priority_return_queue: st.session_state.priority_return_queue.append(selected)
     elif selected in st.session_state.priority_return_queue: st.session_state.priority_return_queue.remove(selected)
     
-    if is_holder: check_and_assume_baton(forced_successor)
+    # 2. CHAMA O GIRA BASTÃO (Com proteção para não sobrescrever o status de quem saiu)
+    if is_holder: check_and_assume_baton(forced_successor, exclude_consultant=selected)
     save_state()
 
 def auto_manage_time():
@@ -460,7 +466,7 @@ def handle_atendimento_submission(c, d, u, n, s, desc, can, des, j=""):
 def set_chamado_step(n): st.session_state.chamado_guide_step = n
 
 # ============================================
-# 4. EXECUÇÃO PRINCIPAL E LAYOUT
+# EXECUÇÃO PRINCIPAL
 # ============================================
 st.set_page_config(page_title="Controle Bastão Cesupe 2026", layout="wide", page_icon="🥂")
 init_session_state(); auto_manage_time()
@@ -569,8 +575,17 @@ with col_principal:
             if st.button("Gerar", type="primary", use_container_width=True): st.success("Gerado!") 
 
     elif st.session_state.active_view == "atendimentos":
-        # (View de atendimentos abreviada para caber, use a do código anterior se preferir)
-        pass
+        with st.container(border=True):
+            st.markdown("### Registro de Atendimento")
+            at_data = st.date_input("Data:", value=get_brazil_time().date(), key="at_data")
+            at_usuario = st.selectbox("Usuário:", REG_USUARIO_OPCOES, key="at_user")
+            at_nome_setor = st.text_input("Nome/Setor:", key="at_setor")
+            at_sistema = st.selectbox("Sistema:", REG_SISTEMA_OPCOES, key="at_sys")
+            at_descricao = st.text_input("Descrição:", key="at_desc")
+            at_canal = st.selectbox("Canal:", REG_CANAL_OPCOES, key="at_channel")
+            at_desfecho = st.selectbox("Desfecho:", REG_DESFECHO_OPCOES, key="at_outcome")
+            at_jira = st.text_input("Jira:", key="at_jira")
+            if st.button("Enviar", type="primary"): handle_atendimento_submission(st.session_state.consultor_selectbox, at_data, at_usuario, at_nome_setor, at_sistema, at_descricao, at_canal, at_desfecho, at_jira)
 
 with col_disponibilidade:
     st.markdown("###"); st.toggle("Auxílio HP/Emails/Whatsapp", key='auxilio_ativo', on_change=on_auxilio_change)
