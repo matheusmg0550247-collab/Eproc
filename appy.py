@@ -322,6 +322,11 @@ def init_session_state():
                     st.session_state[key] = value
         except Exception as e: print(f"Erro DB: {e}")
         st.session_state['db_loaded'] = True
+    
+    # [CORREÇÃO] Garante que report_last_run_date seja datetime
+    if 'report_last_run_date' in st.session_state and isinstance(st.session_state['report_last_run_date'], str):
+        try: st.session_state['report_last_run_date'] = datetime.fromisoformat(st.session_state['report_last_run_date'])
+        except: st.session_state['report_last_run_date'] = datetime.min
 
     now = get_brazil_time()
     defaults = {
@@ -367,10 +372,10 @@ def toggle_queue(consultor):
     now_hour = get_brazil_time().hour
     if now_hour >= 20 or now_hour < 6:
         st.toast("💤 Fora do expediente (20h às 06h)! Ação bloqueada.", icon="🌙")
-        # Força visualmente o estado para False
+        # Força o estado visual a reverter
         st.session_state[f'check_{consultor}'] = False 
-        time.sleep(1) # Delay para ver o aviso
-        st.rerun() # FORÇA O REDESENHO DA TELA (Desmarca o box)
+        time.sleep(1) # Delay para o usuário ver o Toast antes do refresh
+        st.rerun() # Refresh força a limpeza visual do checkbox
         return False
 
     st.session_state.gif_warning = False
@@ -432,7 +437,7 @@ def enter_from_indisponivel(consultor):
         st.toast("💤 Fora do expediente (20h às 06h)! Ação bloqueada.", icon="🌙")
         st.session_state[f'check_simples_Indisponível_{consultor}'] = False 
         time.sleep(1)
-        st.rerun() # Força o checkbox a desmarcar
+        st.rerun()
         return
 
     st.session_state.gif_warning = False
@@ -629,6 +634,7 @@ with c_topo_dir:
                 if toggle_queue(novo_responsavel):
                     st.session_state.consultor_selectbox = novo_responsavel
                     st.success(f"{novo_responsavel} agora está na fila!")
+                    time.sleep(0.5)
                     st.rerun()
                 # Se falhar (horário), a função toggle_queue já deu o toast e fez o sleep
 
