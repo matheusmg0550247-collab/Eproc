@@ -167,18 +167,16 @@ def send_daily_report():
     st.session_state['daily_logs'] = []; st.session_state['bastao_counts'] = {nome: 0 for nome in CONSULTORES}
     save_state()
 
-# --- LÓGICA DE FILA BLINDADA ---
+# --- LÓGICA DE FILA BLINDADA (AGRESSIVA) ---
 def find_next_holder_index(current_index, queue, skips):
     """
-    Retorna o índice do próximo consultor ELEGÍVEL na fila.
-    - queue: Lista de nomes (ordem atual).
-    - skips: Dicionário {nome: True/False} indicando quem está pulando.
+    Retorna o índice do próximo. Se todos pularem, força o vizinho imediato.
     """
     if not queue: return -1
     n = len(queue)
     start_index = (current_index + 1) % n
     
-    # 1. Tenta achar alguém que NÃO esteja pulando
+    # 1. Tenta achar alguém elegível (não pulando)
     for i in range(n):
         idx = (start_index + i) % n
         consultor = queue[idx]
@@ -186,15 +184,14 @@ def find_next_holder_index(current_index, queue, skips):
             continue
         if not skips.get(consultor, False):
             return idx
-    
-    # 2. Se todos pulam (e há >1 pessoa), o próximo da fila é FORÇADO a assumir
+            
+    # 2. SE NINGUÉM FOR ACHADO (todos pulando), PEGA O PRÓXIMO NA MARRA
     if n > 1:
         proximo_imediato_idx = (current_index + 1) % n
-        consultor_imediato = queue[proximo_imediato_idx]
-        # Remove o skip dele na marra
-        if skips.get(consultor_imediato, False):
-            st.session_state.skip_flags[consultor_imediato] = False
-            return proximo_imediato_idx
+        # Força o reset do skip do escolhido
+        nome_escolhido = queue[proximo_imediato_idx]
+        st.session_state.skip_flags[nome_escolhido] = False 
+        return proximo_imediato_idx
 
     return -1
 
@@ -227,7 +224,7 @@ def check_and_assume_baton(forced_successor=None, immune_consultant=None):
             if current_holder != target: 
                 st.session_state.play_sound = True; send_chat_notification_internal(target, 'Bastão')
             
-            # GARANTIA: Se recebeu o bastão, remove o skip
+            # GARANTIA: Se recebeu o bastão, remove o skip imediatamente
             st.session_state.skip_flags[target] = False
             changed = True
             
@@ -379,11 +376,15 @@ def rotate_bastao():
     
     if next_idx != -1:
         next_holder = queue[next_idx]
+        
+        # Opcional: zerar skips de quem foi pulado (mantemos por segurança)
         if next_idx > current_index: skipped_over = queue[current_index+1 : next_idx]
         else: skipped_over = queue[current_index+1:] + queue[:next_idx]
         for person in skipped_over: st.session_state.skip_flags[person] = False
         
+        # ZERA O SKIP DO NOVO DONO (Crucial)
         st.session_state.skip_flags[next_holder] = False
+        
         now_br = get_brazil_time()
         old_h_status = st.session_state.status_texto[current_holder]
         new_h_status = old_h_status.replace('Bastão | ', '').replace('Bastão', '').strip()
@@ -404,13 +405,12 @@ def toggle_skip():
     if not selected or selected == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
     if not st.session_state.get(f'check_{selected}'): st.warning(f'{selected} não está disponível.'); return
     
-    # Toggle
-    novo_estado = not st.session_state.skip_flags.get(selected, False)
-    st.session_state.skip_flags[selected] = novo_estado
+    novo = not st.session_state.skip_flags.get(selected, False)
+    st.session_state.skip_flags[selected] = novo
     
-    if novo_estado: st.toast(f"⏭️ {selected} pulou a vez!", icon="⏭️")
+    if novo: st.toast(f"⏭️ {selected} pulou a vez!", icon="⏭️")
     else: st.toast(f"✅ {selected} voltou para a fila!", icon="✅")
-        
+    
     save_state(); st.rerun()
 
 def update_status(new_status_part, force_exit_queue=False):
@@ -421,10 +421,9 @@ def update_status(new_status_part, force_exit_queue=False):
     current = st.session_state.status_texto.get(selected, '')
     blocking = ['Almoço', 'Ausente', 'Saída rápida', 'Sessão', 'Reunião', 'Treinamento']
     should_exit = force_exit_queue or any(b in new_status_part for b in blocking)
-    
     is_holder = 'Bastão' in current
-    forced_succ = None
     
+    forced_succ = None
     if should_exit and selected in st.session_state.bastao_queue:
         holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
         if selected == holder:
@@ -442,7 +441,6 @@ def update_status(new_status_part, force_exit_queue=False):
     else:
         parts = [p.strip() for p in current.split('|') if p.strip()]
         type_new = new_status_part.split(':')[0]
-        # Remove anterior do mesmo tipo
         clean = [p for p in parts if p != 'Indisponível' and not p.startswith(type_new) and p not in blocking]
         clean.append(new_status_part)
         clean.sort(key=lambda x: 0 if 'Bastão' in x else 1 if 'Atividade' in x or 'Projeto' in x else 2)
@@ -537,9 +535,8 @@ with col_principal:
         st.caption(f"⏱️ Tempo com o bastão: **{format_time_duration(dur)}**")
     else: st.markdown('<h2>(Ninguém com o bastão)</h2>', unsafe_allow_html=True)
     
-    # --- AJUSTE: EXIBIR QUEM PULOU A VEZ ---
+    # --- VISUALIZAÇÃO: QUEM PULOU ---
     pularam_nomes = [p for p in queue if skips.get(p, False)]
-    # Restante: lista original (ordenada por índice) filtrada para tirar quem pulou e quem é o próximo
     restante_sem_pular = [p for p in restante if not skips.get(p, False) and p not in pularam_nomes]
 
     st.markdown("###"); st.header("Próximos da Fila")
