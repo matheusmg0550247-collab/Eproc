@@ -1,26 +1,4 @@
-<!DOCTYPE html>
-<html lang="pt-br">
-<head>
-    <meta charset="UTF-8">
-    <title>Código Integral app.py - Cesupe 2026</title>
-    <style>
-        body { font-family: sans-serif; background-color: #f4f4f9; padding: 20px; line-height: 1.6; }
-        .container { max-width: 1000px; margin: auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        h2 { color: #2c3e50; border-bottom: 2px solid #FFD700; padding-bottom: 10px; }
-        pre { background: #272822; color: #f8f8f2; padding: 20px; border-radius: 5px; overflow-x: auto; font-size: 13px; white-space: pre-wrap; word-wrap: break-word; }
-        .btn-copy { background: #FFD700; border: none; padding: 10px 20px; font-weight: bold; cursor: pointer; border-radius: 5px; margin-bottom: 20px; }
-        .btn-copy:hover { background: #e6c200; }
-        .instrucoes { background: #e7f3fe; border-left: 6px solid #2196F3; padding: 15px; margin-bottom: 20px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h2>📄 Código Integral app.py (Cesupe 2026)</h2>
-        <div class="instrucoes">
-            <strong>Instruções:</strong> Use o botão abaixo para copiar o código sem riscos de cortes. Este código contém todas as 660+ linhas originais, incluindo Simon Game, Chamados, Erros, Horas Extras e a lógica corrigida de Certidões.
-        </div>
-        <button class="btn-copy" onclick="copyCode()">📋 Copiar Código Integral</button>
-        <pre id="pythonCode"># -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 import streamlit as st
 import pandas as pd
 import requests
@@ -555,6 +533,32 @@ def simon_game_ui():
 # ============================================
 # EXECUÇÃO PRINCIPAL
 # ============================================
+    def rotate_bastao():
+    queue = st.session_state.bastao_queue
+    holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
+    if not holder: 
+        return
+    idx = queue.index(holder) if holder in queue else -1
+    nxt = find_next_holder_index(idx, queue, st.session_state.skip_flags)
+    if nxt != -1: 
+        check_and_assume_baton(forced_successor=queue[nxt])
+    st.rerun()
+
+def toggle_skip():
+    selected = st.session_state.consultor_selectbox
+    if not selected or selected == 'Selecione um nome':
+        st.warning('Selecione um(a) consultor(a).')
+        return
+    if not st.session_state.get(f'check_{selected}'):
+        st.warning(f'{selected} não está disponível.')
+        return
+    novo = not st.session_state.skip_flags.get(selected, False)
+    st.session_state.skip_flags[selected] = novo
+    if novo and selected in st.session_state.bastao_queue:
+        st.session_state.bastao_queue.remove(selected)
+        st.session_state.bastao_queue.append(selected)
+    save_state()
+    st.rerun()
 st.set_page_config(page_title="Controle Bastão Cesupe 2026", layout="wide", page_icon="🥂")
 init_session_state(); auto_manage_time()
 st.components.v1.html("<script>window.scrollTo(0, 0);</script>", height=0)
