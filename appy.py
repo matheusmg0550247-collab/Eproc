@@ -264,7 +264,7 @@ def ensure_daily_reset():
     now_br = get_brazil_time(); last_run = st.session_state.report_last_run_date
     if now_br.date() > last_run.date(): reset_day_state(); st.toast("☀️ Novo dia detectado! Fila limpa.", icon="🧹"); save_state()
 
-# --- AÇÕES DA UI (TODAS AS FUNÇÕES DEFINIDAS AQUI) ---
+# --- AÇÕES ---
 
 def on_auxilio_change(): save_state()
 
@@ -375,11 +375,23 @@ def rotate_bastao():
         send_chat_notification_internal(next_holder, 'Bastão'); save_state()
     else: st.warning('Ninguém elegível.'); check_and_assume_baton()
 
+# --- CORREÇÃO DO TOGGLE SKIP (ADICIONADO RERUN) ---
 def toggle_skip():
     selected = st.session_state.consultor_selectbox
     if not selected or selected == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
     if not st.session_state.get(f'check_{selected}'): st.warning(f'{selected} não está disponível.'); return
-    st.session_state.skip_flags[selected] = not st.session_state.skip_flags.get(selected, False); save_state()
+    
+    # Toggle e Salva
+    novo_estado = not st.session_state.skip_flags.get(selected, False)
+    st.session_state.skip_flags[selected] = novo_estado
+    
+    if novo_estado:
+        st.toast(f"⏭️ {selected} pulou a vez!", icon="⏭️")
+    else:
+        st.toast(f"✅ {selected} voltou para a fila!", icon="✅")
+        
+    save_state()
+    st.rerun() # ATUALIZA A TELA IMEDIATAMENTE
 
 def update_status(new_status_part, force_exit_queue=False):
     ensure_daily_reset()
@@ -392,7 +404,6 @@ def update_status(new_status_part, force_exit_queue=False):
     is_holder = 'Bastão' in current
     
     forced_succ = None
-    # 1. Rotação Manual
     if should_exit and selected in st.session_state.bastao_queue:
         holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
         if selected == holder:
@@ -404,29 +415,16 @@ def update_status(new_status_part, force_exit_queue=False):
         st.session_state.bastao_queue.remove(selected)
         st.session_state.skip_flags.pop(selected, None)
     
-    # 2. Construção do Status
-    # Se for um status BLOQUEADOR (Almoço, Ausente, Saída), ele zera tudo.
-    if new_status_part in ['Almoço', 'Ausente', 'Saída rápida']:
-        final_status = new_status_part
-    else:
-        # Lógica de Mistura (Fila + Atividade)
-        parts = [p.strip() for p in current.split('|') if p.strip()]
-        type_new = new_status_part.split(':')[0]
-        # Remove anterior do mesmo tipo
-        clean = [p for p in parts if p != 'Indisponível' and not p.startswith(type_new) and p not in blocking]
-        clean.append(new_status_part)
-        clean.sort(key=lambda x: 0 if 'Bastão' in x else 1 if 'Atividade' in x or 'Projeto' in x else 2)
-        final_status = " | ".join(clean)
-        
-        # Se manteve o bastão, garante
-        if is_holder and not should_exit and 'Bastão' not in final_status: 
-            final_status = f"Bastão | {final_status}"
-        
-        # Se saiu, remove bastão
-        if should_exit: 
-            final_status = final_status.replace("Bastão | ", "").replace("Bastão", "").strip()
+    parts = [p.strip() for p in current.split('|') if p.strip()]
+    type_new = new_status_part.split(':')[0]
+    clean = [p for p in parts if p != 'Indisponível' and not p.startswith(type_new)]
+    clean.append(new_status_part)
+    clean.sort(key=lambda x: 0 if 'Bastão' in x else 1 if 'Atividade' in x or 'Projeto' in x else 2)
+    final_status = " | ".join(clean)
     
-    # 3. Gravação Manual
+    if is_holder and not should_exit and 'Bastão' not in final_status: final_status = f"Bastão | {final_status}"
+    if should_exit: final_status = final_status.replace("Bastão | ", "").replace("Bastão", "").strip()
+    
     now_br = get_brazil_time()
     log_status_change(selected, current, final_status, now_br - st.session_state.current_status_starts.get(selected, now_br))
     st.session_state.status_texto[selected] = final_status
