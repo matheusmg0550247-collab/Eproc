@@ -85,6 +85,13 @@ SHEETS_WEBHOOK_URL = get_secret("sheets", "url")
 def save_state():
     """Salva o estado atual no Supabase e atualiza session_state"""
     try:
+        # Garante que data seja serializável
+        last_run = st.session_state.report_last_run_date
+        if isinstance(last_run, datetime):
+            last_run_iso = last_run.isoformat()
+        else:
+            last_run_iso = datetime.min.isoformat()
+
         state_to_save = {
             'status_texto': st.session_state.status_texto,
             'bastao_queue': st.session_state.bastao_queue,
@@ -93,7 +100,7 @@ def save_state():
             'bastao_counts': st.session_state.bastao_counts,
             'priority_return_queue': st.session_state.priority_return_queue,
             'bastao_start_time': st.session_state.bastao_start_time,
-            'report_last_run_date': st.session_state.report_last_run_date,
+            'report_last_run_date': last_run_iso, # Salva como string ISO
             'rotation_gif_start_time': st.session_state.get('rotation_gif_start_time'),
             'lunch_warning_info': st.session_state.get('lunch_warning_info'),
             'auxilio_ativo': st.session_state.get('auxilio_ativo', False),
@@ -220,7 +227,6 @@ def gerar_docx_certidao(tipo_certidao, num_processo, data_indisponibilidade_inpu
     font = style.font
     font.name = 'Arial'
     font.size = Pt(12)
-    # ... (Geração simplificada para economizar espaço, mas funcional)
     document.add_paragraph(f"Certidão: {tipo_certidao}")
     document.add_paragraph(f"Processo: {num_processo}")
     document.add_paragraph(f"Motivo: {motivo_pedido}")
@@ -323,7 +329,7 @@ def init_session_state():
         except Exception as e: print(f"Erro DB: {e}")
         st.session_state['db_loaded'] = True
     
-    # [CORREÇÃO] Garante que report_last_run_date seja datetime
+    # Conversão de Data do DB (String -> Datetime)
     if 'report_last_run_date' in st.session_state and isinstance(st.session_state['report_last_run_date'], str):
         try: st.session_state['report_last_run_date'] = datetime.fromisoformat(st.session_state['report_last_run_date'])
         except: st.session_state['report_last_run_date'] = datetime.min
@@ -365,22 +371,44 @@ def init_session_state():
     
     check_and_assume_baton()
 
+# --- HELPER: Limpeza Total ---
+def reset_day_state():
+    """Reseta o estado para um novo dia."""
+    now = get_brazil_time()
+    st.session_state.bastao_queue = []
+    st.session_state.status_texto = {n: 'Indisponível' for n in CONSULTORES}
+    st.session_state.bastao_counts = {n: 0 for n in CONSULTORES}
+    st.session_state.skip_flags = {}
+    st.session_state.daily_logs = []
+    st.session_state.current_status_starts = {n: now for n in CONSULTORES}
+    st.session_state.report_last_run_date = now
+    for n in CONSULTORES: st.session_state[f'check_{n}'] = False
+
 # --- AÇÕES DE BOTÕES E REGRAS ---
 
 def toggle_queue(consultor):
-    # REGRA: 20H às 06H (Bloqueio Noturno)
+    # REGRA: 20H às 06H (Bloqueio)
     now_hour = get_brazil_time().hour
     if now_hour >= 20 or now_hour < 6:
         st.toast("💤 Fora do expediente (20h às 06h)! Ação bloqueada.", icon="🌙")
-        # Força o estado visual a reverter
         st.session_state[f'check_{consultor}'] = False 
-        time.sleep(1) # Delay para o usuário ver o Toast antes do refresh
-        st.rerun() # Refresh força a limpeza visual do checkbox
+        time.sleep(1)
+        st.rerun()
         return False
 
     st.session_state.gif_warning = False
     now_br = get_brazil_time()
 
+    # REGRA: LIMPEZA SIMULTÂNEA NO PRIMEIRO CLIQUE
+    last_run = st.session_state.report_last_run_date
+    if now_br.date() > last_run.date():
+        # É um novo dia! Limpa tudo primeiro.
+        reset_day_state()
+        st.toast("☀️ Novo dia detectado! Fila limpa automaticamente.", icon="🧹")
+        # Como limpamos, garantimos que o usuário que clicou entre:
+        st.session_state[f'check_{consultor}'] = True # Força True pois o reset colocou False
+
+    # Lógica padrão de entrada/saída
     if consultor in st.session_state.bastao_queue:
         current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
         forced_successor = None
@@ -405,6 +433,7 @@ def toggle_queue(consultor):
             log_status_change(consultor, current_s, '', now_br - st.session_state.current_status_starts.get(consultor, now_br))
             st.session_state.status_texto[consultor] = ''
         check_and_assume_baton()
+    
     save_state()
     return True
 
@@ -440,13 +469,19 @@ def enter_from_indisponivel(consultor):
         st.rerun()
         return
 
+    # REGRA: LIMPEZA SIMULTÂNEA
+    now_br = get_brazil_time()
+    last_run = st.session_state.report_last_run_date
+    if now_br.date() > last_run.date():
+        reset_day_state()
+        st.toast("☀️ Novo dia detectado! Fila limpa.", icon="🧹")
+    
     st.session_state.gif_warning = False
     if consultor not in st.session_state.bastao_queue:
         st.session_state.bastao_queue.append(consultor)
     st.session_state[f'check_{consultor}'] = True
     st.session_state.skip_flags[consultor] = False
     old_status = st.session_state.status_texto.get(consultor, 'Indisponível')
-    now_br = get_brazil_time()
     duration = now_br - st.session_state.current_status_starts.get(consultor, now_br)
     log_status_change(consultor, old_status, '', duration)
     st.session_state.status_texto[consultor] = ''
@@ -545,35 +580,25 @@ def update_status(new_status_part, force_exit_queue=False):
 
 def auto_manage_time():
     now = get_brazil_time()
-    # Verifica se a data atual é maior que a última execução
-    # Isso garante limpeza se o sistema rodar na manhã seguinte (pós 23h do dia anterior)
+    # Apenas limpeza passiva (caso ninguém clique em nada o dia todo)
+    # Se alguém clicar, a limpeza acontece via toggle_queue
     last_run = st.session_state.report_last_run_date
-    if now.date() > last_run.date() or now.hour >= 23:
-        has_data = len(st.session_state.bastao_queue) > 0 or any(v > 0 for v in st.session_state.bastao_counts.values())
-        if has_data:
-            st.session_state.bastao_queue = []
-            st.session_state.status_texto = {n: 'Indisponível' for n in CONSULTORES}
-            st.session_state.bastao_counts = {n: 0 for n in CONSULTORES}
-            st.session_state.skip_flags = {}
-            st.session_state.daily_logs = []
-            st.session_state.current_status_starts = {n: now for n in CONSULTORES}
-            for n in CONSULTORES: st.session_state[f'check_{n}'] = False
-            
-            # Atualiza data da ultima limpeza
-            st.session_state.report_last_run_date = now
-            
-            save_state()
-            st.toast("🧹 Sistema limpo para o novo dia!", icon="☀️")
-            
-    # 20h: Apenas encerra expediente (visual)
+    if now.hour >= 23 and now.date() == last_run.date():
+        # Limpeza noturna (23h)
+        reset_day_state()
+        save_state()
+    elif now.date() > last_run.date():
+        # Limpeza de dia seguinte (Backup)
+        reset_day_state()
+        save_state()
     elif now.hour >= 20:
+        # Apenas visual 20h
         active = any(s != 'Indisponível' for s in st.session_state.status_texto.values()) or len(st.session_state.bastao_queue) > 0
         if active:
             st.session_state.bastao_queue = []
             st.session_state.status_texto = {n: 'Indisponível' for n in CONSULTORES}
             for n in CONSULTORES: st.session_state[f'check_{n}'] = False
             save_state()
-            st.toast("🛑 Expediente Encerrado (20h). Fila limpa.", icon="zzz")
 
 def manual_rerun(): 
     st.session_state.gif_warning = False
@@ -634,7 +659,6 @@ with c_topo_dir:
                 if toggle_queue(novo_responsavel):
                     st.session_state.consultor_selectbox = novo_responsavel
                     st.success(f"{novo_responsavel} agora está na fila!")
-                    time.sleep(0.5)
                     st.rerun()
                 # Se falhar (horário), a função toggle_queue já deu o toast e fez o sleep
 
@@ -1036,7 +1060,7 @@ with col_disponibilidade:
         colors = {
             'orange': '#FFECB3', # Amber 100
             'blue': '#BBDEFB',   # Blue 100
-            'teal': '#B2DFDB',   # Teal 100 (CORREÇÃO: Isso evita o erro visual)
+            'teal': '#B2DFDB',   # Teal 100
             'violet': '#E1BEE7', # Purple 100
             'green': '#C8E6C9',  # Green 100
             'red': '#FFCDD2',    # Red 100
@@ -1095,7 +1119,7 @@ with col_disponibilidade:
 
     render_section_detalhada('Em Demanda', '📋', ui_lists['atividade_especifica'], 'orange', 'Atividade')
     render_section_detalhada('Projetos', '🏗️', ui_lists['projeto_especifico'], 'blue', 'Projeto')
-    render_section_detalhada('Treinamento', '🎓', ui_lists['treinamento_especifico'], 'teal', 'Treinamento') # Nova Seção Corrigida
+    render_section_detalhada('Treinamento', '🎓', ui_lists['treinamento_especifico'], 'teal', 'Treinamento') 
     render_section_detalhada('Reuniões', '📅', ui_lists['reuniao_especifica'], 'violet', 'Reunião')
     render_section_simples('Almoço', '🍽️', ui_lists['almoco'], 'red')
     render_section_detalhada('Sessão', '🎙️', ui_lists['sessao_especifica'], 'green', 'Sessão')
