@@ -11,7 +11,7 @@ import base64
 import io
 from supabase import create_client
 from docx import Document
-from docx.shared import Pt, Cm
+from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 # Importações locais
@@ -77,12 +77,13 @@ def verificar_duplicidade_certidao(tipo, n_processo=None, data_evento=None, hora
         query = sb.table("certidoes_registro").select("*").eq("tipo", tipo)
         
         if tipo in ['Física', 'Eletrônica'] and n_processo:
-            # 1. Limpa o input do usuário (tira espaços e ponto final)
-            proc_user = str(n_processo).strip().rstrip('.')
+            # LIMPEZA RIGOROSA: Remove tudo que não é letra/número e o ponto final
+            # Mas para garantir, vamos remover apenas espaços e ponto final por enquanto
+            proc_limpo = str(n_processo).strip().rstrip('.')
+            if not proc_limpo: return False
             
-            # 2. Busca no banco usando ILIKE com coringas (contém)
-            # Isso faz com que '1.0116.16' encontre '1.0116.16.' e vice-versa
-            response = query.ilike("n_processo", f"%{proc_user}%").execute()
+            # Busca com ILIKE (Case insensitive e parcial)
+            response = query.ilike("n_processo", f"%{proc_limpo}%").execute()
             return len(response.data) > 0
             
         elif tipo == 'Geral' and data_evento:
@@ -105,20 +106,18 @@ def salvar_certidao_db(dados):
         sb.table("certidoes_registro").insert(dados).execute()
         return True
     except Exception as e:
-        raise e 
+        raise e
 
 # --- GERADOR DE WORD OFICIAL ---
 def gerar_docx_certidao_internal(tipo, numero, data, consultor, motivo):
     try:
         doc = Document()
         
-        # Estilos básicos
         style = doc.styles['Normal']
         font = style.font
         font.name = 'Arial'
         font.size = Pt(12)
 
-        # Cabeçalho
         head_p = doc.add_paragraph()
         head_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         runner = head_p.add_run("PODER JUDICIÁRIO DO ESTADO DE MINAS GERAIS\nTJMG - SUPERINTENDÊNCIA DE INFORMÁTICA\nCOORDENAÇÃO DE SUPORTE A SISTEMAS JUDICIAIS")
@@ -127,7 +126,6 @@ def gerar_docx_certidao_internal(tipo, numero, data, consultor, motivo):
         
         doc.add_paragraph("\n")
         
-        # Título
         title = doc.add_paragraph(f"CERTIDÃO DE INDISPONIBILIDADE ({tipo.upper()})")
         title.alignment = WD_ALIGN_PARAGRAPH.CENTER
         title.runs[0].bold = True
@@ -135,7 +133,6 @@ def gerar_docx_certidao_internal(tipo, numero, data, consultor, motivo):
         
         doc.add_paragraph("\n\n")
         
-        # Corpo do Texto
         texto = doc.add_paragraph()
         texto.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         
@@ -155,7 +152,6 @@ def gerar_docx_certidao_internal(tipo, numero, data, consultor, motivo):
         
         doc.add_paragraph("\n\n\n")
         
-        # Data e Assinatura
         data_atual = datetime.now().strftime("%d de %B de %Y")
         footer = doc.add_paragraph(f"Belo Horizonte, {data_atual}.")
         footer.alignment = WD_ALIGN_PARAGRAPH.RIGHT
@@ -171,9 +167,8 @@ def gerar_docx_certidao_internal(tipo, numero, data, consultor, motivo):
         return None
 
 # ============================================
-# 2. FUNÇÕES BASE & ESTADO
+# 2. LÓGICA DO APP (FILA/STATUS)
 # ============================================
-
 def save_state():
     try:
         last_run = st.session_state.report_last_run_date
@@ -692,7 +687,7 @@ with col_principal:
             if st.session_state.get('html_download_ready'): st.download_button("⬇️ Baixar HTML", st.session_state.html_content_cache, "Checklist.html", "text/html")
     
     # ================================
-    # VIEW: CERTIDÃO (CORRIGIDA COM LIMPEZA DE PONTO)
+    # VIEW: CERTIDÃO (CORRIGIDA - DUPLICIDADE & POPUP FIX)
     # ================================
     elif st.session_state.active_view == "certidao":
         with st.container(border=True):
@@ -739,17 +734,16 @@ with col_principal:
                             if tipo_certidao == "Geral":
                                 ja_existe = verificar_duplicidade_certidao("Geral", data_evento=c_data, hora_periodo=c_hora)
                             else:
-                                # LIMPEZA ANTES DE CHECAR
                                 ja_existe = verificar_duplicidade_certidao(tipo_certidao, n_processo=c_processo)
                             
                             if ja_existe:
                                 st.warning("⚠️ **Atenção: Já existe registro!**")
-                                with st.popover("🚨 LER AVISO", expanded=True):
+                                # CORREÇÃO: Removemos o expanded=True que estava quebrando
+                                with st.popover("🚨 LER AVISO"):
                                     st.error(f"Já existe uma certidão **{tipo_certidao}** registrada para estes dados.")
                                     st.write("Não é necessário registrar novamente.")
                                     st.markdown("**Dúvidas? Falar com Matheus ou Gilberto.**")
                             else:
-                                # LIMPEZA ANTES DE SALVAR (Remove ponto final e espaços)
                                 proc_salvar = c_processo.strip().rstrip('.') if c_processo else ""
                                 payload = {"tipo": tipo_certidao, "data_evento": c_data.isoformat(), "consultor": c_consultor, "n_chamado": c_chamado, "n_processo": proc_salvar, "motivo": c_motivo, "hora_periodo": c_hora}
                                 
@@ -758,7 +752,9 @@ with col_principal:
                                 else:
                                     st.error("Erro técnico ao salvar. Por favor, fale com Matheus ou Gilberto.")
                         except Exception as e:
-                             st.error(f"Erro técnico: {e}. Por favor, fale com Matheus ou Gilberto.")
+                             # Mensagem de erro limpa para o usuário
+                             st.error("Erro técnico ao processar. Por favor, fale com Matheus ou Gilberto.")
+                             print(f"Log Erro: {e}")
 
     elif st.session_state.active_view == "atendimentos":
         with st.container(border=True):
