@@ -97,10 +97,8 @@ def log_status_change(consultor, old_status, new_status, duration):
     now_br = get_brazil_time()
     old_lbl = old_status if old_status else 'Fila Bastão'
     new_lbl = new_status if new_status else 'Fila Bastão'
-    
     if consultor in st.session_state.bastao_queue:
         if 'Bastão' not in new_lbl and new_lbl != 'Fila Bastão': new_lbl = f"Fila | {new_lbl}"
-    
     entry = {'timestamp': now_br, 'consultor': consultor, 'old_status': old_lbl, 'new_status': new_lbl, 'duration': duration, 'duration_s': duration.total_seconds()}
     st.session_state.daily_logs.append(entry)
     timestamp_str = now_br.strftime("%d/%m/%Y %H:%M:%S")
@@ -394,6 +392,7 @@ def update_status(new_status_part, force_exit_queue=False):
     is_holder = 'Bastão' in current
     
     forced_succ = None
+    # 1. Rotação Manual
     if should_exit and selected in st.session_state.bastao_queue:
         holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
         if selected == holder:
@@ -405,16 +404,29 @@ def update_status(new_status_part, force_exit_queue=False):
         st.session_state.bastao_queue.remove(selected)
         st.session_state.skip_flags.pop(selected, None)
     
-    parts = [p.strip() for p in current.split('|') if p.strip()]
-    type_new = new_status_part.split(':')[0]
-    clean = [p for p in parts if p != 'Indisponível' and not p.startswith(type_new)]
-    clean.append(new_status_part)
-    clean.sort(key=lambda x: 0 if 'Bastão' in x else 1 if 'Atividade' in x or 'Projeto' in x else 2)
-    final_status = " | ".join(clean)
+    # 2. Construção do Status
+    # Se for um status BLOQUEADOR (Almoço, Ausente, Saída), ele zera tudo.
+    if new_status_part in ['Almoço', 'Ausente', 'Saída rápida']:
+        final_status = new_status_part
+    else:
+        # Lógica de Mistura (Fila + Atividade)
+        parts = [p.strip() for p in current.split('|') if p.strip()]
+        type_new = new_status_part.split(':')[0]
+        # Remove anterior do mesmo tipo
+        clean = [p for p in parts if p != 'Indisponível' and not p.startswith(type_new) and p not in blocking]
+        clean.append(new_status_part)
+        clean.sort(key=lambda x: 0 if 'Bastão' in x else 1 if 'Atividade' in x or 'Projeto' in x else 2)
+        final_status = " | ".join(clean)
+        
+        # Se manteve o bastão, garante
+        if is_holder and not should_exit and 'Bastão' not in final_status: 
+            final_status = f"Bastão | {final_status}"
+        
+        # Se saiu, remove bastão
+        if should_exit: 
+            final_status = final_status.replace("Bastão | ", "").replace("Bastão", "").strip()
     
-    if is_holder and not should_exit and 'Bastão' not in final_status: final_status = f"Bastão | {final_status}"
-    if should_exit: final_status = final_status.replace("Bastão | ", "").replace("Bastão", "").strip()
-    
+    # 3. Gravação Manual
     now_br = get_brazil_time()
     log_status_change(selected, current, final_status, now_br - st.session_state.current_status_starts.get(selected, now_br))
     st.session_state.status_texto[selected] = final_status
@@ -528,7 +540,6 @@ with col_principal:
                 if st.button("Confirmar", type="primary", use_container_width=True): 
                     if atividades_escolhidas: update_status(f"Atividade: {', '.join(atividades_escolhidas)}" + (f" - {texto_extra}" if texto_extra else "")); st.session_state.active_view = None; st.rerun()
             
-            # --- CORREÇÃO DO MENU PROJETOS ---
             elif st.session_state.active_view == 'menu_projetos':
                 opcoes_proj = OPCOES_PROJETOS + ["Outros"]
                 proj_selec = st.selectbox("Selecione o Projeto:", opcoes_proj, key="sel_proj_ui")
@@ -616,8 +627,17 @@ with col_disponibilidade:
         c1, c2 = st.columns([0.85, 0.15])
         c2.checkbox(' ', key=f'chk_fila_{nome}', value=True, on_change=toggle_queue, args=(nome,), label_visibility='collapsed')
         extra = " 📋" if "Atividade" in st.session_state.status_texto.get(nome, '') else ""
-        if nome == responsavel: c1.markdown(f'<span style="background-color:#FFD700;color:black;padding:2px;border-radius:5px;">🥂 {nome}</span>', unsafe_allow_html=True)
-        else: c1.markdown(f'**{nome}**{extra}')
+        
+        # --- LÓGICA VISUAL DO PULAR NA LISTA ---
+        is_skipping = st.session_state.skip_flags.get(nome, False)
+        
+        if nome == responsavel: 
+            c1.markdown(f'<span style="background-color:#FFD700;color:black;padding:2px;border-radius:5px;">🥂 {nome}</span>', unsafe_allow_html=True)
+        elif is_skipping:
+            c1.markdown(f'**{nome}**{extra} :orange[⏭️ Pulando]')
+        else: 
+            c1.markdown(f'**{nome}**{extra}')
+            
     st.markdown('---')
 
     def render_section(title, icon, items, color, tag):
