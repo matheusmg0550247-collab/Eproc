@@ -10,7 +10,7 @@ import json
 import base64
 import io
 from supabase import create_client
-from docx import Document # Garante que temos as libs para o Word
+from docx import Document
 
 # Importações locais
 from repository import load_state_from_db, save_state_to_db
@@ -75,11 +75,14 @@ def verificar_duplicidade_certidao(tipo, n_processo=None, data_evento=None, hora
         query = sb.table("certidoes_registro").select("*").eq("tipo", tipo)
         
         if tipo in ['Física', 'Eletrônica'] and n_processo:
-            response = query.eq("n_processo", n_processo).execute()
+            # LIMPEZA: Remove espaços e o ponto final para comparar
+            proc_limpo = str(n_processo).strip().rstrip('.')
+            
+            # Busca flexível: Verifica se começa com o número limpo (ignora se tem ponto no banco ou não)
+            response = query.ilike("n_processo", f"{proc_limpo}%").execute()
             return len(response.data) > 0
             
         elif tipo == 'Geral' and data_evento:
-            # Formata data
             data_str = data_evento.isoformat() if hasattr(data_evento, 'isoformat') else str(data_evento)
             query = query.eq("data_evento", data_str)
             if hora_periodo:
@@ -99,7 +102,6 @@ def salvar_certidao_db(dados):
         sb.table("certidoes_registro").insert(dados).execute()
         return True
     except Exception as e:
-        # Erro levantado para ser tratado na UI
         raise e 
 
 # ============================================
@@ -185,11 +187,10 @@ def send_certidao_notification_to_chat(consultor, tipo):
 def play_sound_html(): return f'<audio autoplay="true"><source src="{SOUND_URL}" type="audio/mpeg"></audio>'
 def render_fireworks(): st.markdown("""<style>...</style>""", unsafe_allow_html=True)
 
-# Função auxiliar interna para gerar DOCX (caso não esteja no utils)
+# Função auxiliar interna para gerar DOCX
 def gerar_docx_certidao_internal(tipo, numero, data, consultor, motivo):
     try:
         from docx import Document
-        from docx.shared import Pt
         doc = Document()
         doc.add_heading('Certidão de Indisponibilidade', 0)
         p = doc.add_paragraph()
@@ -646,12 +647,12 @@ with col_principal:
             if st.session_state.get('html_download_ready'): st.download_button("⬇️ Baixar HTML", st.session_state.html_content_cache, "Checklist.html", "text/html")
     
     # ================================
-    # VIEW: CERTIDÃO (CORRIGIDA COM WORD E MENSAGEM)
+    # VIEW: CERTIDÃO (COM LIMPEZA DE PONTO)
     # ================================
     elif st.session_state.active_view == "certidao":
         with st.container(border=True):
             st.header("🖨️ Registro de Certidão")
-            st.info("O sistema verificará duplicidade automaticamente.")
+            st.info("O sistema remove pontos finais do processo para verificar duplicidade.")
             
             tipo_certidao = st.selectbox("Tipo de Declaração:", ["Física", "Eletrônica", "Geral"])
             c_data = st.date_input("Data do Evento:", value=get_brazil_time().date())
@@ -670,7 +671,6 @@ with col_principal:
 
             col_act1, col_act2 = st.columns([1, 1])
             
-            # Botão 1: Gerar Word (sem salvar)
             with col_act1:
                 if st.button("📄 Gerar Word (Sem Salvar)", use_container_width=True):
                     if c_consultor == "Selecione um nome": st.error("Selecione seu nome.")
@@ -680,7 +680,6 @@ with col_principal:
                         if docx_file:
                             st.download_button("⬇️ Baixar DOCX", docx_file, file_name="certidao.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
             
-            # Botão 2: Salvar no Banco
             with col_act2:
                 if st.button("💾 Salvar Registro", type="primary", use_container_width=True):
                     erro_msg = None
@@ -695,6 +694,7 @@ with col_principal:
                             if tipo_certidao == "Geral":
                                 ja_existe = verificar_duplicidade_certidao("Geral", data_evento=c_data, hora_periodo=c_hora)
                             else:
+                                # LIMPEZA ANTES DE CHECAR
                                 ja_existe = verificar_duplicidade_certidao(tipo_certidao, n_processo=c_processo)
                             
                             if ja_existe:
@@ -704,7 +704,10 @@ with col_principal:
                                     st.write("Não é necessário registrar novamente.")
                                     st.markdown("**Dúvidas? Falar com Matheus ou Gilberto.**")
                             else:
-                                payload = {"tipo": tipo_certidao, "data_evento": c_data.isoformat(), "consultor": c_consultor, "n_chamado": c_chamado, "n_processo": c_processo, "motivo": c_motivo, "hora_periodo": c_hora}
+                                # LIMPEZA ANTES DE SALVAR (Remove ponto final)
+                                proc_salvar = c_processo.strip().rstrip('.') if c_processo else ""
+                                payload = {"tipo": tipo_certidao, "data_evento": c_data.isoformat(), "consultor": c_consultor, "n_chamado": c_chamado, "n_processo": proc_salvar, "motivo": c_motivo, "hora_periodo": c_hora}
+                                
                                 if salvar_certidao_db(payload):
                                     st.success("✅ Certidão registrada com sucesso!"); time.sleep(2); st.session_state.active_view = None; st.rerun()
                                 else:
