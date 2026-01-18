@@ -1,385 +1,199 @@
+# -*- coding: utf-8 -*-
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+import requests
 import time
-import plotly.express as px
+from datetime import datetime, timedelta
+from operator import itemgetter
 from streamlit_autorefresh import st_autorefresh
-import pytz
-from supabase import create_client
+import json
+import base64
+import io
 
-# 1. CONFIGURAÇÃO DA PÁGINA
-st.set_page_config(
-    page_title="Gestão Cesupe 2026",
-    layout="wide",
-    page_icon="🛡️"
-)
+from repository import load_state_from_db, save_state_to_db
+from utils import (get_brazil_time, get_secret, send_to_chat, gerar_docx_certidao, get_img_as_base64)
 
-# 2. ESTILIZAÇÃO CSS
-st.markdown("""
-    <style>
-    div[data-testid="column"] { padding: 0px 2px !important; }
-    .title-card {
-        padding: 4px; border-radius: 4px; color: white; font-weight: 700;
-        text-align: center; width: 100%; margin-bottom: 6px;
-        text-transform: uppercase; font-size: 10px;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.1); letter-spacing: 0.5px;
-    }
-    .bg-bastao { background-color: #D4AF37; }
-    .bg-fila { background-color: #20c997; }
-    .bg-atividade { background-color: #0056b3; }
-    .bg-reuniao { background-color: #fd7e14; }
-    .bg-projeto { background-color: #8b5cf6; }
-    .bg-treinamento { background-color: #17a2b8; }
-    .bg-sessao { background-color: #6f42c1; }
-    .bg-almoco { background-color: #d9534f; }
-    .bg-ausente { background-color: #6c757d; }
-    
-    .stPopover { display: flex; justify-content: center; margin-bottom: 4px; }
-    div[data-testid="stPopover"] > button {
-        width: 100% !important; font-size: 10px !important; font-weight: 600 !important;
-        background-color: #f0f2f6 !important; border: 1px solid #e0e0e0 !important; border-radius: 12px !important;
-        text-align: left !important; padding: 2px 8px !important; color: #31333F !important;
-        white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important;
-        min-height: 28px !important; height: auto !important; line-height: 1.2 !important;
-    }
-    div[data-testid="stPopover"] > button:hover {
-        border-color: #b0b0b0 !important; background-color: #e6e9ef !important; color: #000 !important;
-    }
-    .header-eproc { background-color: #e7f1ff; border-left: 4px solid #0056b3; padding: 8px; border-radius: 4px; color: #0056b3; font-weight: bold; margin-bottom: 8px; }
-    .header-legado { background-color: #f3f3f3; border-left: 4px solid #555; padding: 8px; border-radius: 4px; color: #333; font-weight: bold; margin-bottom: 8px; }
-    div[data-testid="stCheckbox"] label { font-size: 18px !important; font-weight: 700 !important; color: #333 !important; }
-    .block-container { padding-top: 1rem; }
-    </style>
-    """, unsafe_allow_html=True)
-
-# 3. CONFIGURAÇÕES GLOBAIS
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1KFt_JH5HPTPC9c0_1oJZJHGfKyUqZB1AMXwaDLrvQwk/edit?usp=sharing"
-REFRESH_INT = 60 
-FUSO_BR = pytz.timezone('America/Sao_Paulo')
-
-LISTA_LEGADOS = [
+# ============================================
+# 1. CONFIGURAÇÕES
+# ============================================
+CONSULTORES = sorted([
     "Alex Paulo", "Dirceu Gonçalves", "Douglas De Souza", "Farley Leandro", "Gleis Da Silva", 
     "Hugo Leonardo", "Igor Dayrell", "Jerry Marcos", "Jonatas Gomes", "Leandro Victor", 
     "Luiz Henrique", "Marcelo Dos Santos", "Marina Silva", "Marina Torres", "Vanessa Ligiane"
-]
-LISTA_EPROC = [
-    "Barbara Mara", "Bruno Glaicon", "Claudia Luiza", "Douglas Paiva", "Fábio Alves", 
-    "Glayce Torres", "Isabela Dias", "Isac Candido", "Ivana Guimarães", "Leonardo Damaceno", 
-    "Marcelo PenaGuerra", "Michael Douglas", "Morôni", "Pablo Victor Lenti Mol", 
-    "Ranyer Segal", "Sarah Leal", "Victoria Lisboa"
-]
-TODOS_CONSULTORES = sorted(LISTA_LEGADOS + LISTA_EPROC)
+])
 
-def identificar_sistema(nome):
-    return "Eproc" if nome in LISTA_EPROC else "Legados"
+REG_USUARIO_OPCOES = ["Cartório", "Gabinete", "Externo"]
+REG_SISTEMA_OPCOES = ["Conveniados", "Outros", "Eproc", "Themis", "JPE", "SIAP"]
+REG_CANAL_OPCOES = ["Presencial", "Telefone", "Email", "Whatsapp", "Outros"]
+REG_DESFECHO_OPCOES = ["Resolvido - Cesupe", "Escalonado"]
 
-def encurtar_nome(nome_completo):
-    partes = nome_completo.split()
-    if len(partes) <= 2: return nome_completo
-    if len(nome_completo) > 20: return f"{partes[0]} {partes[-1]}"
-    return nome_completo
+CAMARAS_DICT = {
+    "Cartório da 1ª Câmara Cível": "caciv1@tjmg.jus.br", "Cartório da 2ª Câmara Cível": "caciv2@tjmg.jus.br",
+    "Cartório da 3ª Câmara Cível": "caciv3@tjmg.jus.br", "Cartório da 4ª Câmara Cível": "caciv4@tjmg.jus.br",
+    "Cartório da 5ª Câmara Cível": "caciv5@tjmg.jus.br", "Cartório da 6ª Câmara Cível": "caciv6@tjmg.jus.br",
+    "Cartório da 7ª Câmara Cível": "caciv7@tjmg.jus.br", "Cartório da 8ª Câmara Cível": "caciv8@tjmg.jus.br",
+    "Cartório da 9ª Câmara Cível": "caciv9@tjmg.jus.br", "Cartório da 10ª Câmara Cível": "caciv10@tjmg.jus.br",
+    "Cartório da 11ª Câmara Cível": "caciv11@tjmg.jus.br", "Cartório da 12ª Câmara Cível": "caciv12@tjmg.jus.br",
+    "Cartório da 13ª Câmara Cível": "caciv13@tjmg.jus.br", "Cartório da 14ª Câmara Cível": "caciv14@tjmg.jus.br",
+    "Cartório da 15ª Câmara Cível": "caciv15@tjmg.jus.br", "Cartório da 16ª Câmara Cível": "caciv16@tjmg.jus.br",
+    "Cartório da 17ª Câmara Cível": "caciv17@tjmg.jus.br", "Cartório da 18ª Câmara Cível": "caciv18@tjmg.jus.br",
+    "Cartório da 19ª Câmara Cível": "caciv19@tjmg.jus.br", "Cartório da 20ª Câmara Cível": "caciv20@tjmg.jus.br",
+    "Cartório da 21ª Câmara Cível": "caciv21@tjmg.jus.br"
+}
+CAMARAS_OPCOES = sorted(list(CAMARAS_DICT.keys()))
+OPCOES_ATIVIDADES_STATUS = ["HP", "E-mail", "WhatsApp Plantão", "Homologação", "Redação Documentos", "Outros"]
+OPCOES_PROJETOS = ["Soma", "Treinamentos Eproc", "Manuais Eproc", "Cartilhas Gabinetes", "Notebook Lm", "Inteligência artifical cartórios"]
 
-def formatar_negrito(texto):
-    if pd.isna(texto) or not texto: return ""
-    texto_limpo = str(texto).replace("Disponível", "Bastão")
-    if "|" in texto_limpo:
-        partes = texto_limpo.split("|", 1)
-        return f"{partes[0].strip()} | **{partes[1].strip()}**"
-    return texto_limpo
+GIF_BASTAO_HOLDER = "https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExa3Uwazd5cnNra2oxdDkydjZkcHdqcWN2cng0Y2N0cmNmN21vYXVzMiZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/3rXs5J0hZkXwTZjuvM/giphy.gif"
+BASTAO_EMOJI = "🥂" 
+APP_URL_CLOUD = 'https://controle-bastao-cesupe.streamlit.app'
+GIF_URL_ROTATION = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExdmx4azVxbGt4Mnk1cjMzZm5sMmp1YThteGJsMzcyYmhsdmFoczV0aSZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/JpkZEKWY0s9QI4DGvF/giphy.gif'
+GIF_URL_NEDRY = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExMGNkMGx3YnNkcXQ2bHJmNTZtZThraHhuNmVoOTNmbG0wcDloOXAybiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/7kyWoqTue3po4/giphy.gif'
+SOUND_URL = "https://github.com/matheusmg0550247-collab/controle-bastao-eproc2/raw/main/doorbell-223669.mp3"
+PUG2026_FILENAME = "pug2026.png"
 
-# --- CONEXÃO COM SUPABASE ---
-@st.cache_resource
-def get_supabase_client():
+GOOGLE_CHAT_WEBHOOK_BACKUP = get_secret("chat", "backup")
+CHAT_WEBHOOK_BASTAO = get_secret("chat", "bastao")
+GOOGLE_CHAT_WEBHOOK_REGISTRO = get_secret("chat", "registro")
+SHEETS_WEBHOOK_URL = get_secret("sheets", "url")
+
+# ============================================
+# 2. FUNÇÕES BASE
+# ============================================
+
+def save_state():
     try:
-        url = st.secrets["supabase"]["url"]
-        key = st.secrets["supabase"]["key"]
-        return create_client(url, key)
-    except Exception as e:
-        st.error(f"Erro config Supabase: {e}")
-        return None
+        last_run = st.session_state.report_last_run_date
+        last_run_iso = last_run.isoformat() if isinstance(last_run, datetime) else datetime.min.isoformat()
+        state_to_save = {
+            'status_texto': st.session_state.status_texto, 'bastao_queue': st.session_state.bastao_queue,
+            'skip_flags': st.session_state.skip_flags, 'current_status_starts': st.session_state.current_status_starts,
+            'bastao_counts': st.session_state.bastao_counts, 'priority_return_queue': st.session_state.priority_return_queue,
+            'bastao_start_time': st.session_state.bastao_start_time, 'report_last_run_date': last_run_iso, 
+            'rotation_gif_start_time': st.session_state.get('rotation_gif_start_time'), 'lunch_warning_info': st.session_state.get('lunch_warning_info'),
+            'auxilio_ativo': st.session_state.get('auxilio_ativo', False), 'daily_logs': st.session_state.daily_logs,
+            'simon_ranking': st.session_state.get('simon_ranking', [])
+        }
+        save_state_to_db(state_to_save)
+    except Exception as e: print(f"Erro save: {e}")
 
-@st.cache_data(ttl=REFRESH_INT)
-def carregar_dados_do_banco():
-    """Lê o estado atual do banco e retorna DataFrames processados."""
-    supabase = get_supabase_client()
-    if not supabase: return pd.DataFrame(), pd.DataFrame()
+def load_logs(): return st.session_state.daily_logs
+def format_time_duration(duration):
+    if not isinstance(duration, timedelta): return '--:--:--'
+    s = int(duration.total_seconds()); h, s = divmod(s, 3600); m, s = divmod(s, 60)
+    return f'{h:02}:{m:02}:{s:02}'
 
-    try:
-        response = supabase.table("app_state").select("data").eq("id", 1).execute()
-        if not response.data: return pd.DataFrame(), pd.DataFrame()
-        
-        data = response.data[0]['data']
-        
-        status_texto = data.get('status_texto', {})
-        status_starts = data.get('current_status_starts', {})
-        bastao_queue = data.get('bastao_queue', []) 
-        skip_flags = data.get('skip_flags', {}) 
-        
-        raw_logs = data.get('daily_logs', [])
-        df_logs = pd.DataFrame(raw_logs)
-        if not df_logs.empty:
-            if 'timestamp' in df_logs.columns:
-                df_logs['Data e Horário'] = pd.to_datetime(df_logs['timestamp'], utc=True).dt.tz_convert(FUSO_BR).dt.tz_localize(None)
-            df_logs = df_logs.rename(columns={'consultor': 'Consultor', 'new_status': 'Status Atual'})
+def _send_webhook_sync(url, payload):
+    try: requests.post(url, json=payload, headers={'Content-Type': 'application/json'}, timeout=3)
+    except: pass
 
-        rows = []
-        for consultor in TODOS_CONSULTORES:
-            status = status_texto.get(consultor, "Indisponível")
-            if not status: status = "Indisponível"
-            
-            start_str = status_starts.get(consultor, None)
-            start_dt = None
-            if start_str:
-                try: start_dt = pd.to_datetime(start_str).tz_convert(FUSO_BR).tz_localize(None)
-                except: 
-                    try: start_dt = pd.to_datetime(start_str)
-                    except: pass
-            
-            na_fila = consultor in bastao_queue
-            pulando = skip_flags.get(consultor, False)
-            
-            rows.append({
-                "Consultor": consultor,
-                "Status Atual": status,
-                "Data e Horário": start_dt,
-                "Sistema": identificar_sistema(consultor),
-                "Na Fila": na_fila,
-                "Pulando": pulando
-            })
-            
-        df_status = pd.DataFrame(rows)
-        return df_status, df_logs
+def send_log_to_sheets(timestamp_str, consultor, old_status, new_status, duration_str):
+    if not SHEETS_WEBHOOK_URL: return
+    payload = {"data_hora": timestamp_str, "consultor": consultor, "status_anterior": old_status, "status_atual": new_status, "tempo_anterior": duration_str}
+    _send_webhook_sync(SHEETS_WEBHOOK_URL, payload)
 
-    except Exception as e:
-        print(f"Erro ao ler banco: {e}")
-        return pd.DataFrame(), pd.DataFrame()
+def log_status_change(consultor, old_status, new_status, duration):
+    if not isinstance(duration, timedelta): duration = timedelta(0)
+    now_br = get_brazil_time()
+    old_lbl = old_status if old_status else 'Fila Bastão'
+    new_lbl = new_status if new_status else 'Fila Bastão'
+    if consultor in st.session_state.bastao_queue:
+        if 'Bastão' not in new_lbl and new_lbl != 'Fila Bastão': new_lbl = f"Fila | {new_lbl}"
+    entry = {'timestamp': now_br, 'consultor': consultor, 'old_status': old_lbl, 'new_status': new_lbl, 'duration': duration, 'duration_s': duration.total_seconds()}
+    st.session_state.daily_logs.append(entry)
+    timestamp_str = now_br.strftime("%d/%m/%Y %H:%M:%S")
+    duration_str = format_time_duration(duration)
+    send_log_to_sheets(timestamp_str, consultor, old_lbl, new_lbl, duration_str)
+    st.session_state.current_status_starts[consultor] = now_br
 
-# 4. REFRESH E ESTADO
-if 'last_ref' not in st.session_state: st.session_state.last_ref = time.time()
-if 'show_eproc' not in st.session_state: st.session_state.show_eproc = True
-if 'show_legado' not in st.session_state: st.session_state.show_legado = True
+# --- HANDLERS ---
+def on_auxilio_change(): save_state()
 
-st_autorefresh(interval=1000, key="timer_main")
-restante = max(0, REFRESH_INT - int(time.time() - st.session_state.last_ref))
-if restante == 0:
-    st.session_state.last_ref = time.time()
-    st.cache_data.clear()
-    st.rerun()
+def send_chat_notification_internal(consultor, status):
+    if CHAT_WEBHOOK_BASTAO and status == 'Bastão':
+        msg = f"🎉 **BASTÃO GIRADO!** 🎉 \n\n- **Novo(a) Responsável:** {consultor}\n- **Acesse o Painel:** {APP_URL_CLOUD}"
+        send_to_chat("bastao", msg); return True
+    return False
 
-# 5. PROCESSAMENTO
-df_status, df_logs_hist = carregar_dados_do_banco()
+def send_horas_extras_to_chat(consultor, data, inicio, tempo, motivo):
+    msg = f"⏰ **Registro de Horas Extras**\n\n👤 **Consultor:** {consultor}\n📅 **Data:** {data.strftime('%d/%m/%Y')}\n🕐 **Início:** {inicio.strftime('%H:%M')}\n⏱️ **Tempo Total:** {tempo}\n📝 **Motivo:** {motivo}"
+    send_to_chat("extras", msg); return True
 
-ranking_bastoes = pd.DataFrame()
-if not df_logs_hist.empty:
-    hoje = datetime.now(FUSO_BR).date()
-    logs_hoje = df_logs_hist[df_logs_hist['Data e Horário'].dt.date == hoje].copy()
-    bastoes_hj = logs_hoje[
-        (logs_hoje['Status Atual'].str.contains("Bastão", na=False)) & 
-        (~logs_hoje['Status Atual'].str.contains("Fila", na=False))
-    ]
-    ranking_bastoes = bastoes_hj['Consultor'].value_counts().reset_index()
-    ranking_bastoes.columns = ['Consultor', 'Qtd']
+def send_atendimento_to_chat(consultor, data, usuario, nome_setor, sistema, descricao, canal, desfecho, jira_opcional=""):
+    jira_str = f"\n🔢 **Jira:** CESUPE-{jira_opcional}" if jira_opcional else ""
+    msg = f"📋 **Novo Registro de Atendimento**\n\n👤 **Consultor:** {consultor}\n📅 **Data:** {data.strftime('%d/%m/%Y')}\n👥 **Usuário:** {usuario}\n🏢 **Nome/Setor:** {nome_setor}\n💻 **Sistema:** {sistema}\n📝 **Descrição:** {descricao}\n📞 **Canal:** {canal}\n✅ **Desfecho:** {desfecho}{jira_str}"
+    send_to_chat("registro", msg); return True
 
-# --- DEFINIÇÃO DO DONO REAL ---
-dono_bastao_real = None
-if not df_status.empty:
-    candidatos = df_status[df_status['Status Atual'].str.contains("Bastão", na=False)].copy()
-    if not candidatos.empty:
-        candidatos = candidatos.sort_values('Data e Horário', ascending=False)
-        dono_bastao_real = candidatos.iloc[0]['Consultor']
+def handle_erro_novidade_submission(consultor, titulo, objetivo, relato, resultado):
+    data_envio = get_brazil_time().strftime("%d/%m/%Y %H:%M")
+    msg = f"🐛 **Novo Relato de Erro/Novidade**\n📅 **Data:** {data_envio}\n\n👤 **Autor:** {consultor}\n📌 **Título:** {titulo}\n\n🎯 **Objetivo:**\n{objetivo}\n\n🧪 **Relato:**\n{relato}\n\n🏁 **Resultado:**\n{resultado}"
+    send_to_chat("erro", msg); return True
 
-def classificar_categoria(row):
-    consultor = row['Consultor']
-    status = str(row['Status Atual'])
+def send_sessao_to_chat_fn(consultor, texto_mensagem):
+    if not consultor or consultor == 'Selecione um nome': return False
+    send_to_chat("sessao", texto_mensagem); return True
+
+def send_certidao_notification_to_chat(consultor, tipo):
+    msg = f"Consultor {consultor} solicitou uma certidão ({tipo}) de indisponibilidade."
+    send_to_chat("certidao", msg); return True
+
+def play_sound_html(): return f'<audio autoplay="true"><source src="{SOUND_URL}" type="audio/mpeg"></audio>'
+def render_fireworks(): st.markdown("""<style>...</style>""", unsafe_allow_html=True)
+def gerar_html_checklist(c, m, d): return "..."
+def gerar_docx_certidao(t, n, d, c, m): 
+    from docx import Document; import io; document = Document(); buffer = io.BytesIO(); document.save(buffer); buffer.seek(0); return buffer
+
+def send_daily_report():
+    logs = load_logs(); bastao_counts = st.session_state.bastao_counts.copy()
+    aggregated_data = {nome: {} for nome in CONSULTORES}
+    for log in logs:
+        try:
+            consultor, status, duration = log['consultor'], log['old_status'], log.get('duration', timedelta(0))
+            if not isinstance(duration, timedelta): duration = timedelta(seconds=float(duration))
+            if status and consultor in aggregated_data: aggregated_data[consultor][status] = aggregated_data[consultor].get(status, timedelta(0)) + duration
+        except: pass
+    now_br = get_brazil_time(); today_str = now_br.strftime("%d/%m/%Y")
+    report_text = f"📊 **Relatório Diário - {today_str}** 📊\n\n"; has_data = False
+    for nome in CONSULTORES:
+        counts, times = bastao_counts.get(nome, 0), aggregated_data.get(nome, {})
+        if counts > 0 or times:
+            has_data = True; report_text += f"**👤 {nome}**\n- 🥂 Bastão: **{counts}**\n"
+            for s, t in sorted(times.items(), key=itemgetter(0)):
+                if s != 'Bastão': report_text += f"- {s}: **{format_time_duration(t)}**\n"
+            report_text += "\n"
+    if not has_data: report_text += "Nenhuma atividade registrada."
+    send_to_chat("backup", report_text)
+    st.session_state['report_last_run_date'] = now_br
+    st.session_state['daily_logs'] = []; st.session_state['bastao_counts'] = {nome: 0 for nome in CONSULTORES}
+    save_state()
+
+# --- LÓGICA DE FILA BLINDADA (AGRESSIVA) ---
+def find_next_holder_index(current_index, queue, skips):
+    """
+    Retorna o índice do próximo ELEGÍVEL na fila. 
+    Se todos estiverem pulando, força o vizinho.
+    """
+    if not queue: return -1
+    n = len(queue)
+    start_index = (current_index + 1) % n
     
-    if consultor == dono_bastao_real: return "Bastão"
-    if row['Na Fila']: return "Fila Bastão"
-    for k in ["Almoço", "Reunião", "Sessão", "Ausente", "Projeto", "Treinamento"]:
-        if k in status: return k
-    if "Atividade" in status: return "Atividade"
-    return "Ausente"
-
-if not df_status.empty:
-    df_status['Categoria Visual'] = df_status.apply(classificar_categoria, axis=1)
-
-# --- DASHBOARD VISUAL ---
-col_h, col_p = st.columns([2, 1])
-now_br = datetime.now(FUSO_BR)
-
-with col_h:
-    c1, c2 = st.columns([0.1, 0.9])
-    with c1: st.write("# 🛡️")
-    with c2:
-        st.title("Gestão Cesupe 2026")
-        st.caption(f"Hoje: {now_br.strftime('%d/%m')} | Atualização: **{restante}s**")
-
-    b1, b2 = st.columns([1, 4])
-    with b1:
-        if st.button("🔄 Atualizar", use_container_width=True):
-            st.session_state.last_ref = time.time()
-            st.cache_data.clear()
-            st.rerun()
-
-with col_p:
-    t_g1, t_g2 = st.tabs(["📊 Status", "🏆 Ranking"])
-    with t_g1:
-        if not df_status.empty:
-            contagem = df_status['Categoria Visual'].value_counts().reset_index()
-            contagem.columns = ['Status', 'Qtd']
-            cores = {'Bastão':'#D4AF37','Fila Bastão':'#20c997','Ausente':'#6c757d','Almoço':'#d9534f',
-                     'Sessão':'#6f42c1','Reunião':'#fd7e14','Projeto':'#8b5cf6','Atividade':'#0056b3'}
-            fig = px.pie(contagem, values='Qtd', names='Status', hole=.5)
-            fig.update_traces(marker=dict(colors=[cores.get(x, '#999') for x in contagem['Status']]), textinfo='value')
-            fig.update_layout(showlegend=True, height=200, margin=dict(t=0,b=0,l=0,r=0))
-            st.plotly_chart(fig, use_container_width=True)
-    
-    with t_g2:
-        if not ranking_bastoes.empty:
-            fig_bar = px.bar(ranking_bastoes.head(5), x='Consultor', y='Qtd', text='Qtd')
-            fig_bar.update_traces(marker_color='#D4AF37')
-            fig_bar.update_layout(height=200, margin=dict(t=10,b=0,l=0,r=0), xaxis_title=None)
-            st.plotly_chart(fig_bar, use_container_width=True)
-        else:
-            st.info("Sem dados.")
-
-st.divider()
-
-# --- RENDERIZAÇÃO DAS COLUNAS (LÓGICA DE ORDENAÇÃO CORRIGIDA) ---
-def renderizar_grid(df_sistema, cats):
-    cols = st.columns(9)
-    for i, (n_col, css) in enumerate(cats):
-        with cols[i]:
-            st.markdown(f'<div class="title-card {css}">{n_col}</div>', unsafe_allow_html=True)
+    # 1. Tenta achar alguém que NÃO esteja pulando
+    for i in range(n):
+        idx = (start_index + i) % n
+        consultor = queue[idx]
+        if consultor == queue[current_index] and n > 1:
+            continue
+        if not skips.get(consultor, False):
+            return idx
             
-            if df_sistema.empty:
-                continue
+    # 2. SE NINGUÉM FOR ACHADO (todos pulando), PEGA O PRÓXIMO NA MARRA
+    if n > 1:
+        proximo_imediato_idx = (current_index + 1) % n
+        # Força o reset do skip do escolhido
+        nome_escolhido = queue[proximo_imediato_idx]
+        st.session_state.skip_flags[nome_escolhido] = False 
+        return proximo_imediato_idx
 
-            filtrados = df_sistema[df_sistema['Categoria Visual'] == n_col]
+    return -1
 
-            # --- FILTRAGEM INTELIGENTE ---
-            if n_col == "Bastão":
-                filtrados = df_sistema[df_sistema['Categoria Visual'] == "Bastão"]
-                if not filtrados.empty: filtrados = filtrados.sort_values('Data e Horário', ascending=False)
-            
-            elif n_col == "Fila Bastão":
-                filtrados = df_sistema[df_sistema['Categoria Visual'] == "Fila Bastão"]
-                if not filtrados.empty:
-                    # --- AQUI ESTÁ A CORREÇÃO DA ORDEM ---
-                    # Ordena PRIMEIRO por 'Pulando' (False vem antes de True)
-                    # DEPOIS por 'Data e Horário' (antigo vem antes de novo)
-                    filtrados = filtrados.sort_values(by=['Pulando', 'Data e Horário'], ascending=[True, True])
-            
-            elif n_col == "Atividade":
-                filtrados = df_sistema[df_sistema['Status Atual'].str.contains("Atividade", na=False)]
-                filtrados = filtrados.sort_values('Consultor')
-                
-            elif n_col == "Projeto":
-                filtrados = df_sistema[df_sistema['Status Atual'].str.contains("Projeto", na=False)]
-                filtrados = filtrados.sort_values('Consultor')
-            
-            elif n_col == "Sessão":
-                filtrados = df_sistema[df_sistema['Status Atual'].str.contains("Sessão", na=False)]
-                filtrados = filtrados.sort_values('Consultor')
-            
-            elif n_col == "Reunião":
-                filtrados = df_sistema[df_sistema['Status Atual'].str.contains("Reunião", na=False)]
-                filtrados = filtrados.sort_values('Consultor')
-                
-            elif n_col == "Treinamento":
-                filtrados = df_sistema[df_sistema['Status Atual'].str.contains("Treinamento", na=False)]
-                filtrados = filtrados.sort_values('Consultor')
-            
-            else:
-                filtrados = df_sistema[df_sistema['Categoria Visual'] == n_col]
-                filtrados = filtrados.sort_values('Consultor')
-
-            # --- CÁLCULO DO PRÓXIMO DA FILA ---
-            # Recalcula com a mesma lógica de ordenação da visualização
-            proximo_nome = None 
-            if not df_sistema[df_sistema['Categoria Visual'] == "Fila Bastão"].empty:
-                df_fila_check = df_sistema[df_sistema['Categoria Visual'] == "Fila Bastão"].sort_values(by=['Pulando', 'Data e Horário'], ascending=[True, True])
-                if not df_fila_check.empty:
-                    # O primeiro da lista, se NÃO estiver pulando, é o próximo
-                    candidato = df_fila_check.iloc[0]
-                    if not candidato['Pulando']:
-                        proximo_nome = candidato['Consultor']
-
-            if filtrados.empty:
-                st.markdown(f"<div style='text-align:center; color:#ccc; font-size:12px;'>-</div>", unsafe_allow_html=True)
-            else:
-                for j, (idx_df, row) in enumerate(filtrados.iterrows()):
-                    nome = encurtar_nome(row['Consultor'])
-                    status_full = str(row['Status Atual'])
-                    sis_icon = "🔵" if row['Sistema'] == "Eproc" else "⚫"
-                    sis_class = "header-eproc" if row['Sistema'] == "Eproc" else "header-legado"
-                    
-                    label = f"{nome}"
-                    
-                    # 1. DESTAQUES DE FILA (ORDEM DE PRECEDÊNCIA)
-                    if row['Categoria Visual'] == "Bastão":
-                         label = f"🟡 {nome}"
-                    
-                    # QUEM PULA FICA LARANJA E VAI PRO FIM (PELA ORDENAÇÃO)
-                    elif row['Pulando']:
-                        label = f"🟠 {nome} :orange[(PULOU)]"
-                    
-                    # QUEM É O PRÓXIMO FICA VERDE E FICA NO TOPO
-                    elif row['Consultor'] == proximo_nome:
-                        label = f"🟢 {nome} :green[(PRÓXIMO)]"
-                    
-                    # 2. DETALHES DE TEXTO
-                    if ":" in status_full:
-                        detalhe = status_full.split(":", 1)[1].strip()
-                        if "|" in detalhe: detalhe = detalhe.split("|")[0].strip()
-                        if len(detalhe) > 12: detalhe = detalhe[:10] + "..."
-                        
-                        mostrar_detalhe = True
-                        if n_col == "Projeto" and "Projeto" in status_full: mostrar_detalhe = True
-                        if n_col == "Atividade" and "Atividade" in status_full: mostrar_detalhe = True
-                        
-                        if mostrar_detalhe:
-                            label += f" - {detalhe}"
-
-                    with st.popover(label, use_container_width=True):
-                        st.markdown(f"<div class='{sis_class}'>{row['Consultor']}</div>", unsafe_allow_html=True)
-                        st.write(f"Status: {formatar_negrito(status_full)}")
-                        
-                        if pd.notna(row['Data e Horário']):
-                            agora = datetime.now(FUSO_BR).replace(tzinfo=None)
-                            inicio = row['Data e Horário']
-                            if inicio.tzinfo: inicio = inicio.replace(tzinfo=None)
-                            
-                            diff = agora - inicio
-                            seg = int(diff.total_seconds())
-                            if seg < 0: seg = 0
-                            h, r = divmod(seg, 3600)
-                            m, s = divmod(r, 60)
-                            st.metric("Tempo no status", f"{h:02d}:{m:02d}:{s:02d}")
-                            st.caption(f"Desde: {inicio.strftime('%H:%M')}")
-
-cats = [
-    ("Bastão", "bg-bastao"), 
-    ("Fila Bastão", "bg-fila"), 
-    ("Atividade", "bg-atividade"), 
-    ("Reunião", "bg-reuniao"), 
-    ("Projeto", "bg-projeto"), 
-    ("Treinamento", "bg-treinamento"),
-    ("Sessão", "bg-sessao"), 
-    ("Almoço", "bg-almoco"), 
-    ("Ausente", "bg-ausente")
-]
-
-df_eproc = df_status[df_status['Sistema'] == 'Eproc']
-df_legado = df_status[df_status['Sistema'] == 'Legados']
-
-eproc_on = st.toggle("🔵 Equipe Eproc", value=st.session_state.show_eproc, key="show_eproc")
-if eproc_on:
-    with st.container(border=True):
-        renderizar_grid(df_eproc, cats)
-
-st.write("") 
-
-legado_on = st.toggle("⚫ Equipe Legados", value=st.session_state.show_legado, key="show_legado")
-if legado_on:
-    with st.container(border=True):
-        renderizar_grid(df_legado, cats)
+def check_and_assume_baton(forced_successor=None, immune_consultant=None):
