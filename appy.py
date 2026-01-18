@@ -11,10 +11,12 @@ import base64
 import io
 from supabase import create_client
 from docx import Document
+from docx.shared import Pt, Cm
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 # Importações locais
 from repository import load_state_from_db, save_state_to_db
-from utils import (get_brazil_time, get_secret, send_to_chat, gerar_docx_certidao, get_img_as_base64)
+from utils import (get_brazil_time, get_secret, send_to_chat, get_img_as_base64)
 
 # ============================================
 # 1. CONFIGURAÇÕES
@@ -75,11 +77,12 @@ def verificar_duplicidade_certidao(tipo, n_processo=None, data_evento=None, hora
         query = sb.table("certidoes_registro").select("*").eq("tipo", tipo)
         
         if tipo in ['Física', 'Eletrônica'] and n_processo:
-            # LIMPEZA: Remove espaços e o ponto final para comparar
-            proc_limpo = str(n_processo).strip().rstrip('.')
+            # 1. Limpa o input do usuário (tira espaços e ponto final)
+            proc_user = str(n_processo).strip().rstrip('.')
             
-            # Busca flexível: Verifica se começa com o número limpo (ignora se tem ponto no banco ou não)
-            response = query.ilike("n_processo", f"{proc_limpo}%").execute()
+            # 2. Busca no banco usando ILIKE com coringas (contém)
+            # Isso faz com que '1.0116.16' encontre '1.0116.16.' e vice-versa
+            response = query.ilike("n_processo", f"%{proc_user}%").execute()
             return len(response.data) > 0
             
         elif tipo == 'Geral' and data_evento:
@@ -103,6 +106,69 @@ def salvar_certidao_db(dados):
         return True
     except Exception as e:
         raise e 
+
+# --- GERADOR DE WORD OFICIAL ---
+def gerar_docx_certidao_internal(tipo, numero, data, consultor, motivo):
+    try:
+        doc = Document()
+        
+        # Estilos básicos
+        style = doc.styles['Normal']
+        font = style.font
+        font.name = 'Arial'
+        font.size = Pt(12)
+
+        # Cabeçalho
+        head_p = doc.add_paragraph()
+        head_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        runner = head_p.add_run("PODER JUDICIÁRIO DO ESTADO DE MINAS GERAIS\nTJMG - SUPERINTENDÊNCIA DE INFORMÁTICA\nCOORDENAÇÃO DE SUPORTE A SISTEMAS JUDICIAIS")
+        runner.bold = True
+        runner.font.size = Pt(11)
+        
+        doc.add_paragraph("\n")
+        
+        # Título
+        title = doc.add_paragraph(f"CERTIDÃO DE INDISPONIBILIDADE ({tipo.upper()})")
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        title.runs[0].bold = True
+        title.runs[0].font.size = Pt(14)
+        
+        doc.add_paragraph("\n\n")
+        
+        # Corpo do Texto
+        texto = doc.add_paragraph()
+        texto.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        
+        texto.add_run("Certifico, para os devidos fins, que na data de ").font.size = Pt(12)
+        texto.add_run(f"{data}").bold = True
+        texto.add_run(", foi reportada ao setor técnico do Tribunal de Justiça de Minas Gerais uma inconsistência/indisponibilidade sistêmica.\n\n")
+        
+        if numero:
+            texto.add_run("Referência (Processo/Chamado): ").bold = True
+            texto.add_run(f"{numero}\n")
+        
+        texto.add_run("Responsável Técnico: ").bold = True
+        texto.add_run(f"{consultor}\n\n")
+        
+        texto.add_run("Descrição Técnica do Ocorrido:\n").bold = True
+        texto.add_run(motivo)
+        
+        doc.add_paragraph("\n\n\n")
+        
+        # Data e Assinatura
+        data_atual = datetime.now().strftime("%d de %B de %Y")
+        footer = doc.add_paragraph(f"Belo Horizonte, {data_atual}.")
+        footer.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        
+        doc.add_paragraph("\n\n___________________________________________________\nEquipe de Suporte Técnico - CESUPE\nTJMG").alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        buffer = io.BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
+        return buffer
+    except Exception as e:
+        print(f"Erro docx: {e}")
+        return None
 
 # ============================================
 # 2. FUNÇÕES BASE & ESTADO
@@ -186,27 +252,6 @@ def send_certidao_notification_to_chat(consultor, tipo):
 
 def play_sound_html(): return f'<audio autoplay="true"><source src="{SOUND_URL}" type="audio/mpeg"></audio>'
 def render_fireworks(): st.markdown("""<style>...</style>""", unsafe_allow_html=True)
-
-# Função auxiliar interna para gerar DOCX
-def gerar_docx_certidao_internal(tipo, numero, data, consultor, motivo):
-    try:
-        from docx import Document
-        doc = Document()
-        doc.add_heading('Certidão de Indisponibilidade', 0)
-        p = doc.add_paragraph()
-        p.add_run(f"Tipo: {tipo}\n").bold = True
-        p.add_run(f"Data do Evento: {data}\n")
-        p.add_run(f"Consultor Responsável: {consultor}\n")
-        if numero: p.add_run(f"Nº Processo/Ref: {numero}\n")
-        doc.add_paragraph("Motivo/Descrição:").bold = True
-        doc.add_paragraph(motivo)
-        buffer = io.BytesIO()
-        doc.save(buffer)
-        buffer.seek(0)
-        return buffer
-    except ImportError:
-        return None
-
 def gerar_html_checklist(c, m, d): return "..."
 
 def send_daily_report():
@@ -647,7 +692,7 @@ with col_principal:
             if st.session_state.get('html_download_ready'): st.download_button("⬇️ Baixar HTML", st.session_state.html_content_cache, "Checklist.html", "text/html")
     
     # ================================
-    # VIEW: CERTIDÃO (COM LIMPEZA DE PONTO)
+    # VIEW: CERTIDÃO (CORRIGIDA COM LIMPEZA DE PONTO)
     # ================================
     elif st.session_state.active_view == "certidao":
         with st.container(border=True):
@@ -704,7 +749,7 @@ with col_principal:
                                     st.write("Não é necessário registrar novamente.")
                                     st.markdown("**Dúvidas? Falar com Matheus ou Gilberto.**")
                             else:
-                                # LIMPEZA ANTES DE SALVAR (Remove ponto final)
+                                # LIMPEZA ANTES DE SALVAR (Remove ponto final e espaços)
                                 proc_salvar = c_processo.strip().rstrip('.') if c_processo else ""
                                 payload = {"tipo": tipo_certidao, "data_evento": c_data.isoformat(), "consultor": c_consultor, "n_chamado": c_chamado, "n_processo": proc_salvar, "motivo": c_motivo, "hora_periodo": c_hora}
                                 
