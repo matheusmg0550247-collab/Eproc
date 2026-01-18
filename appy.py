@@ -167,23 +167,33 @@ def send_daily_report():
     st.session_state['daily_logs'] = []; st.session_state['bastao_counts'] = {nome: 0 for nome in CONSULTORES}
     save_state()
 
-# --- LÓGICA DE FILA CORRIGIDA ---
+# --- LÓGICA DE FILA BLINDADA (AGRESSIVA) ---
 def find_next_holder_index(current_index, queue, skips):
     """
     Retorna o índice do próximo ELEGÍVEL na fila. 
-    Se todos estiverem pulando ou ninguém for elegível, retorna -1.
+    Se todos estiverem pulando, força o vizinho.
     """
     if not queue: return -1
     n = len(queue)
     start_index = (current_index + 1) % n
     
-    # Procura alguém que NÃO esteja pulando
+    # 1. Tenta achar alguém que NÃO esteja pulando
     for i in range(n):
         idx = (start_index + i) % n
         consultor = queue[idx]
-        if consultor == queue[current_index] and n > 1: continue
+        if consultor == queue[current_index] and n > 1:
+            continue
         if not skips.get(consultor, False):
             return idx
+            
+    # 2. SE NINGUÉM FOR ACHADO (todos pulando), PEGA O PRÓXIMO NA MARRA
+    if n > 1:
+        proximo_imediato_idx = (current_index + 1) % n
+        # Força o reset do skip do escolhido
+        nome_escolhido = queue[proximo_imediato_idx]
+        st.session_state.skip_flags[nome_escolhido] = False 
+        return proximo_imediato_idx
+
     return -1
 
 def check_and_assume_baton(forced_successor=None, immune_consultant=None):
@@ -196,10 +206,7 @@ def check_and_assume_baton(forced_successor=None, immune_consultant=None):
     if not target:
         curr_idx = queue.index(current_holder) if (current_holder and current_holder in queue) else -1
         idx = find_next_holder_index(curr_idx, queue, skips)
-        # Se não achou (ex: todos pulando), não força nada no check automático
-        # Apenas mantém sem bastão até intervenção
-        if idx != -1:
-            target = queue[idx]
+        target = queue[idx] if idx != -1 else None
 
     changed = False; now = get_brazil_time()
     
@@ -365,58 +372,41 @@ def rotate_bastao():
     current_index = queue.index(current_holder) if current_holder in queue else -1
     if current_index == -1: check_and_assume_baton(); return
     
-    # 1. TENTA ACHAR ALGUÉM ELEGÍVEL
     next_idx = find_next_holder_index(current_index, queue, skips)
     
-    # 2. SE NÃO ACHOU (TODOS PULANDO), MANTÉM COM ATUAL E LIMPA SKIPS
-    if next_idx == -1:
-        next_holder = current_holder # Volta pra quem tá (Alex)
-        # Limpa os skips de quem foi pulado (Dirceu)
-        for p in queue:
-            if p != current_holder and skips.get(p, False):
-                st.session_state.skip_flags[p] = False
-        st.toast("Todos pularam! Bastão mantido e filas reiniciadas.", icon="🔄")
+    if next_idx != -1:
+        next_holder = queue[next_idx]
         
-        # Loga como se tivesse recebido novamente para atualizar tempo
+        st.session_state.skip_flags[next_holder] = False
+        
+        if next_idx > current_index: skipped_over = queue[current_index+1 : next_idx]
+        else: skipped_over = queue[current_index+1:] + queue[:next_idx]
+        for person in skipped_over: st.session_state.skip_flags[person] = False
+        
         now_br = get_brazil_time()
         old_h_status = st.session_state.status_texto[current_holder]
-        log_status_change(current_holder, old_h_status, old_h_status, now_br - (st.session_state.bastao_start_time or now_br))
+        new_h_status = old_h_status.replace('Bastão | ', '').replace('Bastão', '').strip()
+        log_status_change(current_holder, old_h_status, new_h_status, now_br - (st.session_state.bastao_start_time or now_br))
+        st.session_state.status_texto[current_holder] = new_h_status
+        old_n_status = st.session_state.status_texto.get(next_holder, '')
+        new_n_status = f"Bastão | {old_n_status}" if old_n_status else "Bastão"
+        log_status_change(next_holder, old_n_status, new_n_status, timedelta(0))
+        st.session_state.status_texto[next_holder] = new_n_status
         st.session_state.bastao_start_time = now_br
-        save_state()
-        return
-
-    # 3. CASO NORMAL
-    next_holder = queue[next_idx]
-    st.session_state.skip_flags[next_holder] = False
-    
-    if next_idx > current_index: skipped_over = queue[current_index+1 : next_idx]
-    else: skipped_over = queue[current_index+1:] + queue[:next_idx]
-    for person in skipped_over: st.session_state.skip_flags[person] = False
-    
-    now_br = get_brazil_time()
-    old_h_status = st.session_state.status_texto[current_holder]
-    new_h_status = old_h_status.replace('Bastão | ', '').replace('Bastão', '').strip()
-    log_status_change(current_holder, old_h_status, new_h_status, now_br - (st.session_state.bastao_start_time or now_br))
-    st.session_state.status_texto[current_holder] = new_h_status
-    old_n_status = st.session_state.status_texto.get(next_holder, '')
-    new_n_status = f"Bastão | {old_n_status}" if old_n_status else "Bastão"
-    log_status_change(next_holder, old_n_status, new_n_status, timedelta(0))
-    st.session_state.status_texto[next_holder] = new_n_status
-    st.session_state.bastao_start_time = now_br
-    st.session_state.bastao_counts[current_holder] = st.session_state.bastao_counts.get(current_holder, 0) + 1
-    st.session_state.play_sound = True; st.session_state.rotation_gif_start_time = now_br
-    send_chat_notification_internal(next_holder, 'Bastão'); save_state()
+        st.session_state.bastao_counts[current_holder] = st.session_state.bastao_counts.get(current_holder, 0) + 1
+        st.session_state.play_sound = True; st.session_state.rotation_gif_start_time = now_br
+        send_chat_notification_internal(next_holder, 'Bastão'); save_state()
+    else: st.warning('Ninguém elegível.'); check_and_assume_baton()
 
 def toggle_skip():
     selected = st.session_state.consultor_selectbox
     if not selected or selected == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
     if not st.session_state.get(f'check_{selected}'): st.warning(f'{selected} não está disponível.'); return
     
-    # Toggle
-    novo_estado = not st.session_state.skip_flags.get(selected, False)
-    st.session_state.skip_flags[selected] = novo_estado
+    novo = not st.session_state.skip_flags.get(selected, False)
+    st.session_state.skip_flags[selected] = novo
     
-    if novo_estado: st.toast(f"⏭️ {selected} pulou a vez!", icon="⏭️")
+    if novo: st.toast(f"⏭️ {selected} pulou a vez!", icon="⏭️")
     else: st.toast(f"✅ {selected} voltou para a fila!", icon="✅")
     
     save_state(); st.rerun()
@@ -443,7 +433,6 @@ def update_status(new_status_part, force_exit_queue=False):
         st.session_state.bastao_queue.remove(selected)
         st.session_state.skip_flags.pop(selected, None)
     
-    # RESET TOTAL SE FOR BLOQUEADOR
     if new_status_part in ['Almoço', 'Ausente', 'Saída rápida']:
         final_status = new_status_part
     else:
@@ -515,8 +504,15 @@ with c_topo_dir:
     with c_sub2:
         if st.button("🚀 Entrar", use_container_width=True):
             if novo_responsavel != "Selecione":
-                if toggle_queue(novo_responsavel):
-                    st.session_state.consultor_selectbox = novo_responsavel; st.success(f"{novo_responsavel} agora está na fila!"); st.rerun()
+                # --- TRAVA DE SEGURANÇA ADICIONADA AQUI ---
+                holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
+                if novo_responsavel == holder:
+                    st.error(f"{novo_responsavel} já está com o bastão!")
+                elif novo_responsavel in st.session_state.bastao_queue:
+                    st.warning(f"{novo_responsavel} já está na fila.")
+                else:
+                    if toggle_queue(novo_responsavel):
+                        st.session_state.consultor_selectbox = novo_responsavel; st.success(f"{novo_responsavel} agora está na fila!"); st.rerun()
 
 st.markdown("<hr style='border: 1px solid #FFD700; margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
 
@@ -543,7 +539,6 @@ with col_principal:
         st.caption(f"⏱️ Tempo com o bastão: **{format_time_duration(dur)}**")
     else: st.markdown('<h2>(Ninguém com o bastão)</h2>', unsafe_allow_html=True)
     
-    # --- VISUALIZAÇÃO: QUEM PULOU (CORRIGIDA) ---
     pularam_nomes = [p for p in queue if skips.get(p, False)]
     restante_sem_pular = [p for p in restante if not skips.get(p, False) and p not in pularam_nomes]
 
@@ -592,7 +587,8 @@ with col_principal:
                 if c_p1.button("Confirmar", type="primary", use_container_width=True):
                     nome_final = detalhe_proj if proj_selec == "Outros" else proj_selec
                     if nome_final:
-                        update_status(f"Projeto: {nome_final}")
+                        # --- AJUSTE: EMOJI ADICIONADO ---
+                        update_status(f"🏗️ Projeto: {nome_final}")
                         st.session_state.active_view = None
                         st.rerun()
                     else:
