@@ -61,21 +61,14 @@ GIF_BASTAO_HOLDER = "https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExa3Uwazd5c
 BASTAO_EMOJI = "🥂" 
 APP_URL_CLOUD = 'https://controle-bastao-cesupe.streamlit.app'
 GIF_URL_ROTATION = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExdmx4azVxbGt4Mnk1cjMzZm5sMmp1YThteGJsMzcyYmhsdmFoczV0aSZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/JpkZEKWY0s9QI4DGvF/giphy.gif'
-GIF_URL_LUNCH_WARNING = 'https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExMGZlbHN1azB3b2drdTI1eG10cDEzeWpmcmtwenZxNTV0bnc2OWgzZSYlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/bNlqpmBJRDMpxulfFB/giphy.gif'
 GIF_URL_NEDRY = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExMGNkMGx3YnNkcXQ2bHJmNTZtZThraHhuNmVoOTNmbG0wcDloOXAybiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/7kyWoqTue3po4/giphy.gif'
-GIF_URL_WARNING = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExY2pjMDN0NGlvdXp1aHZ1ejJqMnY5MG1yZmN0d3NqcDl1bTU1dDJrciZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/fXnRObM8Q0RkOmR5nf/giphy.gif'
 SOUND_URL = "https://github.com/matheusmg0550247-collab/controle-bastao-eproc2/raw/main/doorbell-223669.mp3"
 PUG2026_FILENAME = "pug2026.png"
 
-# Webhooks (Carregados via utils/secrets)
+# Webhooks
 GOOGLE_CHAT_WEBHOOK_BACKUP = get_secret("chat", "backup")
 CHAT_WEBHOOK_BASTAO = get_secret("chat", "bastao")
 GOOGLE_CHAT_WEBHOOK_REGISTRO = get_secret("chat", "registro")
-GOOGLE_CHAT_WEBHOOK_CHAMADO = get_secret("chat", "chamado")
-GOOGLE_CHAT_WEBHOOK_SESSAO = get_secret("chat", "sessao")
-GOOGLE_CHAT_WEBHOOK_CHECKLIST_HTML = get_secret("chat", "checklist")
-GOOGLE_CHAT_WEBHOOK_HORAS_EXTRAS = get_secret("chat", "extras")
-GOOGLE_CHAT_WEBHOOK_ERRO_NOVIDADE = get_secret("chat", "erro")
 SHEETS_WEBHOOK_URL = get_secret("sheets", "url")
 
 # ============================================
@@ -83,14 +76,10 @@ SHEETS_WEBHOOK_URL = get_secret("sheets", "url")
 # ============================================
 
 def save_state():
-    """Salva o estado atual no Supabase e atualiza session_state"""
     try:
-        # Garante que data seja serializável
         last_run = st.session_state.report_last_run_date
-        if isinstance(last_run, datetime):
-            last_run_iso = last_run.isoformat()
-        else:
-            last_run_iso = datetime.min.isoformat()
+        if isinstance(last_run, datetime): last_run_iso = last_run.isoformat()
+        else: last_run_iso = datetime.min.isoformat()
 
         state_to_save = {
             'status_texto': st.session_state.status_texto,
@@ -100,7 +89,7 @@ def save_state():
             'bastao_counts': st.session_state.bastao_counts,
             'priority_return_queue': st.session_state.priority_return_queue,
             'bastao_start_time': st.session_state.bastao_start_time,
-            'report_last_run_date': last_run_iso, # Salva como string ISO
+            'report_last_run_date': last_run_iso, 
             'rotation_gif_start_time': st.session_state.get('rotation_gif_start_time'),
             'lunch_warning_info': st.session_state.get('lunch_warning_info'),
             'auxilio_ativo': st.session_state.get('auxilio_ativo', False),
@@ -118,15 +107,10 @@ def format_time_duration(duration):
     s = int(duration.total_seconds()); h, s = divmod(s, 3600); m, s = divmod(s, 60)
     return f'{h:02}:{m:02}:{s:02}'
 
-# --- ENVIO SÍNCRONO (SUBSTITUI THREADS) ---
 def _send_webhook_sync(url, payload):
-    """Envia webhook de forma síncrona para garantir entrega no Streamlit Cloud."""
     if not url: return
-    try: 
-        # Timeout curto (3s) para não travar a UI se a API demorar
-        requests.post(url, json=payload, headers={'Content-Type': 'application/json'}, timeout=3)
-    except Exception as e:
-        print(f"Erro webhook: {e}")
+    try: requests.post(url, json=payload, headers={'Content-Type': 'application/json'}, timeout=3)
+    except: pass
 
 def send_log_to_sheets(timestamp_str, consultor, old_status, new_status, duration_str):
     if not SHEETS_WEBHOOK_URL: return
@@ -134,18 +118,13 @@ def send_log_to_sheets(timestamp_str, consultor, old_status, new_status, duratio
         "data_hora": timestamp_str, "consultor": consultor,
         "status_anterior": old_status, "status_atual": new_status, "tempo_anterior": duration_str
     }
-    # Chamada direta (sem thread)
     _send_webhook_sync(SHEETS_WEBHOOK_URL, payload)
 
 def log_status_change(consultor, old_status, new_status, duration):
     if not isinstance(duration, timedelta): duration = timedelta(0)
     now_br = get_brazil_time()
-    start_t = st.session_state.current_status_starts.get(consultor, now_br)
-    today_8am = now_br.replace(hour=8, minute=0, second=0, microsecond=0)
+    
     final_duration = duration
-    if start_t < today_8am and now_br >= today_8am:
-         final_duration = now_br - today_8am
-         if final_duration.total_seconds() < 0: final_duration = timedelta(0)
     
     old_lbl = old_status if old_status else 'Fila Bastão'
     new_lbl = new_status if new_status else 'Fila Bastão'
@@ -163,11 +142,9 @@ def log_status_change(consultor, old_status, new_status, duration):
     duration_str = format_time_duration(final_duration)
     send_log_to_sheets(timestamp_str, consultor, old_lbl, new_lbl, duration_str)
     
-    if consultor not in st.session_state.current_status_starts:
-        st.session_state.current_status_starts[consultor] = now_br
     st.session_state.current_status_starts[consultor] = now_br
 
-# --- NOTIFICAÇÕES (SÍNCRONAS) ---
+# --- NOTIFICAÇÕES ---
 def send_chat_notification_internal(consultor, status):
     if CHAT_WEBHOOK_BASTAO and status == 'Bastão':
         msg = f"🎉 **BASTÃO GIRADO!** 🎉 \n\n- **Novo(a) Responsável:** {consultor}\n- **Acesse o Painel:** {APP_URL_CLOUD}"
@@ -329,7 +306,6 @@ def init_session_state():
         except Exception as e: print(f"Erro DB: {e}")
         st.session_state['db_loaded'] = True
     
-    # Conversão de Data do DB (String -> Datetime)
     if 'report_last_run_date' in st.session_state and isinstance(st.session_state['report_last_run_date'], str):
         try: st.session_state['report_last_run_date'] = datetime.fromisoformat(st.session_state['report_last_run_date'])
         except: st.session_state['report_last_run_date'] = datetime.min
@@ -387,7 +363,6 @@ def reset_day_state():
 # --- AÇÕES DE BOTÕES E REGRAS ---
 
 def toggle_queue(consultor):
-    # REGRA: 20H às 06H (Bloqueio)
     now_hour = get_brazil_time().hour
     if now_hour >= 20 or now_hour < 6:
         st.toast("💤 Fora do expediente (20h às 06h)! Ação bloqueada.", icon="🌙")
@@ -399,16 +374,12 @@ def toggle_queue(consultor):
     st.session_state.gif_warning = False
     now_br = get_brazil_time()
 
-    # REGRA: LIMPEZA SIMULTÂNEA NO PRIMEIRO CLIQUE
     last_run = st.session_state.report_last_run_date
     if now_br.date() > last_run.date():
-        # É um novo dia! Limpa tudo primeiro.
         reset_day_state()
         st.toast("☀️ Novo dia detectado! Fila limpa automaticamente.", icon="🧹")
-        # Como limpamos, garantimos que o usuário que clicou entre:
-        st.session_state[f'check_{consultor}'] = True # Força True pois o reset colocou False
+        st.session_state[f'check_{consultor}'] = True 
 
-    # Lógica padrão de entrada/saída
     if consultor in st.session_state.bastao_queue:
         current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
         forced_successor = None
@@ -460,7 +431,6 @@ def leave_specific_status(consultor, status_type_to_remove):
     save_state()
 
 def enter_from_indisponivel(consultor):
-    # REGRA: 20H às 06H
     now_hour = get_brazil_time().hour
     if now_hour >= 20 or now_hour < 6:
         st.toast("💤 Fora do expediente (20h às 06h)! Ação bloqueada.", icon="🌙")
@@ -469,7 +439,6 @@ def enter_from_indisponivel(consultor):
         st.rerun()
         return
 
-    # REGRA: LIMPEZA SIMULTÂNEA
     now_br = get_brazil_time()
     last_run = st.session_state.report_last_run_date
     if now_br.date() > last_run.date():
@@ -560,13 +529,27 @@ def update_status(new_status_part, force_exit_queue=False):
     clean.sort(key=lambda x: 0 if 'Bastão' in x else 1 if 'Atividade' in x or 'Projeto' in x else 2)
     final_status = " | ".join(clean)
     
+    # --- CORREÇÃO DE LÓGICA ---
+    # Antes de remover da fila, descobre o sucessor se a pessoa for o holder
+    forced_successor = None
+    if should_exit and selected in st.session_state.bastao_queue:
+        # Se for o holder e vai sair, precisamos saber quem é o próximo ANTES de remover
+        current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
+        if selected == current_holder:
+            idx = st.session_state.bastao_queue.index(selected)
+            nxt = find_next_holder_index(idx, st.session_state.bastao_queue, st.session_state.skip_flags)
+            if nxt != -1: 
+                forced_successor = st.session_state.bastao_queue[nxt]
+
     if should_exit:
         st.session_state[f'check_{selected}'] = False
         if selected in st.session_state.bastao_queue: st.session_state.bastao_queue.remove(selected)
         st.session_state.skip_flags.pop(selected, None)
     
     is_holder = 'Bastão' in current
-    if is_holder and not should_exit and 'Bastão' not in final_status: final_status = f"Bastão | {final_status}"
+    # Se ainda tem bastão e não vai sair, mantém. Se vai sair, perde o bastão no texto.
+    if is_holder and not should_exit and 'Bastão' not in final_status: 
+        final_status = f"Bastão | {final_status}"
     
     now_br = get_brazil_time()
     log_status_change(selected, current, final_status, now_br - st.session_state.current_status_starts.get(selected, now_br))
@@ -575,24 +558,20 @@ def update_status(new_status_part, force_exit_queue=False):
         if selected not in st.session_state.priority_return_queue: st.session_state.priority_return_queue.append(selected)
     elif selected in st.session_state.priority_return_queue: st.session_state.priority_return_queue.remove(selected)
     
-    if is_holder: check_and_assume_baton()
+    # Passa o forced_successor para a função de check
+    if is_holder: check_and_assume_baton(forced_successor)
     save_state()
 
 def auto_manage_time():
     now = get_brazil_time()
-    # Apenas limpeza passiva (caso ninguém clique em nada o dia todo)
-    # Se alguém clicar, a limpeza acontece via toggle_queue
     last_run = st.session_state.report_last_run_date
     if now.hour >= 23 and now.date() == last_run.date():
-        # Limpeza noturna (23h)
         reset_day_state()
         save_state()
     elif now.date() > last_run.date():
-        # Limpeza de dia seguinte (Backup)
         reset_day_state()
         save_state()
     elif now.hour >= 20:
-        # Apenas visual 20h
         active = any(s != 'Indisponível' for s in st.session_state.status_texto.values()) or len(st.session_state.bastao_queue) > 0
         if active:
             st.session_state.bastao_queue = []
@@ -660,11 +639,9 @@ with c_topo_dir:
                     st.session_state.consultor_selectbox = novo_responsavel
                     st.success(f"{novo_responsavel} agora está na fila!")
                     st.rerun()
-                # Se falhar (horário), a função toggle_queue já deu o toast e fez o sleep
 
 st.markdown("<hr style='border: 1px solid #FFD700; margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
 
-# Gifs e Avisos
 if st.session_state.rotation_gif_start_time:
     if (datetime.now() - st.session_state.rotation_gif_start_time).total_seconds() < 20: st.image(GIF_URL_ROTATION, width=200)
     else: st.session_state.rotation_gif_start_time = None; save_state()
@@ -675,7 +652,6 @@ if st.session_state.get('play_sound'):
 
 st_autorefresh(interval=8000, key='auto_rerun')
 
-# Colunas Principais
 col_principal, col_disponibilidade = st.columns([1.5, 1])
 queue, skips = st.session_state.bastao_queue, st.session_state.skip_flags
 responsavel = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
