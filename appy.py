@@ -9,8 +9,9 @@ from streamlit_autorefresh import st_autorefresh
 import json
 import base64
 import io
+from supabase import create_client
 
-# Importações locais (certifique-se que os arquivos repository.py e utils.py existem)
+# Importações locais
 from repository import load_state_from_db, save_state_to_db
 from utils import (get_brazil_time, get_secret, send_to_chat, gerar_docx_certidao, get_img_as_base64)
 
@@ -58,8 +59,50 @@ CHAT_WEBHOOK_BASTAO = get_secret("chat", "bastao")
 GOOGLE_CHAT_WEBHOOK_REGISTRO = get_secret("chat", "registro")
 SHEETS_WEBHOOK_URL = get_secret("sheets", "url")
 
+# --- CONEXÃO COM SUPABASE ---
+def get_supabase():
+    try:
+        return create_client(st.secrets["supabase"]["url"], st.secrets["supabase"]["key"])
+    except:
+        return None
+
+# --- FUNÇÕES DE BANCO PARA CERTIDÕES ---
+def verificar_duplicidade_certidao(tipo, n_processo=None, data_evento=None, hora_periodo=None):
+    sb = get_supabase()
+    if not sb: return False
+    try:
+        query = sb.table("certidoes_registro").select("*").eq("tipo", tipo)
+        
+        if tipo in ['Física', 'Eletrônica'] and n_processo:
+            response = query.eq("n_processo", n_processo).execute()
+            return len(response.data) > 0
+            
+        elif tipo == 'Geral' and data_evento:
+            # Formata data
+            data_str = data_evento.isoformat() if hasattr(data_evento, 'isoformat') else str(data_evento)
+            query = query.eq("data_evento", data_str)
+            if hora_periodo:
+                query = query.eq("hora_periodo", hora_periodo)
+            response = query.execute()
+            return len(response.data) > 0
+            
+    except Exception as e:
+        print(f"Erro duplicidade: {e}")
+        return False
+    return False
+
+def salvar_certidao_db(dados):
+    sb = get_supabase()
+    if not sb: return False
+    try:
+        sb.table("certidoes_registro").insert(dados).execute()
+        return True
+    except Exception as e:
+        print(f"Erro salvar: {e}")
+        return False
+
 # ============================================
-# 2. FUNÇÕES BASE
+# 2. FUNÇÕES BASE & ESTADO
 # ============================================
 
 def save_state():
@@ -183,10 +226,9 @@ def find_next_holder_index(current_index, queue, skips):
         if not skips.get(consultor, False):
             return idx
             
-    # 2. SE NINGUÉM FOR ACHADO (todos pulando), PEGA O PRÓXIMO NA MARRA
+    # 2. SE NINGUÉM FOR ACHADO, força o próximo e reseta o skip
     if n > 1:
         proximo_imediato_idx = (current_index + 1) % n
-        # Força o reset do skip do escolhido
         nome_escolhido = queue[proximo_imediato_idx]
         st.session_state.skip_flags[nome_escolhido] = False 
         return proximo_imediato_idx
@@ -221,7 +263,6 @@ def check_and_assume_baton(forced_successor=None, immune_consultant=None):
             st.session_state.status_texto[target] = new_s; st.session_state.bastao_start_time = now
             if current_holder != target: 
                 st.session_state.play_sound = True; send_chat_notification_internal(target, 'Bastão')
-            
             st.session_state.skip_flags[target] = False
             changed = True
             
@@ -383,7 +424,7 @@ def rotate_bastao():
         send_chat_notification_internal(next_holder, 'Bastão'); save_state()
     else: st.warning('Ninguém elegível.'); check_and_assume_baton()
 
-# --- FUNÇÃO PULAR (ATUALIZA TEMPO E MOVE PARA O FIM DA FILA) ---
+# --- FUNÇÃO PULAR (MOVE PARA O FIM) ---
 def toggle_skip():
     selected = st.session_state.consultor_selectbox
     if not selected or selected == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
@@ -394,16 +435,13 @@ def toggle_skip():
     
     if novo:
         now_br = get_brazil_time()
-        # 1. Atualiza horário para ir visualmente pro fim no dashboard
+        # 1. Atualiza horário visual
         st.session_state.current_status_starts[selected] = now_br
         log_status_change(selected, "Fila", "Fila (Final)", timedelta(0))
-        
-        # 2. MOVE FISICAMENTE PARA O FINAL DA LISTA DE FILA
-        # Isso garante que a rotação (rotate_bastao) também o veja como último
+        # 2. MOVE FISICAMENTE PARA O FINAL
         if selected in st.session_state.bastao_queue:
             st.session_state.bastao_queue.remove(selected)
             st.session_state.bastao_queue.append(selected)
-            
         st.toast(f"⏭️ {selected} pulou e foi para o fim da fila!", icon="⏭️")
     else:
         st.toast(f"✅ {selected} voltou para a fila!", icon="✅")
@@ -498,7 +536,6 @@ with c_topo_dir:
         if st.button("🚀 Entrar", use_container_width=True):
             if novo_responsavel != "Selecione":
                 holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
-                # --- TRAVA DE SEGURANÇA ---
                 if novo_responsavel == holder: st.error(f"{novo_responsavel} já está com o bastão!")
                 elif novo_responsavel in st.session_state.bastao_queue: st.warning(f"{novo_responsavel} já está na fila.")
                 else:
@@ -535,15 +572,9 @@ with col_principal:
 
     st.markdown("###"); st.header("Próximos da Fila")
     if proximo: st.markdown(f'### 1º: **{proximo}**')
-    
-    if restante_sem_pular: 
-        st.markdown(f'#### 2º em diante: {", ".join(restante_sem_pular)}')
-    
-    if pularam_nomes:
-        st.markdown(f'##### ⏭️ Pularam a vez: {", ".join(pularam_nomes)}')
-    
-    elif not proximo and not pularam_nomes: 
-        st.markdown('*Ninguém elegível.*')
+    if restante_sem_pular: st.markdown(f'#### 2º em diante: {", ".join(restante_sem_pular)}')
+    if pularam_nomes: st.markdown(f'##### ⏭️ Pularam a vez: {", ".join(pularam_nomes)}')
+    elif not proximo and not pularam_nomes: st.markdown('*Ninguém elegível.*')
 
     st.markdown("###"); st.header("**Consultor(a)**")
     st.selectbox('Selecione:', ['Selecione um nome'] + CONSULTORES, key='consultor_selectbox', label_visibility='collapsed')
@@ -571,19 +602,12 @@ with col_principal:
                 opcoes_proj = OPCOES_PROJETOS + ["Outros"]
                 proj_selec = st.selectbox("Selecione o Projeto:", opcoes_proj, key="sel_proj_ui")
                 detalhe_proj = ""
-                if proj_selec == "Outros":
-                    detalhe_proj = st.text_input("Nome do projeto:", key="txt_proj_ui")
-                
+                if proj_selec == "Outros": detalhe_proj = st.text_input("Nome do projeto:", key="txt_proj_ui")
                 c_p1, c_p2 = st.columns(2)
                 if c_p1.button("Confirmar", type="primary", use_container_width=True):
                     nome_final = detalhe_proj if proj_selec == "Outros" else proj_selec
-                    if nome_final:
-                        # --- AJUSTE: EMOJI ADICIONADO ---
-                        update_status(f"🏗️ Projeto: {nome_final}")
-                        st.session_state.active_view = None
-                        st.rerun()
-                    else:
-                        st.warning("Digite o nome.")
+                    if nome_final: update_status(f"🏗️ Projeto: {nome_final}"); st.session_state.active_view = None; st.rerun()
+                    else: st.warning("Digite o nome.")
                 
             elif st.session_state.active_view == 'menu_reuniao':
                 desc = st.text_input("Qual?"); 
@@ -611,12 +635,55 @@ with col_principal:
             st.header("Gerador de Checklist"); data_eproc = st.date_input("Data:", value=get_brazil_time().date()); camara_eproc = st.selectbox("Câmara:", CAMARAS_OPCOES)
             if st.button("Gerar HTML", type="primary", use_container_width=True): handle_sessao_submission(st.session_state.consultor_selectbox, camara_eproc, data_eproc)
             if st.session_state.get('html_download_ready'): st.download_button("⬇️ Baixar HTML", st.session_state.html_content_cache, "Checklist.html", "text/html")
-    elif st.session_state.active_view == "chamados":
-        with st.container(border=True): st.header("Chamados"); st.write("Passos..."); st.button("Simular", on_click=handle_chamado_submission)
+    
+    # ================================
+    # VIEW: CERTIDÃO (CORRIGIDA)
+    # ================================
     elif st.session_state.active_view == "certidao":
         with st.container(border=True):
-            st.header("Certidão"); tipo = st.selectbox("Tipo:", ["Geral", "Eletrônica", "Física"])
-            if st.button("Gerar", type="primary", use_container_width=True): st.success("Gerado!") 
+            st.header("🖨️ Registro de Certidão")
+            st.info("O sistema verificará duplicidade automaticamente.")
+            
+            tipo_certidao = st.selectbox("Tipo de Declaração:", ["Física", "Eletrônica", "Geral"])
+            c_data = st.date_input("Data do Evento:", value=get_brazil_time().date())
+            c_consultor = st.session_state.consultor_selectbox
+            
+            c_chamado = ""; c_processo = ""; c_motivo = ""; c_hora = ""
+            
+            if tipo_certidao == "Geral":
+                c_hora = st.text_input("Horário/Período (ex: 14:00 às 18:00):")
+                c_motivo = st.text_input("Motivo (ex: Queda de energia no TJ):")
+            else:
+                col_c1, col_c2 = st.columns(2)
+                c_chamado = col_c1.text_input("Nº Chamado:")
+                c_processo = col_c2.text_input("Nº Processo (Obrigatório):")
+                c_motivo = st.text_area("Motivo / Erro apresentado:")
+
+            if st.button("💾 Salvar Registro", type="primary", use_container_width=True):
+                erro_msg = None
+                if c_consultor == "Selecione um nome": erro_msg = "Selecione seu nome no topo da página."
+                elif tipo_certidao != "Geral" and not c_processo: erro_msg = "O número do processo é obrigatório."
+                elif tipo_certidao == "Geral" and not c_hora: erro_msg = "O horário é obrigatório na Geral."
+                
+                if erro_msg: st.error(erro_msg)
+                else:
+                    ja_existe = False
+                    if tipo_certidao == "Geral":
+                        ja_existe = verificar_duplicidade_certidao("Geral", data_evento=c_data, hora_periodo=c_hora)
+                    else:
+                        ja_existe = verificar_duplicidade_certidao(tipo_certidao, n_processo=c_processo)
+                    
+                    if ja_existe:
+                        st.warning("⚠️ **Atenção: Já existe registro!**")
+                        with st.popover("🚨 LER AVISO", expanded=True):
+                            st.error(f"Já existe uma certidão **{tipo_certidao}** registrada para estes dados.")
+                            st.write("Não é necessário registrar novamente.")
+                            st.markdown("**Dúvidas? Falar com Matheus ou Gilberto.**")
+                    else:
+                        payload = {"tipo": tipo_certidao, "data_evento": c_data.isoformat(), "consultor": c_consultor, "n_chamado": c_chamado, "n_processo": c_processo, "motivo": c_motivo, "hora_periodo": c_hora}
+                        if salvar_certidao_db(payload):
+                            st.success("✅ Certidão registrada com sucesso!"); time.sleep(2); st.session_state.active_view = None; st.rerun()
+                        else: st.error("Erro técnico ao salvar.")
 
     elif st.session_state.active_view == "atendimentos":
         with st.container(border=True):
@@ -654,24 +721,15 @@ with col_disponibilidade:
     for nome in [c for c in queue if c in ui_lists["fila"]]:
         c1, c2 = st.columns([0.85, 0.15])
         c2.checkbox(' ', key=f'chk_fila_{nome}', value=True, on_change=toggle_queue, args=(nome,), label_visibility='collapsed')
-        
-        # --- AJUSTE: VERIFICAÇÃO VISUAL DE PROJETO NO APP ---
         status_val = st.session_state.status_texto.get(nome, '')
-        extra = ""
-        if "Atividade" in status_val: extra = " 📋"
-        elif "Projeto" in status_val: extra = " 🏗️"
-        
+        extra = " 📋" if "Atividade" in status_val else " 🏗️" if "Projeto" in status_val else ""
         is_skipping = st.session_state.skip_flags.get(nome, False)
         
-        if nome == responsavel: 
-            c1.markdown(f'<span style="background-color:#FFD700;color:black;padding:2px;border-radius:5px;">🥂 {nome}</span>', unsafe_allow_html=True)
-        elif is_skipping:
-            c1.markdown(f'**{nome}**{extra} :orange[⏭️ Pulando]')
-        else: 
-            c1.markdown(f'**{nome}**{extra}')
+        if nome == responsavel: c1.markdown(f'<span style="background-color:#FFD700;color:black;padding:2px;border-radius:5px;">🥂 {nome}</span>', unsafe_allow_html=True)
+        elif is_skipping: c1.markdown(f'**{nome}**{extra} :orange[⏭️ Pulando]')
+        else: c1.markdown(f'**{nome}**{extra}')
             
     st.markdown('---')
-
     def render_section(title, icon, items, color, tag):
         st.subheader(f'{icon} {title} ({len(items)})')
         for item in sorted(items, key=lambda x: x[0] if isinstance(x, tuple) else x):
