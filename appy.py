@@ -10,6 +10,7 @@ import json
 import base64
 import io
 from supabase import create_client
+from docx import Document # Garante que temos as libs para o Word
 
 # Importações locais
 from repository import load_state_from_db, save_state_to_db
@@ -98,8 +99,8 @@ def salvar_certidao_db(dados):
         sb.table("certidoes_registro").insert(dados).execute()
         return True
     except Exception as e:
-        print(f"Erro salvar: {e}")
-        return False
+        # Erro levantado para ser tratado na UI
+        raise e 
 
 # ============================================
 # 2. FUNÇÕES BASE & ESTADO
@@ -183,9 +184,29 @@ def send_certidao_notification_to_chat(consultor, tipo):
 
 def play_sound_html(): return f'<audio autoplay="true"><source src="{SOUND_URL}" type="audio/mpeg"></audio>'
 def render_fireworks(): st.markdown("""<style>...</style>""", unsafe_allow_html=True)
+
+# Função auxiliar interna para gerar DOCX (caso não esteja no utils)
+def gerar_docx_certidao_internal(tipo, numero, data, consultor, motivo):
+    try:
+        from docx import Document
+        from docx.shared import Pt
+        doc = Document()
+        doc.add_heading('Certidão de Indisponibilidade', 0)
+        p = doc.add_paragraph()
+        p.add_run(f"Tipo: {tipo}\n").bold = True
+        p.add_run(f"Data do Evento: {data}\n")
+        p.add_run(f"Consultor Responsável: {consultor}\n")
+        if numero: p.add_run(f"Nº Processo/Ref: {numero}\n")
+        doc.add_paragraph("Motivo/Descrição:").bold = True
+        doc.add_paragraph(motivo)
+        buffer = io.BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
+        return buffer
+    except ImportError:
+        return None
+
 def gerar_html_checklist(c, m, d): return "..."
-def gerar_docx_certidao(t, n, d, c, m): 
-    from docx import Document; import io; document = Document(); buffer = io.BytesIO(); document.save(buffer); buffer.seek(0); return buffer
 
 def send_daily_report():
     logs = load_logs(); bastao_counts = st.session_state.bastao_counts.copy()
@@ -216,45 +237,33 @@ def find_next_holder_index(current_index, queue, skips):
     if not queue: return -1
     n = len(queue)
     start_index = (current_index + 1) % n
-    
-    # 1. Tenta achar alguém que NÃO esteja pulando
     for i in range(n):
         idx = (start_index + i) % n
         consultor = queue[idx]
-        if consultor == queue[current_index] and n > 1:
-            continue
-        if not skips.get(consultor, False):
-            return idx
-            
-    # 2. SE NINGUÉM FOR ACHADO, força o próximo e reseta o skip
+        if consultor == queue[current_index] and n > 1: continue
+        if not skips.get(consultor, False): return idx
     if n > 1:
         proximo_imediato_idx = (current_index + 1) % n
         nome_escolhido = queue[proximo_imediato_idx]
         st.session_state.skip_flags[nome_escolhido] = False 
         return proximo_imediato_idx
-
     return -1
 
 def check_and_assume_baton(forced_successor=None, immune_consultant=None):
     queue, skips = st.session_state.bastao_queue, st.session_state.skip_flags
     current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
-    
     is_valid = (current_holder and current_holder in queue)
     target = forced_successor if forced_successor else (current_holder if is_valid else None)
-    
     if not target:
         curr_idx = queue.index(current_holder) if (current_holder and current_holder in queue) else -1
         idx = find_next_holder_index(curr_idx, queue, skips)
         target = queue[idx] if idx != -1 else None
-
     changed = False; now = get_brazil_time()
-    
     for c in CONSULTORES:
         if c != immune_consultant: 
             if c != target and 'Bastão' in st.session_state.status_texto.get(c, ''):
                 log_status_change(c, 'Bastão', 'Indisponível', now - st.session_state.current_status_starts.get(c, now))
                 st.session_state.status_texto[c] = 'Indisponível'; changed = True
-
     if target:
         curr_s = st.session_state.status_texto.get(target, '')
         if 'Bastão' not in curr_s:
@@ -637,7 +646,7 @@ with col_principal:
             if st.session_state.get('html_download_ready'): st.download_button("⬇️ Baixar HTML", st.session_state.html_content_cache, "Checklist.html", "text/html")
     
     # ================================
-    # VIEW: CERTIDÃO (CORRIGIDA)
+    # VIEW: CERTIDÃO (CORRIGIDA COM WORD E MENSAGEM)
     # ================================
     elif st.session_state.active_view == "certidao":
         with st.container(border=True):
@@ -659,31 +668,49 @@ with col_principal:
                 c_processo = col_c2.text_input("Nº Processo (Obrigatório):")
                 c_motivo = st.text_area("Motivo / Erro apresentado:")
 
-            if st.button("💾 Salvar Registro", type="primary", use_container_width=True):
-                erro_msg = None
-                if c_consultor == "Selecione um nome": erro_msg = "Selecione seu nome no topo da página."
-                elif tipo_certidao != "Geral" and not c_processo: erro_msg = "O número do processo é obrigatório."
-                elif tipo_certidao == "Geral" and not c_hora: erro_msg = "O horário é obrigatório na Geral."
-                
-                if erro_msg: st.error(erro_msg)
-                else:
-                    ja_existe = False
-                    if tipo_certidao == "Geral":
-                        ja_existe = verificar_duplicidade_certidao("Geral", data_evento=c_data, hora_periodo=c_hora)
+            col_act1, col_act2 = st.columns([1, 1])
+            
+            # Botão 1: Gerar Word (sem salvar)
+            with col_act1:
+                if st.button("📄 Gerar Word (Sem Salvar)", use_container_width=True):
+                    if c_consultor == "Selecione um nome": st.error("Selecione seu nome.")
                     else:
-                        ja_existe = verificar_duplicidade_certidao(tipo_certidao, n_processo=c_processo)
+                        num = c_processo if c_processo else c_chamado
+                        docx_file = gerar_docx_certidao_internal(tipo_certidao, num, c_data.strftime("%d/%m/%Y"), c_consultor, c_motivo)
+                        if docx_file:
+                            st.download_button("⬇️ Baixar DOCX", docx_file, file_name="certidao.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+            
+            # Botão 2: Salvar no Banco
+            with col_act2:
+                if st.button("💾 Salvar Registro", type="primary", use_container_width=True):
+                    erro_msg = None
+                    if c_consultor == "Selecione um nome": erro_msg = "Selecione seu nome no topo da página."
+                    elif tipo_certidao != "Geral" and not c_processo: erro_msg = "O número do processo é obrigatório."
+                    elif tipo_certidao == "Geral" and not c_hora: erro_msg = "O horário é obrigatório na Geral."
                     
-                    if ja_existe:
-                        st.warning("⚠️ **Atenção: Já existe registro!**")
-                        with st.popover("🚨 LER AVISO", expanded=True):
-                            st.error(f"Já existe uma certidão **{tipo_certidao}** registrada para estes dados.")
-                            st.write("Não é necessário registrar novamente.")
-                            st.markdown("**Dúvidas? Falar com Matheus ou Gilberto.**")
+                    if erro_msg: st.error(erro_msg)
                     else:
-                        payload = {"tipo": tipo_certidao, "data_evento": c_data.isoformat(), "consultor": c_consultor, "n_chamado": c_chamado, "n_processo": c_processo, "motivo": c_motivo, "hora_periodo": c_hora}
-                        if salvar_certidao_db(payload):
-                            st.success("✅ Certidão registrada com sucesso!"); time.sleep(2); st.session_state.active_view = None; st.rerun()
-                        else: st.error("Erro técnico ao salvar.")
+                        try:
+                            ja_existe = False
+                            if tipo_certidao == "Geral":
+                                ja_existe = verificar_duplicidade_certidao("Geral", data_evento=c_data, hora_periodo=c_hora)
+                            else:
+                                ja_existe = verificar_duplicidade_certidao(tipo_certidao, n_processo=c_processo)
+                            
+                            if ja_existe:
+                                st.warning("⚠️ **Atenção: Já existe registro!**")
+                                with st.popover("🚨 LER AVISO", expanded=True):
+                                    st.error(f"Já existe uma certidão **{tipo_certidao}** registrada para estes dados.")
+                                    st.write("Não é necessário registrar novamente.")
+                                    st.markdown("**Dúvidas? Falar com Matheus ou Gilberto.**")
+                            else:
+                                payload = {"tipo": tipo_certidao, "data_evento": c_data.isoformat(), "consultor": c_consultor, "n_chamado": c_chamado, "n_processo": c_processo, "motivo": c_motivo, "hora_periodo": c_hora}
+                                if salvar_certidao_db(payload):
+                                    st.success("✅ Certidão registrada com sucesso!"); time.sleep(2); st.session_state.active_view = None; st.rerun()
+                                else:
+                                    st.error("Erro técnico ao salvar. Por favor, fale com Matheus ou Gilberto.")
+                        except Exception as e:
+                             st.error(f"Erro técnico: {e}. Por favor, fale com Matheus ou Gilberto.")
 
     elif st.session_state.active_view == "atendimentos":
         with st.container(border=True):
