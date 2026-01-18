@@ -11,7 +11,7 @@ from operator import itemgetter
 from streamlit_autorefresh import st_autorefresh
 import json
 import re
-import threading
+# import threading  <-- REMOVIDO PARA EVITAR ERROS EM SERVERLESS
 import random
 import base64
 import os
@@ -68,7 +68,7 @@ GIF_URL_WARNING = 'https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExY2pjMDN0NGl
 SOUND_URL = "https://github.com/matheusmg0550247-collab/controle-bastao-eproc2/raw/main/doorbell-223669.mp3"
 PUG2026_FILENAME = "pug2026.png"
 
-# Webhooks
+# Webhooks (Carregados via utils/secrets)
 GOOGLE_CHAT_WEBHOOK_BACKUP = get_secret("chat", "backup")
 CHAT_WEBHOOK_BASTAO = get_secret("chat", "bastao")
 GOOGLE_CHAT_WEBHOOK_REGISTRO = get_secret("chat", "registro")
@@ -80,7 +80,7 @@ GOOGLE_CHAT_WEBHOOK_ERRO_NOVIDADE = get_secret("chat", "erro")
 SHEETS_WEBHOOK_URL = get_secret("sheets", "url")
 
 # ============================================
-# 2. PERSISTÊNCIA E LOGS
+# 2. FUNÇÕES AUXILIARES E PERSISTÊNCIA
 # ============================================
 
 def save_state():
@@ -112,10 +112,15 @@ def format_time_duration(duration):
     s = int(duration.total_seconds()); h, s = divmod(s, 3600); m, s = divmod(s, 60)
     return f'{h:02}:{m:02}:{s:02}'
 
-def _send_webhook_thread(url, payload):
+# --- ENVIO SÍNCRONO (SUBSTITUI THREADS) ---
+def _send_webhook_sync(url, payload):
+    """Envia webhook de forma síncrona para garantir entrega no Streamlit Cloud."""
     if not url: return
-    try: requests.post(url, json=payload, headers={'Content-Type': 'application/json'}, timeout=5)
-    except: pass
+    try: 
+        # Timeout curto (3s) para não travar a UI se a API demorar
+        requests.post(url, json=payload, headers={'Content-Type': 'application/json'}, timeout=3)
+    except Exception as e:
+        print(f"Erro webhook: {e}")
 
 def send_log_to_sheets(timestamp_str, consultor, old_status, new_status, duration_str):
     if not SHEETS_WEBHOOK_URL: return
@@ -123,7 +128,8 @@ def send_log_to_sheets(timestamp_str, consultor, old_status, new_status, duratio
         "data_hora": timestamp_str, "consultor": consultor,
         "status_anterior": old_status, "status_atual": new_status, "tempo_anterior": duration_str
     }
-    threading.Thread(target=_send_webhook_thread, args=(SHEETS_WEBHOOK_URL, payload)).start()
+    # Chamada direta (sem thread)
+    _send_webhook_sync(SHEETS_WEBHOOK_URL, payload)
 
 def log_status_change(consultor, old_status, new_status, duration):
     if not isinstance(duration, timedelta): duration = timedelta(0)
@@ -155,7 +161,7 @@ def log_status_change(consultor, old_status, new_status, duration):
         st.session_state.current_status_starts[consultor] = now_br
     st.session_state.current_status_starts[consultor] = now_br
 
-# --- NOTIFICAÇÕES ---
+# --- NOTIFICAÇÕES (SÍNCRONAS) ---
 def send_chat_notification_internal(consultor, status):
     if CHAT_WEBHOOK_BASTAO and status == 'Bastão':
         msg = f"🎉 **BASTÃO GIRADO!** 🎉 \n\n- **Novo(a) Responsável:** {consultor}\n- **Acesse o Painel:** {APP_URL_CLOUD}"
@@ -194,7 +200,7 @@ def send_certidao_notification_to_chat(consultor, tipo):
 def play_sound_html(): return f'<audio autoplay="true"><source src="{SOUND_URL}" type="audio/mpeg"></audio>'
 
 def render_fireworks():
-    fireworks_css = """<style>
+    st.markdown("""<style>
     @keyframes firework { 0% { transform: translate(var(--x), var(--initialY)); width: var(--initialSize); opacity: 1; } 50% { width: 0.5vmin; opacity: 1; } 100% { width: var(--finalSize); opacity: 0; } }
     .firework, .firework::before, .firework::after { --initialSize: 0.5vmin; --finalSize: 45vmin; --particleSize: 0.2vmin; --color1: #ff0000; --color2: #ffd700; --color3: #b22222; --color4: #daa520; --color5: #ff4500; --color6: #b8860b; --y: -30vmin; --x: -50%; --initialY: 60vmin; content: ""; animation: firework 2s infinite; position: absolute; top: 50%; left: 50%; transform: translate(-50%, var(--y)); width: var(--initialSize); aspect-ratio: 1; background: radial-gradient(circle, var(--color1) var(--particleSize), #0000 0) 50% 0%, radial-gradient(circle, var(--color2) var(--particleSize), #0000 0) 100% 50%, radial-gradient(circle, var(--color3) var(--particleSize), #0000 0) 50% 100%, radial-gradient(circle, var(--color4) var(--particleSize), #0000 0) 0% 50%, radial-gradient(circle, var(--color5) var(--particleSize), #0000 0) 80% 90%, radial-gradient(circle, var(--color6) var(--particleSize), #0000 0) 95% 90%; background-size: var(--initialSize) var(--initialSize); background-repeat: no-repeat; }
     .firework::before { --x: -50%; --y: -50%; --initialY: -50%; transform: translate(-50%, -50%) rotate(40deg) scale(1.3) rotateY(40deg); }
@@ -203,8 +209,11 @@ def render_fireworks():
     .firework:nth-child(2), .firework:nth-child(2)::before, .firework:nth-child(2)::after { --color1: #ff0000; --color2: #ffd700; --color3: #8b0000; --color4: #daa520; --color5: #ff6347; --color6: #f0e68c; --finalSize: 40vmin; left: 30%; top: 60%; animation-delay: -0.25s; }
     .firework:nth-child(3) { --x: -30vmin; --y: -50vmin; }
     .firework:nth-child(3), .firework:nth-child(3)::before, .firework:nth-child(3)::after { --color1: #ffd700; --color2: #ff4500; --color3: #b8860b; --color4: #cd5c5c; --color5: #800000; --color6: #ffa500; --finalSize: 35vmin; left: 70%; top: 60%; animation-delay: -0.4s; }
-    </style><div class="firework"></div><div class="firework"></div><div class="firework"></div>"""
-    st.markdown(fireworks_css, unsafe_allow_html=True)
+    </style><div class="firework"></div><div class="firework"></div><div class="firework"></div>""", unsafe_allow_html=True)
+
+def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
+    consultor_formatado = f"@{consultor_nome}" if not consultor_nome.startswith("@") else consultor_nome
+    return f'<!DOCTYPE html><html lang="pt-br"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Acompanhamento de Sessão - {camara_nome}</title></head><body><div style="font-family: Arial, sans-serif; padding: 20px;"><h2>Checklist Gerado para {camara_nome}</h2><p>Responsável: {consultor_formatado}</p><p>Data: {data_sessao_formatada}</p><p><em>(Versão simplificada para visualização.)</em></p></div></body></html>'
 
 def send_daily_report():
     logs = load_logs()
@@ -340,13 +349,11 @@ def init_session_state():
 # --- AÇÕES DE BOTÕES E REGRAS ---
 
 def toggle_queue(consultor):
-    # REGRA DE HORÁRIO: 20H
-    # Se você está testando agora (Sábado a noite), vai cair aqui!
-    # O aviso (toast) deve aparecer no canto inferior direito.
+    # Regra das 20h
     if get_brazil_time().hour >= 20:
         st.toast("🚫 Expediente encerrado (após 20h)! Ação bloqueada.", icon="🌙")
-        # Restaura visualmente o estado anterior do checkbox
-        st.session_state[f'check_{consultor}'] = not st.session_state[f'check_{consultor}']
+        # Força o estado visual a reverter, pois o usuário clicou
+        st.session_state[f'check_{consultor}'] = False 
         return
 
     st.session_state.gif_warning = False
@@ -404,7 +411,7 @@ def enter_from_indisponivel(consultor):
     # Regra das 20h
     if get_brazil_time().hour >= 20:
         st.toast("🚫 Expediente encerrado (após 20h)! Ação bloqueada.", icon="🌙")
-        # Força o checkbox a ficar como estava (False)
+        # Força reversão visual
         st.session_state[f'check_simples_Indisponível_{consultor}'] = False 
         return
 
@@ -478,18 +485,18 @@ def toggle_skip():
     st.session_state.skip_flags[selected] = not st.session_state.skip_flags.get(selected, False)
     save_state()
 
-def update_status(new_status_part, force_exit_queue=False):
+def update_status(new_status, force_exit_queue=False):
     selected = st.session_state.consultor_selectbox
     st.session_state.gif_warning = False
     if not selected or selected == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
     blocking = ['Almoço', 'Ausente', 'Saída rápida', 'Sessão', 'Reunião', 'Treinamento']
-    should_exit = force_exit_queue or any(b in new_status_part for b in blocking)
+    should_exit = force_exit_queue or any(b in new_status for b in blocking)
     
     current = st.session_state.status_texto.get(selected, '')
     parts = [p.strip() for p in current.split('|') if p.strip()]
-    type_new = new_status_part.split(':')[0]
+    type_new = new_status.split(':')[0]
     clean = [p for p in parts if p != 'Indisponível' and not p.startswith(type_new)]
-    clean.append(new_status_part)
+    clean.append(new_status)
     clean.sort(key=lambda x: 0 if 'Bastão' in x else 1 if 'Atividade' in x or 'Projeto' in x else 2)
     final_status = " | ".join(clean)
     
@@ -504,7 +511,7 @@ def update_status(new_status_part, force_exit_queue=False):
     now_br = get_brazil_time()
     log_status_change(selected, current, final_status, now_br - st.session_state.current_status_starts.get(selected, now_br))
     st.session_state.status_texto[selected] = final_status
-    if new_status_part == 'Saída rápida':
+    if new_status == 'Saída rápida':
         if selected not in st.session_state.priority_return_queue: st.session_state.priority_return_queue.append(selected)
     elif selected in st.session_state.priority_return_queue: st.session_state.priority_return_queue.remove(selected)
     
@@ -513,6 +520,7 @@ def update_status(new_status_part, force_exit_queue=False):
 
 def auto_manage_time():
     now = get_brazil_time()
+    # 23h: Limpeza total
     if now.hour >= 23:
         has_data = len(st.session_state.bastao_queue) > 0 or any(v > 0 for v in st.session_state.bastao_counts.values())
         if has_data:
@@ -524,15 +532,17 @@ def auto_manage_time():
             st.session_state.current_status_starts = {n: now for n in CONSULTORES}
             for n in CONSULTORES: st.session_state[f'check_{n}'] = False
             save_state()
-            st.toast("🧹 Limpeza Diária (23h).", icon="🌙")
+            st.toast("🧹 Limpeza Diária (23h) realizada.", icon="🌙")
+    # 20h: Encerra expediente
     elif now.hour >= 20:
+        # Verifica se alguém ainda está ativo
         active = any(s != 'Indisponível' for s in st.session_state.status_texto.values()) or len(st.session_state.bastao_queue) > 0
         if active:
             st.session_state.bastao_queue = []
             st.session_state.status_texto = {n: 'Indisponível' for n in CONSULTORES}
             for n in CONSULTORES: st.session_state[f'check_{n}'] = False
             save_state()
-            st.toast("🛑 Expediente Encerrado (20h).", icon="zzz")
+            st.toast("🛑 Expediente Encerrado (20h). Fila limpa.", icon="zzz")
 
 def manual_rerun(): 
     st.session_state.gif_warning = False
@@ -588,10 +598,11 @@ with c_topo_dir:
     c_sub1, c_sub2 = st.columns([2, 1], vertical_alignment="bottom")
     with c_sub1: novo_responsavel = st.selectbox("Assumir Bastão (Rápido)", options=["Selecione"] + CONSULTORES, label_visibility="collapsed", key="quick_enter")
     with c_sub2:
-        if st.button("🚀 Entrar", use_container_width=True):
+        if st.button("🚀 Entrar", help="Ficar disponível na fila imediatamente"):
             if novo_responsavel != "Selecione":
                 toggle_queue(novo_responsavel)
                 st.session_state.consultor_selectbox = novo_responsavel
+                st.success(f"{novo_responsavel} agora está na fila!")
                 st.rerun()
 
 st.markdown("<hr style='border: 1px solid #FFD700; margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
@@ -634,22 +645,23 @@ with col_principal:
     st.header("**Consultor(a)**")
     st.selectbox('Selecione:', ['Selecione um nome'] + CONSULTORES, key='consultor_selectbox', label_visibility='collapsed')
     
+    st.markdown("#### "); st.markdown("**Ações:**")
+    
     r1c1, r1c2, r1c3, r1c4 = st.columns(4)
     r2c1, r2c2, r2c3, r2c4, r2c5, r2c6 = st.columns(6)
     
-    r1c1.button('🎯 Passar', on_click=rotate_bastao, use_container_width=True)
-    r1c2.button('⏭️ Pular', on_click=toggle_skip, use_container_width=True)
+    r1c1.button('🎯 Passar', on_click=rotate_bastao, use_container_width=True, help='Passa o bastão.')
+    r1c2.button('⏭️ Pular', on_click=toggle_skip, use_container_width=True, help='Pular vez.')
     r1c3.button('📋 Atividades', on_click=toggle_view, args=('menu_atividades',), use_container_width=True)
     r1c4.button('🏗️ Projeto', on_click=toggle_view, args=('menu_projetos',), use_container_width=True)
     
-    r2c1.button('🎓 Treino', on_click=toggle_view, args=('menu_treinamento',), use_container_width=True)
+    r2c1.button('🎓 Treinamento', on_click=toggle_view, args=('menu_treinamento',), use_container_width=True)
     r2c2.button('📅 Reunião', on_click=toggle_view, args=('menu_reuniao',), use_container_width=True)
     r2c3.button('🍽️ Almoço', on_click=update_status, args=('Almoço', True), use_container_width=True)
     r2c4.button('🎙️ Sessão', on_click=toggle_view, args=('menu_sessao',), use_container_width=True)
     r2c5.button('🚶 Saída', on_click=update_status, args=('Saída rápida', True), use_container_width=True)
     r2c6.button('👤 Ausente', on_click=update_status, args=('Ausente', True), use_container_width=True)
 
-    # Menus Expansíveis (Lógica Visual)
     if st.session_state.active_view == 'menu_atividades':
         with st.container(border=True):
             st.markdown("### Selecione a Atividade")
@@ -731,10 +743,10 @@ with col_principal:
     
     c_tool1.button("📑 Checklist", help="Gerador de Checklist Eproc", use_container_width=True, on_click=toggle_view, args=("checklist",))
     c_tool2.button("🆘 Chamados", help="Guia de Abertura de Chamados", use_container_width=True, on_click=toggle_view, args=("chamados",))
-    c_tool3.button("📝 Atend.", help="Registrar Atendimento", use_container_width=True, on_click=toggle_view, args=("atendimentos",))
+    c_tool3.button("📝 Atendimento", help="Registrar Atendimento", use_container_width=True, on_click=toggle_view, args=("atendimentos",))
     c_tool4.button("⏰ H. Extras", help="Registrar Horas Extras", use_container_width=True, on_click=toggle_view, args=("hextras",))
     c_tool5.button("🧠 Descanso", help="Jogo e Ranking", use_container_width=True, on_click=toggle_view, args=("descanso",))
-    c_tool6.button("🐛 Erro", help="Relatar Erro ou Novidade", use_container_width=True, on_click=toggle_view, args=("erro_novidade",))
+    c_tool6.button("🐛 Erro/Novidade", help="Relatar Erro ou Novidade", use_container_width=True, on_click=toggle_view, args=("erro_novidade",))
     c_tool7.button("🖨️ Certidão", help="Gerar Certidão de Indisponibilidade", use_container_width=True, on_click=toggle_view, args=("certidao",))
         
     if st.session_state.active_view == "checklist":
