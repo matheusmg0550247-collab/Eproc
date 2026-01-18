@@ -19,7 +19,7 @@ from repository import load_state_from_db, save_state_to_db
 from utils import (get_brazil_time, get_secret, send_to_chat, get_img_as_base64)
 
 # ============================================
-# 1. CONFIGURAÇÕES
+# 1. CONFIGURAÇÕES E CONSTANTES
 # ============================================
 CONSULTORES = sorted([
     "Alex Paulo", "Dirceu Gonçalves", "Douglas De Souza", "Farley Leandro", "Gleis Da Silva", 
@@ -67,14 +67,19 @@ def get_supabase():
     try: return create_client(st.secrets["supabase"]["url"], st.secrets["supabase"]["key"])
     except: return None
 
-# --- LÓGICA DE BANCO PARA CERTIDÕES ---
+# ============================================
+# 2. LÓGICA DE BANCO E CERTIDÕES
+# ============================================
+
 def verificar_duplicidade_certidao(tipo, n_processo=None, data_evento=None, hora_periodo=None):
     sb = get_supabase()
     if not sb: return False
     try:
         query = sb.table("certidoes_registro").select("*").eq("tipo", tipo)
         if tipo in ['Física', 'Eletrônica'] and n_processo:
+            # Limpa input para busca (remove ponto e espaços)
             proc_limpo = str(n_processo).strip().rstrip('.')
+            # Busca usando ILIKE para ignorar se o banco tem ponto ou não
             response = query.ilike("n_processo", f"%{proc_limpo}%").execute()
             return len(response.data) > 0
         elif tipo == 'Geral' and data_evento:
@@ -92,9 +97,10 @@ def salvar_certidao_db(dados):
     try:
         sb.table("certidoes_registro").insert(dados).execute()
         return True
-    except: return False
+    except Exception as e:
+        print(f"Erro ao salvar: {e}")
+        return False
 
-# --- GERADOR DE WORD OFICIAL ---
 def gerar_docx_certidao_internal(tipo, numero, data, consultor, motivo, chamado=""):
     try:
         doc = Document()
@@ -103,13 +109,16 @@ def gerar_docx_certidao_internal(tipo, numero, data, consultor, motivo, chamado=
         font.name = 'Arial'
         font.size = Pt(11)
 
+        # Cabeçalho Centralizado
         head = doc.add_paragraph()
         head.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run = head.add_run("TRIBUNAL DE JUSTIÇA DO ESTADO DE MINAS GERAIS\n")
-        run.bold = True
+        run_head = head.add_run("TRIBUNAL DE JUSTIÇA DO ESTADO DE MINAS GERAIS\n")
+        run_head.bold = True
         head.add_run("Rua Ouro Preto, Nº 1564 - Bairro Santo Agostinho - CEP 30170-041\nBelo Horizonte - MG - www.tjmg.jus.br\nAndar: 3º e 4º PV")
         
         doc.add_paragraph("\n")
+        
+        # Título do Parecer
         p_num = doc.add_paragraph("Parecer Técnico GEJUD/DIRTEC/TJMG nº ____/2025.")
         p_num.runs[0].bold = True
         
@@ -118,12 +127,13 @@ def gerar_docx_certidao_internal(tipo, numero, data, consultor, motivo, chamado=
         data_atual = datetime.now().strftime("%d de %B de %Y")
         doc.add_paragraph(f"\nExmo(a). Senhor(a) Relator(a),\n\nBelo Horizonte, {data_atual}")
         
+        # Corpo do Texto Justificado
         corpo = doc.add_paragraph()
         corpo.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         corpo.add_run(f"Informamos que na data de {data}, houve indisponibilidade específica do sistema para o peticionamento do processo nº {numero}.\n\n")
         
-        ref_chamado = chamado if chamado else "de número informado no registro"
-        corpo.add_run(f"O Chamado {ref_chamado}, foi aberto e encaminhado à DIRTEC (Diretoria Executiva de Tecnologia da Informação e Comunicação).\n\n")
+        c_ref = chamado if chamado else "de número informado no registro"
+        corpo.add_run(f"O Chamado {c_ref}, foi aberto e encaminhado à DIRTEC (Diretoria Executiva de Tecnologia da Informação e Comunicação).\n\n")
         
         if tipo == 'Física':
             corpo.add_run("Diante da indisponibilidade específica, não havendo um prazo para solução do problema, a Primeira Vice-Presidência recomenda o ingresso dos autos físicos, nos termos do § 2º, do artigo 14º, da Resolução nº 780/2014, do Tribunal de Justiça do Estado de Minas Gerais.\n\n")
@@ -131,7 +141,10 @@ def gerar_docx_certidao_internal(tipo, numero, data, consultor, motivo, chamado=
             corpo.add_run("Informamos a indisponibilidade para fins de restituição de prazo ou providências que V.Exa julgar necessárias, nos termos da legislação vigente.\n\n")
             
         corpo.add_run("Colocamo-nos à disposição para outras informações que se fizerem necessárias.")
+        
         doc.add_paragraph("\nRespeitosamente,")
+        
+        # Assinatura
         doc.add_paragraph("\n\n___________________________________\nWaner Andrade Silva\nCoordenação de Análise e Integração de Sistemas Judiciais Informatizados - COJIN\nGerência de Sistemas Judiciais - GEJUD\nDiretoria Executiva de Tecnologia da Informação e Comunicação - DIRTEC")
 
         buffer = io.BytesIO()
@@ -139,12 +152,13 @@ def gerar_docx_certidao_internal(tipo, numero, data, consultor, motivo, chamado=
         buffer.seek(0)
         return buffer
     except Exception as e:
-        st.error(f"Erro ao gerar Word: {e}")
+        print(e)
         return None
 
 # ============================================
-# 3. LÓGICA DE ESTADO (FILA/BASTÃO)
+# 3. LÓGICA DE FILA E ESTADO
 # ============================================
+
 def save_state():
     try:
         last_run = st.session_state.report_last_run_date
@@ -159,18 +173,13 @@ def save_state():
         save_state_to_db(state_to_save)
     except: pass
 
-def format_time_duration(duration):
-    if not isinstance(duration, timedelta): return '--:--:--'
-    s = int(duration.total_seconds()); h, s = divmod(s, 3600); m, s = divmod(s, 60)
-    return f'{h:02}:{m:02}:{s:02}'
-
 def log_status_change(consultor, old_status, new_status, duration):
+    if not isinstance(duration, timedelta): duration = timedelta(0)
     now_br = get_brazil_time()
-    entry = {'timestamp': now_br, 'consultor': consultor, 'old_status': old_status, 'new_status': new_status, 'duration': duration}
+    entry = {'timestamp': now_br, 'consultor': consultor, 'old_status': old_status, 'new_status': new_status, 'duration': duration, 'duration_s': duration.total_seconds()}
     st.session_state.daily_logs.append(entry)
     st.session_state.current_status_starts[consultor] = now_br
 
-# --- FILA BLINDADA ---
 def find_next_holder_index(current_index, queue, skips):
     if not queue: return -1
     n = len(queue)
@@ -180,21 +189,26 @@ def find_next_holder_index(current_index, queue, skips):
         if not skips.get(queue[idx], False): return idx
     return (current_index + 1) % n if n > 1 else -1
 
-def check_and_assume_baton(forced_successor=None):
+def check_and_assume_baton(forced_successor=None, immune_consultant=None):
     queue, skips = st.session_state.bastao_queue, st.session_state.skip_flags
     current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
-    target = forced_successor if forced_successor else (current_holder if current_holder in queue else None)
+    is_valid = (current_holder and current_holder in queue)
+    target = forced_successor if forced_successor else (current_holder if is_valid else None)
+    
     if not target and queue:
         curr_idx = queue.index(current_holder) if current_holder in queue else -1
         idx = find_next_holder_index(curr_idx, queue, skips)
         target = queue[idx] if idx != -1 else None
+
     now = get_brazil_time()
     for c in CONSULTORES:
-        if c != target and 'Bastão' in st.session_state.status_texto.get(c, ''):
+        if c != immune_consultant and c != target and 'Bastão' in st.session_state.status_texto.get(c, ''):
             st.session_state.status_texto[c] = 'Indisponível'
+
     if target and 'Bastão' not in st.session_state.status_texto.get(target, ''):
         st.session_state.status_texto[target] = 'Bastão'
         st.session_state.bastao_start_time = now
+    
     save_state()
 
 def toggle_queue(consultor):
@@ -205,80 +219,102 @@ def toggle_queue(consultor):
         st.session_state.bastao_queue.append(consultor)
         st.session_state.status_texto[consultor] = ''
     check_and_assume_baton()
-    st.rerun()
+    save_state()
 
-def update_status(new_status, exit_queue=False):
-    selected = st.session_state.consultor_selectbox
-    if selected == 'Selecione um nome': return
-    if exit_queue and selected in st.session_state.bastao_queue:
-        st.session_state.bastao_queue.remove(selected)
-    st.session_state.status_texto[selected] = new_status
+def toggle_skip():
+    sel = st.session_state.consultor_selectbox
+    if sel == 'Selecione um nome': return
+    novo = not st.session_state.skip_flags.get(sel, False)
+    st.session_state.skip_flags[sel] = novo
+    if novo and sel in st.session_state.bastao_queue:
+        st.session_state.bastao_queue.remove(sel)
+        st.session_state.bastao_queue.append(sel)
+    save_state()
+
+def update_status(new_status, force_exit=False):
+    sel = st.session_state.consultor_selectbox
+    if sel == 'Selecione um nome': return
+    if force_exit and sel in st.session_state.bastao_queue:
+        st.session_state.bastao_queue.remove(sel)
+    st.session_state.status_texto[sel] = new_status
     check_and_assume_baton()
-    st.rerun()
-
-def init_session_state():
-    if 'db_loaded' not in st.session_state:
-        db_data = load_state_from_db()
-        if db_data:
-            for k, v in db_data.items(): st.session_state[k] = v
-        st.session_state['db_loaded'] = True
-    defaults = {
-        'status_texto': {n: 'Indisponível' for n in CONSULTORES}, 'bastao_queue': [], 'skip_flags': {},
-        'current_status_starts': {n: get_brazil_time() for n in CONSULTORES}, 'daily_logs': [],
-        'bastao_start_time': None, 'report_last_run_date': datetime.min, 'active_view': None
-    }
-    for k, v in defaults.items():
-        if k not in st.session_state: st.session_state[k] = v
 
 # ============================================
-# 4. INTERFACE
+# 4. INTERFACE E EXECUÇÃO
 # ============================================
 st.set_page_config(page_title="Controle Bastão Cesupe 2026", layout="wide", page_icon="🥂")
-init_session_state()
-st_autorefresh(interval=10000, key='auto')
+
+if 'db_loaded' not in st.session_state:
+    db_data = load_state_from_db()
+    if db_data:
+        for k, v in db_data.items(): st.session_state[k] = v
+    st.session_state['db_loaded'] = True
+
+# Inicialização de variáveis padrão
+if 'status_texto' not in st.session_state: st.session_state.status_texto = {n: 'Indisponível' for n in CONSULTORES}
+if 'bastao_queue' not in st.session_state: st.session_state.bastao_queue = []
+if 'skip_flags' not in st.session_state: st.session_state.skip_flags = {}
+if 'daily_logs' not in st.session_state: st.session_state.daily_logs = []
+if 'current_status_starts' not in st.session_state: st.session_state.current_status_starts = {n: datetime.now() for n in CONSULTORES}
+if 'report_last_run_date' not in st.session_state: st.session_state.report_last_run_date = datetime.min
+if 'active_view' not in st.session_state: st.session_state.active_view = None
+
+st_autorefresh(interval=10000, key='auto_refresh')
 
 st.title(f"Controle Bastão Cesupe 2026 {BASTAO_EMOJI}")
 
-col_main, col_side = st.columns([2, 1])
+col_principal, col_status = st.columns([1.8, 1])
 
-with col_main:
-    st.header("Ações do Consultor")
-    st.selectbox("Selecione seu nome:", ["Selecione um nome"] + CONSULTORES, key="consultor_selectbox")
+with col_principal:
+    st.selectbox("Consultor(a):", ["Selecione um nome"] + CONSULTORES, key="consultor_selectbox")
     
-    c1, c2, c3, c4 = st.columns(4)
-    if c1.button("🥂 Assumir/Fila", use_container_width=True): toggle_queue(st.session_state.consultor_selectbox)
-    if c2.button("🍽️ Almoço", use_container_width=True): update_status("Almoço", True)
-    if c3.button("📋 Atividades", use_container_width=True): st.session_state.active_view = "atividades"
-    if c4.button("🖨️ Certidão", use_container_width=True): st.session_state.active_view = "certidao"
+    r1c1, r1c2, r1c3, r1c4 = st.columns(4)
+    if r1c1.button("🥂 Assumir / Fila", use_container_width=True): toggle_queue(st.session_state.consultor_selectbox)
+    if r1c2.button("⏭️ Pular", use_container_width=True): toggle_skip()
+    if r1c3.button("🍽️ Almoço", use_container_width=True): update_status("Almoço", True)
+    if r1c4.button("🖨️ Certidão", use_container_width=True): st.session_state.active_view = "certidao"
 
     if st.session_state.active_view == "certidao":
         with st.container(border=True):
-            st.subheader("Gerador de Certidões")
+            st.subheader("🖨️ Registro de Certidão")
             tipo = st.selectbox("Tipo:", ["Física", "Eletrônica", "Geral"])
+            c_data = st.date_input("Data do Evento:", value=get_brazil_time().date())
             c_proc = st.text_input("Nº Processo:")
             c_cham = st.text_input("Nº Chamado:")
-            c_mot = st.text_area("Descrição do Erro:")
+            c_mot = st.text_area("Motivo/Descrição:")
             
-            c_act1, c_act2 = st.columns(2)
-            if c_act1.button("📄 Gerar Word (Sem Salvar)", use_container_width=True):
-                if not c_proc: st.error("Informe o processo.")
-                else:
-                    doc = gerar_docx_certidao_internal(tipo, c_proc, get_brazil_time().strftime("%d/%m/%Y"), st.session_state.consultor_selectbox, c_mot, c_cham)
-                    if doc: st.download_button("⬇️ Baixar DOCX", doc, "certidao.docx")
+            act1, act2 = st.columns(2)
+            with act1:
+                if st.button("📄 Gerar Word (Sem Salvar)", use_container_width=True):
+                    if not c_proc and tipo != 'Geral': st.error("Informe o processo.")
+                    else:
+                        doc = gerar_docx_certidao_internal(tipo, c_proc, c_data.strftime("%d/%m/%Y"), st.session_state.consultor_selectbox, c_mot, c_cham)
+                        if doc: st.download_button("⬇️ Baixar DOCX", doc, f"certidao_{c_proc}.docx")
             
-            if c_act2.button("💾 Salvar no Banco", type="primary", use_container_width=True):
-                if verificar_duplicidade_certidao(tipo, c_proc):
-                    st.error("⚠️ Certidão já existe! Falar com Matheus ou Gilberto.")
-                else:
-                    payload = {"tipo": tipo, "n_processo": c_proc.strip().rstrip('.'), "n_chamado": c_cham, "motivo": c_mot, "consultor": st.session_state.consultor_selectbox, "data_evento": get_brazil_time().isoformat()}
-                    if salvar_certidao_db(payload):
-                        st.success("Salvo com sucesso!")
-                        st.session_state.active_view = None
-                        st.rerun()
+            with act2:
+                if st.button("💾 Salvar no Banco", type="primary", use_container_width=True):
+                    if st.session_state.consultor_selectbox == "Selecione um nome":
+                        st.error("Selecione seu nome antes.")
+                    elif verificar_duplicidade_certidao(tipo, c_proc, c_data):
+                        st.warning("⚠️ Certidão já existe para este processo!")
+                        with st.popover("🚨 AVISO"):
+                            st.error("Não registre novamente. Fale com Matheus ou Gilberto.")
+                    else:
+                        proc_final = c_proc.strip().rstrip('.') if c_proc else ""
+                        payload = {"tipo": tipo, "data_evento": c_data.isoformat(), "consultor": st.session_state.consultor_selectbox, "n_processo": proc_final, "n_chamado": c_cham, "motivo": c_mot}
+                        if salvar_certidao_db(payload):
+                            st.success("✅ Registrado!"); time.sleep(1); st.session_state.active_view = None; st.rerun()
+                        else:
+                            st.error("Erro ao salvar. Fale com Matheus ou Gilberto.")
 
-with col_side:
-    st.header("Status Atual")
+with col_status:
+    st.header("Fila e Status")
     for n in CONSULTORES:
         status = st.session_state.status_texto.get(n, "Indisponível")
-        cor = "gold" if "Bastão" in status else "white"
-        st.markdown(f"<div style='background:{cor}; padding:5px; border-radius:5px; color:black; margin-bottom:5px;'><strong>{n}</strong>: {status}</div>", unsafe_allow_html=True)
+        if n in st.session_state.bastao_queue or "Bastão" in status:
+            bg = "#FFD700" if "Bastão" in status else "#E0E0E0"
+            st.markdown(f"<div style='background:{bg}; padding:8px; border-radius:10px; margin-bottom:5px; color:black;'><strong>{n}</strong>: {status}</div>", unsafe_allow_html=True)
+
+    if st.button("❌ Fechar View Ativa"):
+        st.session_state.active_view = None
+        st.rerun()
