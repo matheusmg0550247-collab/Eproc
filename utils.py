@@ -1,6 +1,6 @@
 import streamlit as st
 import requests
-import threading
+# import threading  <-- REMOVIDO: Não vamos mais usar threads
 import base64
 import io
 from docx import Document
@@ -22,18 +22,25 @@ def get_secret(section, key):
 def get_brazil_time():
     return datetime.utcnow() - timedelta(hours=3)
 
-def _send_webhook_thread(url, payload):
+def _send_webhook(url, payload):
+    """
+    Envia o webhook de forma SÍNCRONA (bloqueante) mas com timeout curto.
+    Isso garante que o Streamlit Cloud não mate o processo antes do envio.
+    """
     if not url: return
     try:
-        headers = {'Content-Type': 'application/json'}
-        requests.post(url, json=payload, headers=headers, timeout=5)
+        # Timeout de 3 segundos para não travar o app se o Google cair
+        requests.post(url, json=payload, headers={'Content-Type': 'application/json'}, timeout=3)
     except Exception as e:
-        print(f"Erro webhook: {e}")
+        print(f"Erro ao enviar webhook: {e}")
 
 def send_to_chat(webhook_key, text_msg):
     url = get_secret("chat", webhook_key)
     if not url: return False
-    threading.Thread(target=_send_webhook_thread, args=(url, {"text": text_msg})).start()
+    
+    # [CORREÇÃO] Chamada direta sem Threading
+    _send_webhook(url, {"text": text_msg})
+    
     return True
 
 def gerar_docx_certidao(tipo_certidao, num_processo, data_indisponibilidade_input, num_chamado, motivo_pedido):
