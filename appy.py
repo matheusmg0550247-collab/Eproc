@@ -97,8 +97,10 @@ def log_status_change(consultor, old_status, new_status, duration):
     now_br = get_brazil_time()
     old_lbl = old_status if old_status else 'Fila Bastão'
     new_lbl = new_status if new_status else 'Fila Bastão'
+    
     if consultor in st.session_state.bastao_queue:
         if 'Bastão' not in new_lbl and new_lbl != 'Fila Bastão': new_lbl = f"Fila | {new_lbl}"
+    
     entry = {'timestamp': now_br, 'consultor': consultor, 'old_status': old_lbl, 'new_status': new_lbl, 'duration': duration, 'duration_s': duration.total_seconds()}
     st.session_state.daily_logs.append(entry)
     timestamp_str = now_br.strftime("%d/%m/%Y %H:%M:%S")
@@ -106,7 +108,7 @@ def log_status_change(consultor, old_status, new_status, duration):
     send_log_to_sheets(timestamp_str, consultor, old_lbl, new_lbl, duration_str)
     st.session_state.current_status_starts[consultor] = now_br
 
-# --- HANDLER GLOBAL ---
+# --- HANDLERS ---
 def on_auxilio_change(): save_state()
 
 def send_chat_notification_internal(consultor, status):
@@ -176,7 +178,7 @@ def find_next_holder_index(current_index, queue, skips):
         if st.session_state.get(f'check_{consultor}', False) and not skips.get(consultor, False): return idx
     return -1
 
-def check_and_assume_baton(forced_successor=None):
+def check_and_assume_baton(forced_successor=None, immune_consultant=None):
     queue, skips = st.session_state.bastao_queue, st.session_state.skip_flags
     current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
     is_valid = (current_holder and current_holder in queue and st.session_state.get(f'check_{current_holder}'))
@@ -189,9 +191,10 @@ def check_and_assume_baton(forced_successor=None):
     changed = False; now = get_brazil_time()
     
     for c in CONSULTORES:
-        if c != target and 'Bastão' in st.session_state.status_texto.get(c, ''):
-            log_status_change(c, 'Bastão', 'Indisponível', now - st.session_state.current_status_starts.get(c, now))
-            st.session_state.status_texto[c] = 'Indisponível'; changed = True
+        if c != immune_consultant: 
+            if c != target and 'Bastão' in st.session_state.status_texto.get(c, ''):
+                log_status_change(c, 'Bastão', 'Indisponível', now - st.session_state.current_status_starts.get(c, now))
+                st.session_state.status_texto[c] = 'Indisponível'; changed = True
 
     if target:
         curr_s = st.session_state.status_texto.get(target, '')
@@ -204,8 +207,9 @@ def check_and_assume_baton(forced_successor=None):
             st.session_state.skip_flags[target] = False; changed = True
             
     elif not target and current_holder:
-        log_status_change(current_holder, 'Bastão', 'Indisponível', now - st.session_state.current_status_starts.get(current_holder, now))
-        st.session_state.status_texto[current_holder] = 'Indisponível'; changed = True
+        if current_holder != immune_consultant:
+            log_status_change(current_holder, 'Bastão', 'Indisponível', now - st.session_state.current_status_starts.get(current_holder, now))
+            st.session_state.status_texto[current_holder] = 'Indisponível'; changed = True
 
     if changed: save_state()
     return changed
@@ -299,18 +303,29 @@ def toggle_queue(consultor):
     save_state(); return True
 
 def leave_specific_status(consultor, status_type_to_remove):
-    ensure_daily_reset(); st.session_state.gif_warning = False; old_status = st.session_state.status_texto.get(consultor, '')
+    ensure_daily_reset(); st.session_state.gif_warning = False
+    
+    if status_type_to_remove in ['Almoço', 'Treinamento', 'Sessão', 'Reunião']:
+        if consultor not in st.session_state.bastao_queue: 
+            st.session_state.bastao_queue.append(consultor)
+        st.session_state[f'check_{consultor}'] = True
+        st.session_state.skip_flags[consultor] = False
+
+    old_status = st.session_state.status_texto.get(consultor, '')
     now_br = get_brazil_time(); duration = now_br - st.session_state.current_status_starts.get(consultor, now_br)
+    
     parts = [p.strip() for p in old_status.split('|')]
     new_parts = [p for p in parts if status_type_to_remove not in p and p]
     new_status = " | ".join(new_parts)
-    if not new_status and consultor not in st.session_state.bastao_queue: new_status = 'Indisponível'
+    
+    if not new_status and consultor in st.session_state.bastao_queue: 
+        new_status = '' 
+    elif not new_status: 
+        new_status = 'Indisponível'
+    
     log_status_change(consultor, old_status, new_status, duration)
     st.session_state.status_texto[consultor] = new_status
-    if status_type_to_remove == 'Almoço' or status_type_to_remove == 'Treinamento':
-        if consultor not in st.session_state.bastao_queue: st.session_state.bastao_queue.append(consultor)
-        st.session_state[f'check_{consultor}'] = True
-        st.session_state.skip_flags[consultor] = False
+    
     check_and_assume_baton(); save_state()
 
 def enter_from_indisponivel(consultor):
@@ -368,7 +383,6 @@ def toggle_skip():
     if not st.session_state.get(f'check_{selected}'): st.warning(f'{selected} não está disponível.'); return
     st.session_state.skip_flags[selected] = not st.session_state.skip_flags.get(selected, False); save_state()
 
-# --- CORREÇÃO DA LÓGICA DE ALMOÇO (MARRETA) ---
 def update_status(new_status_part, force_exit_queue=False):
     ensure_daily_reset()
     selected = st.session_state.consultor_selectbox
@@ -379,46 +393,43 @@ def update_status(new_status_part, force_exit_queue=False):
     should_exit = force_exit_queue or any(b in new_status_part for b in blocking)
     
     is_holder = 'Bastão' in current
+    forced_succ = None
     
-    # 1. Se for o holder e vai sair, faz a rotação MANUALMENTE AGORA
-    # Para evitar que check_and_assume_baton sobrescreva o status com "Indisponível"
+    # 1. Rotação Manual e Saída
     if should_exit and selected in st.session_state.bastao_queue:
-        if is_holder:
+        holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
+        if selected == holder:
             idx = st.session_state.bastao_queue.index(selected)
             nxt = find_next_holder_index(idx, st.session_state.bastao_queue, st.session_state.skip_flags)
-            if nxt != -1:
-                # Passa o bastão pro sucessor
-                succ = st.session_state.bastao_queue[nxt]
-                s_curr = st.session_state.status_texto.get(succ, '')
-                s_new = f"Bastão | {s_curr}" if s_curr else "Bastão"
-                now = get_brazil_time()
-                log_status_change(succ, s_curr, s_new, timedelta(0))
-                st.session_state.status_texto[succ] = s_new
-                st.session_state.bastao_start_time = now
-                send_chat_notification_internal(succ, 'Bastão')
-                st.session_state.play_sound = True
+            if nxt != -1: forced_succ = st.session_state.bastao_queue[nxt]
         
-        # Remove da fila
         st.session_state[f'check_{selected}'] = False
         st.session_state.bastao_queue.remove(selected)
         st.session_state.skip_flags.pop(selected, None)
-
-    # 2. Constrói o novo status
-    parts = [p.strip() for p in current.split('|') if p.strip()]
-    type_new = new_status_part.split(':')[0]
-    clean = [p for p in parts if p != 'Indisponível' and not p.startswith(type_new)]
-    clean.append(new_status_part)
-    # Se ainda tem bastão e não saiu, mantém
-    if is_holder and not should_exit:
-        if 'Bastão' not in clean: clean.insert(0, 'Bastão')
-    else:
-        # Se saiu, remove a palavra bastão
-        clean = [c for c in clean if 'Bastão' not in c]
-        
-    final_status = " | ".join(clean)
     
-    # 3. GRAVAÇÃO FINAL (A "Marreta")
-    # Forçamos a gravação do status desejado (ex: "Almoço") por último
+    # 2. Construção do Status
+    # Se for um status "Total" (Almoço, Ausente, Saída), ele substitui TUDO.
+    if new_status_part in ['Almoço', 'Ausente', 'Saída rápida']:
+        final_status = new_status_part
+    else:
+        # Lógica de Mistura (Fila + Atividade)
+        parts = [p.strip() for p in current.split('|') if p.strip()]
+        type_new = new_status_part.split(':')[0]
+        # Remove anterior do mesmo tipo
+        clean = [p for p in parts if p != 'Indisponível' and not p.startswith(type_new) and p not in blocking]
+        clean.append(new_status_part)
+        clean.sort(key=lambda x: 0 if 'Bastão' in x else 1 if 'Atividade' in x or 'Projeto' in x else 2)
+        final_status = " | ".join(clean)
+        
+        # Se manteve o bastão, garante
+        if is_holder and not should_exit and 'Bastão' not in final_status: 
+            final_status = f"Bastão | {final_status}"
+        
+        # Se saiu, remove bastão
+        if should_exit: 
+            final_status = final_status.replace("Bastão | ", "").replace("Bastão", "").strip()
+    
+    # 3. Gravação Manual ("Marreta")
     now_br = get_brazil_time()
     log_status_change(selected, current, final_status, now_br - st.session_state.current_status_starts.get(selected, now_br))
     st.session_state.status_texto[selected] = final_status
@@ -427,10 +438,7 @@ def update_status(new_status_part, force_exit_queue=False):
         if selected not in st.session_state.priority_return_queue: st.session_state.priority_return_queue.append(selected)
     elif selected in st.session_state.priority_return_queue: st.session_state.priority_return_queue.remove(selected)
     
-    # NÃO CHAMAMOS check_and_assume_baton SE JÁ FIZEMOS A ROTAÇÃO MANUAL
-    if not (should_exit and is_holder):
-        check_and_assume_baton()
-        
+    if is_holder: check_and_assume_baton(forced_succ, immune_consultant=selected)
     save_state()
 
 def auto_manage_time():
@@ -534,8 +542,24 @@ with col_principal:
                 c_a1, c_a2 = st.columns([1, 1]); atividades_escolhidas = c_a1.multiselect("Tipo:", OPCOES_ATIVIDADES_STATUS); texto_extra = c_a2.text_input("Detalhe:")
                 if st.button("Confirmar", type="primary", use_container_width=True): 
                     if atividades_escolhidas: update_status(f"Atividade: {', '.join(atividades_escolhidas)}" + (f" - {texto_extra}" if texto_extra else "")); st.session_state.active_view = None; st.rerun()
+            
             elif st.session_state.active_view == 'menu_projetos':
-                if st.button("Confirmar", type="primary", use_container_width=True): update_status(f"Projeto: {st.selectbox('Projeto:', OPCOES_PROJETOS)}"); st.session_state.active_view = None; st.rerun()
+                opcoes_proj = OPCOES_PROJETOS + ["Outros"]
+                proj_selec = st.selectbox("Selecione o Projeto:", opcoes_proj, key="sel_proj_ui")
+                detalhe_proj = ""
+                if proj_selec == "Outros":
+                    detalhe_proj = st.text_input("Nome do projeto:", key="txt_proj_ui")
+                
+                c_p1, c_p2 = st.columns(2)
+                if c_p1.button("Confirmar", type="primary", use_container_width=True):
+                    nome_final = detalhe_proj if proj_selec == "Outros" else proj_selec
+                    if nome_final:
+                        update_status(f"Projeto: {nome_final}")
+                        st.session_state.active_view = None
+                        st.rerun()
+                    else:
+                        st.warning("Digite o nome.")
+                
             elif st.session_state.active_view == 'menu_reuniao':
                 desc = st.text_input("Qual?"); 
                 if st.button("Confirmar", type="primary", use_container_width=True): update_status(f"Reunião: {desc}", True); st.session_state.active_view = None; st.rerun()
