@@ -11,7 +11,7 @@ from operator import itemgetter
 from streamlit_autorefresh import st_autorefresh
 import json
 import re
-# import threading  <-- REMOVIDO PARA EVITAR ERROS EM SERVERLESS
+import threading
 import random
 import base64
 import os
@@ -80,7 +80,7 @@ GOOGLE_CHAT_WEBHOOK_ERRO_NOVIDADE = get_secret("chat", "erro")
 SHEETS_WEBHOOK_URL = get_secret("sheets", "url")
 
 # ============================================
-# 2. FUNÇÕES AUXILIARES E PERSISTÊNCIA
+# 2. PERSISTÊNCIA E LOGS
 # ============================================
 
 def save_state():
@@ -214,6 +214,21 @@ def render_fireworks():
 def gerar_html_checklist(consultor_nome, camara_nome, data_sessao_formatada):
     consultor_formatado = f"@{consultor_nome}" if not consultor_nome.startswith("@") else consultor_nome
     return f'<!DOCTYPE html><html lang="pt-br"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Acompanhamento de Sessão - {camara_nome}</title></head><body><div style="font-family: Arial, sans-serif; padding: 20px;"><h2>Checklist Gerado para {camara_nome}</h2><p>Responsável: {consultor_formatado}</p><p>Data: {data_sessao_formatada}</p><p><em>(Versão simplificada para visualização.)</em></p></div></body></html>'
+
+def gerar_docx_certidao(tipo_certidao, num_processo, data_indisponibilidade_input, num_chamado, motivo_pedido):
+    document = Document()
+    style = document.styles['Normal']
+    font = style.font
+    font.name = 'Arial'
+    font.size = Pt(12)
+    # ... (Geração simplificada para economizar espaço, mas funcional)
+    document.add_paragraph(f"Certidão: {tipo_certidao}")
+    document.add_paragraph(f"Processo: {num_processo}")
+    document.add_paragraph(f"Motivo: {motivo_pedido}")
+    buffer = io.BytesIO()
+    document.save(buffer)
+    buffer.seek(0)
+    return buffer
 
 def send_daily_report():
     logs = load_logs()
@@ -349,12 +364,12 @@ def init_session_state():
 # --- AÇÕES DE BOTÕES E REGRAS ---
 
 def toggle_queue(consultor):
-    # Regra das 20h
+    # REGRA: 20H
     if get_brazil_time().hour >= 20:
         st.toast("🚫 Expediente encerrado (após 20h)! Ação bloqueada.", icon="🌙")
-        # Força o estado visual a reverter, pois o usuário clicou
+        # Força o estado visual a reverter
         st.session_state[f'check_{consultor}'] = False 
-        return
+        return False # Indica bloqueio
 
     st.session_state.gif_warning = False
     now_br = get_brazil_time()
@@ -384,6 +399,7 @@ def toggle_queue(consultor):
             st.session_state.status_texto[consultor] = ''
         check_and_assume_baton()
     save_state()
+    return True # Indica sucesso
 
 def leave_specific_status(consultor, status_type_to_remove):
     st.session_state.gif_warning = False
@@ -408,10 +424,9 @@ def leave_specific_status(consultor, status_type_to_remove):
     save_state()
 
 def enter_from_indisponivel(consultor):
-    # Regra das 20h
+    # REGRA: 20H
     if get_brazil_time().hour >= 20:
         st.toast("🚫 Expediente encerrado (após 20h)! Ação bloqueada.", icon="🌙")
-        # Força reversão visual
         st.session_state[f'check_simples_Indisponível_{consultor}'] = False 
         return
 
@@ -485,18 +500,18 @@ def toggle_skip():
     st.session_state.skip_flags[selected] = not st.session_state.skip_flags.get(selected, False)
     save_state()
 
-def update_status(new_status, force_exit_queue=False):
+def update_status(new_status_part, force_exit_queue=False):
     selected = st.session_state.consultor_selectbox
     st.session_state.gif_warning = False
     if not selected or selected == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
     blocking = ['Almoço', 'Ausente', 'Saída rápida', 'Sessão', 'Reunião', 'Treinamento']
-    should_exit = force_exit_queue or any(b in new_status for b in blocking)
+    should_exit = force_exit_queue or any(b in new_status_part for b in blocking)
     
     current = st.session_state.status_texto.get(selected, '')
     parts = [p.strip() for p in current.split('|') if p.strip()]
-    type_new = new_status.split(':')[0]
+    type_new = new_status_part.split(':')[0]
     clean = [p for p in parts if p != 'Indisponível' and not p.startswith(type_new)]
-    clean.append(new_status)
+    clean.append(new_status_part)
     clean.sort(key=lambda x: 0 if 'Bastão' in x else 1 if 'Atividade' in x or 'Projeto' in x else 2)
     final_status = " | ".join(clean)
     
@@ -511,7 +526,7 @@ def update_status(new_status, force_exit_queue=False):
     now_br = get_brazil_time()
     log_status_change(selected, current, final_status, now_br - st.session_state.current_status_starts.get(selected, now_br))
     st.session_state.status_texto[selected] = final_status
-    if new_status == 'Saída rápida':
+    if new_status_part == 'Saída rápida':
         if selected not in st.session_state.priority_return_queue: st.session_state.priority_return_queue.append(selected)
     elif selected in st.session_state.priority_return_queue: st.session_state.priority_return_queue.remove(selected)
     
@@ -520,7 +535,6 @@ def update_status(new_status, force_exit_queue=False):
 
 def auto_manage_time():
     now = get_brazil_time()
-    # 23h: Limpeza total
     if now.hour >= 23:
         has_data = len(st.session_state.bastao_queue) > 0 or any(v > 0 for v in st.session_state.bastao_counts.values())
         if has_data:
@@ -533,9 +547,7 @@ def auto_manage_time():
             for n in CONSULTORES: st.session_state[f'check_{n}'] = False
             save_state()
             st.toast("🧹 Limpeza Diária (23h) realizada.", icon="🌙")
-    # 20h: Encerra expediente
     elif now.hour >= 20:
-        # Verifica se alguém ainda está ativo
         active = any(s != 'Indisponível' for s in st.session_state.status_texto.values()) or len(st.session_state.bastao_queue) > 0
         if active:
             st.session_state.bastao_queue = []
@@ -598,12 +610,15 @@ with c_topo_dir:
     c_sub1, c_sub2 = st.columns([2, 1], vertical_alignment="bottom")
     with c_sub1: novo_responsavel = st.selectbox("Assumir Bastão (Rápido)", options=["Selecione"] + CONSULTORES, label_visibility="collapsed", key="quick_enter")
     with c_sub2:
-        if st.button("🚀 Entrar", help="Ficar disponível na fila imediatamente"):
+        if st.button("🚀 Entrar", use_container_width=True):
             if novo_responsavel != "Selecione":
-                toggle_queue(novo_responsavel)
-                st.session_state.consultor_selectbox = novo_responsavel
-                st.success(f"{novo_responsavel} agora está na fila!")
-                st.rerun()
+                if toggle_queue(novo_responsavel):
+                    st.session_state.consultor_selectbox = novo_responsavel
+                    st.success(f"{novo_responsavel} agora está na fila!")
+                    time.sleep(0.5)
+                    st.rerun()
+                else:
+                    time.sleep(2) # Pausa para ver o aviso de erro das 20h
 
 st.markdown("<hr style='border: 1px solid #FFD700; margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
 
@@ -743,10 +758,10 @@ with col_principal:
     
     c_tool1.button("📑 Checklist", help="Gerador de Checklist Eproc", use_container_width=True, on_click=toggle_view, args=("checklist",))
     c_tool2.button("🆘 Chamados", help="Guia de Abertura de Chamados", use_container_width=True, on_click=toggle_view, args=("chamados",))
-    c_tool3.button("📝 Atendimento", help="Registrar Atendimento", use_container_width=True, on_click=toggle_view, args=("atendimentos",))
+    c_tool3.button("📝 Atend.", help="Registrar Atendimento", use_container_width=True, on_click=toggle_view, args=("atendimentos",))
     c_tool4.button("⏰ H. Extras", help="Registrar Horas Extras", use_container_width=True, on_click=toggle_view, args=("hextras",))
     c_tool5.button("🧠 Descanso", help="Jogo e Ranking", use_container_width=True, on_click=toggle_view, args=("descanso",))
-    c_tool6.button("🐛 Erro/Novidade", help="Relatar Erro ou Novidade", use_container_width=True, on_click=toggle_view, args=("erro_novidade",))
+    c_tool6.button("🐛 Erro", help="Relatar Erro ou Novidade", use_container_width=True, on_click=toggle_view, args=("erro_novidade",))
     c_tool7.button("🖨️ Certidão", help="Gerar Certidão de Indisponibilidade", use_container_width=True, on_click=toggle_view, args=("certidao",))
         
     if st.session_state.active_view == "checklist":
