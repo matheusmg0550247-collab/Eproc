@@ -169,70 +169,48 @@ def send_daily_report():
 
 # --- LÓGICA DE FILA BLINDADA (AGRESSIVA) ---
 def find_next_holder_index(current_index, queue, skips):
-    """
-    Retorna o índice do próximo ELEGÍVEL na fila. 
-    Se todos estiverem pulando, força o vizinho.
-    """
     if not queue: return -1
     n = len(queue)
     start_index = (current_index + 1) % n
-    
-    # 1. Tenta achar alguém que NÃO esteja pulando
     for i in range(n):
         idx = (start_index + i) % n
         consultor = queue[idx]
-        if consultor == queue[current_index] and n > 1:
-            continue
-        if not skips.get(consultor, False):
-            return idx
-            
-    # 2. SE NINGUÉM FOR ACHADO (todos pulando), PEGA O PRÓXIMO NA MARRA
+        if consultor == queue[current_index] and n > 1: continue
+        if not skips.get(consultor, False): return idx
     if n > 1:
         proximo_imediato_idx = (current_index + 1) % n
-        # Força o reset do skip do escolhido
         nome_escolhido = queue[proximo_imediato_idx]
         st.session_state.skip_flags[nome_escolhido] = False 
         return proximo_imediato_idx
-
     return -1
 
 def check_and_assume_baton(forced_successor=None, immune_consultant=None):
     queue, skips = st.session_state.bastao_queue, st.session_state.skip_flags
     current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
-    
     is_valid = (current_holder and current_holder in queue)
     target = forced_successor if forced_successor else (current_holder if is_valid else None)
-    
     if not target:
         curr_idx = queue.index(current_holder) if (current_holder and current_holder in queue) else -1
         idx = find_next_holder_index(curr_idx, queue, skips)
         target = queue[idx] if idx != -1 else None
-
     changed = False; now = get_brazil_time()
-    
     for c in CONSULTORES:
         if c != immune_consultant: 
             if c != target and 'Bastão' in st.session_state.status_texto.get(c, ''):
                 log_status_change(c, 'Bastão', 'Indisponível', now - st.session_state.current_status_starts.get(c, now))
                 st.session_state.status_texto[c] = 'Indisponível'; changed = True
-
     if target:
         curr_s = st.session_state.status_texto.get(target, '')
         if 'Bastão' not in curr_s:
             old_s = curr_s; new_s = f"Bastão | {old_s}" if old_s and old_s != "Indisponível" else "Bastão"
             log_status_change(target, old_s, new_s, now - st.session_state.current_status_starts.get(target, now))
             st.session_state.status_texto[target] = new_s; st.session_state.bastao_start_time = now
-            if current_holder != target: 
-                st.session_state.play_sound = True; send_chat_notification_internal(target, 'Bastão')
-            
-            st.session_state.skip_flags[target] = False
-            changed = True
-            
+            if current_holder != target: st.session_state.play_sound = True; send_chat_notification_internal(target, 'Bastão')
+            st.session_state.skip_flags[target] = False; changed = True
     elif not target and current_holder:
         if current_holder != immune_consultant:
             log_status_change(current_holder, 'Bastão', 'Indisponível', now - st.session_state.current_status_starts.get(current_holder, now))
             st.session_state.status_texto[current_holder] = 'Indisponível'; changed = True
-
     if changed: save_state()
     return changed
 
@@ -374,9 +352,10 @@ def rotate_bastao():
     
     next_idx = find_next_holder_index(current_index, queue, skips)
     
+    if next_idx == -1 and len(queue) > 1: next_idx = (current_index + 1) % len(queue)
+        
     if next_idx != -1:
         next_holder = queue[next_idx]
-        
         st.session_state.skip_flags[next_holder] = False
         
         if next_idx > current_index: skipped_over = queue[current_index+1 : next_idx]
@@ -402,13 +381,10 @@ def toggle_skip():
     selected = st.session_state.consultor_selectbox
     if not selected or selected == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
     if not st.session_state.get(f'check_{selected}'): st.warning(f'{selected} não está disponível.'); return
-    
     novo = not st.session_state.skip_flags.get(selected, False)
     st.session_state.skip_flags[selected] = novo
-    
     if novo: st.toast(f"⏭️ {selected} pulou a vez!", icon="⏭️")
     else: st.toast(f"✅ {selected} voltou para a fila!", icon="✅")
-    
     save_state(); st.rerun()
 
 def update_status(new_status_part, force_exit_queue=False):
@@ -427,6 +403,9 @@ def update_status(new_status_part, force_exit_queue=False):
         if selected == holder:
             idx = st.session_state.bastao_queue.index(selected)
             nxt = find_next_holder_index(idx, st.session_state.bastao_queue, st.session_state.skip_flags)
+            if nxt == -1 and len(st.session_state.bastao_queue) > 1:
+                nxt = (idx + 1) % len(st.session_state.bastao_queue)
+                st.session_state.skip_flags[st.session_state.bastao_queue[nxt]] = False
             if nxt != -1: forced_succ = st.session_state.bastao_queue[nxt]
         
         st.session_state[f'check_{selected}'] = False
@@ -442,18 +421,15 @@ def update_status(new_status_part, force_exit_queue=False):
         clean.append(new_status_part)
         clean.sort(key=lambda x: 0 if 'Bastão' in x else 1 if 'Atividade' in x or 'Projeto' in x else 2)
         final_status = " | ".join(clean)
-        
         if is_holder and not should_exit and 'Bastão' not in final_status: final_status = f"Bastão | {final_status}"
         if should_exit: final_status = final_status.replace("Bastão | ", "").replace("Bastão", "").strip()
     
     now_br = get_brazil_time()
     log_status_change(selected, current, final_status, now_br - st.session_state.current_status_starts.get(selected, now_br))
     st.session_state.status_texto[selected] = final_status
-    
     if new_status_part == 'Saída rápida':
         if selected not in st.session_state.priority_return_queue: st.session_state.priority_return_queue.append(selected)
     elif selected in st.session_state.priority_return_queue: st.session_state.priority_return_queue.remove(selected)
-    
     if is_holder: check_and_assume_baton(forced_succ, immune_consultant=selected)
     save_state()
 
@@ -504,12 +480,10 @@ with c_topo_dir:
     with c_sub2:
         if st.button("🚀 Entrar", use_container_width=True):
             if novo_responsavel != "Selecione":
-                # --- TRAVA DE SEGURANÇA ADICIONADA AQUI ---
                 holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
-                if novo_responsavel == holder:
-                    st.error(f"{novo_responsavel} já está com o bastão!")
-                elif novo_responsavel in st.session_state.bastao_queue:
-                    st.warning(f"{novo_responsavel} já está na fila.")
+                # --- TRAVA DE SEGURANÇA ---
+                if novo_responsavel == holder: st.error(f"{novo_responsavel} já está com o bastão!")
+                elif novo_responsavel in st.session_state.bastao_queue: st.warning(f"{novo_responsavel} já está na fila.")
                 else:
                     if toggle_queue(novo_responsavel):
                         st.session_state.consultor_selectbox = novo_responsavel; st.success(f"{novo_responsavel} agora está na fila!"); st.rerun()
@@ -587,7 +561,7 @@ with col_principal:
                 if c_p1.button("Confirmar", type="primary", use_container_width=True):
                     nome_final = detalhe_proj if proj_selec == "Outros" else proj_selec
                     if nome_final:
-                        # --- AJUSTE: EMOJI ADICIONADO ---
+                        # --- AJUSTE: EMOJI PROJETO ---
                         update_status(f"🏗️ Projeto: {nome_final}")
                         st.session_state.active_view = None
                         st.rerun()
@@ -663,9 +637,13 @@ with col_disponibilidade:
     for nome in [c for c in queue if c in ui_lists["fila"]]:
         c1, c2 = st.columns([0.85, 0.15])
         c2.checkbox(' ', key=f'chk_fila_{nome}', value=True, on_change=toggle_queue, args=(nome,), label_visibility='collapsed')
-        extra = " 📋" if "Atividade" in st.session_state.status_texto.get(nome, '') else ""
         
-        # --- LÓGICA VISUAL DO PULAR NA LISTA ---
+        # --- AJUSTE: VERIFICAÇÃO VISUAL DE PROJETO NO APP ---
+        status_val = st.session_state.status_texto.get(nome, '')
+        extra = ""
+        if "Atividade" in status_val: extra = " 📋"
+        elif "Projeto" in status_val: extra = " 🏗️"
+        
         is_skipping = st.session_state.skip_flags.get(nome, False)
         
         if nome == responsavel: 
