@@ -456,6 +456,14 @@ def rotate_bastao():
     else: st.warning('Ninguém elegível.'); check_and_assume_baton()
 
 def toggle_skip():
+    def rotate_bastao():
+    queue = st.session_state.bastao_queue
+    holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
+    if not holder: return
+    idx = queue.index(holder) if holder in queue else -1
+    nxt = find_next_holder_index(idx, queue, st.session_state.skip_flags)
+    if nxt != -1: check_and_assume_baton(forced_successor=queue[nxt])
+    st.rerun()
     selected = st.session_state.consultor_selectbox
     if not selected or selected == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
     if not st.session_state.get(f'check_{selected}'): st.warning(f'{selected} não está disponível.'); return
