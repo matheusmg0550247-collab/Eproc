@@ -75,11 +75,13 @@ def verificar_duplicidade_certidao(tipo, n_processo=None, data_evento=None, hora
     if not sb: return False
     try:
         query = sb.table("certidoes_registro").select("*").eq("tipo", tipo)
+        
         if tipo in ['Física', 'Eletrônica'] and n_processo:
             proc_limpo = str(n_processo).strip().rstrip('.')
             if not proc_limpo: return False
             response = query.ilike("n_processo", f"%{proc_limpo}%").execute()
             return len(response.data) > 0
+            
         elif tipo == 'Geral' and data_evento:
             data_str = data_evento.isoformat() if hasattr(data_evento, 'isoformat') else str(data_evento)
             query = query.eq("data_evento", data_str)
@@ -87,6 +89,7 @@ def verificar_duplicidade_certidao(tipo, n_processo=None, data_evento=None, hora
                 query = query.eq("hora_periodo", hora_periodo)
             response = query.execute()
             return len(response.data) > 0
+            
     except Exception as e:
         print(f"Erro duplicidade: {e}")
         return False
@@ -237,7 +240,9 @@ def send_certidao_notification_to_chat(consultor, tipo):
     send_to_chat("certidao", msg); return True
 
 def play_sound_html(): return f'<audio autoplay="true"><source src="{SOUND_URL}" type="audio/mpeg"></audio>'
-def render_fireworks(): pass # Define a função vazia para evitar NameError
+
+def render_fireworks(): 
+    pass 
 
 def gerar_html_checklist(c, m, d): return "..."
 
@@ -333,11 +338,12 @@ def init_session_state():
         'play_sound': False, 'gif_warning': False, 'lunch_warning_info': None, 'last_reg_status': None,
         'chamado_guide_step': 0, 'sessao_msg_preview': "", 'html_download_ready': False, 'html_content_cache': "",
         'auxilio_ativo': False, 'active_view': None, 'last_jira_number': "",
+        'simon_sequence': [], 'simon_user_input': [], 'simon_status': 'start', 'simon_level': 1,
         'consultor_selectbox': "Selecione um nome",
         'status_texto': {nome: 'Indisponível' for nome in CONSULTORES},
         'bastao_queue': [], 'skip_flags': {}, 'current_status_starts': {nome: now for nome in CONSULTORES},
         'bastao_counts': {nome: 0 for nome in CONSULTORES}, 'priority_return_queue': [], 'daily_logs': [], 'simon_ranking': [],
-        'word_buffer': None, 'duplicidade_encontrada': False
+        'word_buffer': None, 'aviso_duplicidade': False
     }
     for key, default in defaults.items():
         if key not in st.session_state: st.session_state[key] = default
@@ -460,7 +466,8 @@ def rotate_bastao():
         log_status_change(next_holder, old_n_status, new_n_status, timedelta(0))
         st.session_state.status_texto[next_holder] = new_n_status
         st.session_state.bastao_start_time = now_br
-        st.session_state.play_sound = True; send_chat_notification_internal(next_holder, 'Bastão'); save_state()
+        st.session_state.play_sound = True; st.session_state.rotation_gif_start_time = now_br
+        send_chat_notification_internal(next_holder, 'Bastão'); save_state()
     else: st.warning('Ninguém elegível.'); check_and_assume_baton()
 
 def toggle_skip():
@@ -502,6 +509,8 @@ def update_status(new_status_part, force_exit_queue=False):
 
 def manual_rerun(): st.session_state.gif_warning = False; st.rerun()
 def toggle_view(v): st.session_state.active_view = v if st.session_state.active_view != v else None
+def handle_atendimento_submission(c, d, u, n, s, desc, can, des, j=""): 
+    if send_atendimento_to_chat(c, d, u, n, s, desc, can, des, j): st.success("Enviado!"); st.session_state.active_view = None; time.sleep(1); st.rerun()
 
 # ============================================
 # 4. EXECUÇÃO PRINCIPAL
@@ -562,14 +571,11 @@ with col_principal:
 
             col_btn1, col_btn2 = st.columns(2)
             with col_btn1:
-                # GERA O WORD E GUARDA NO BUFFER
                 if st.button("📄 Gerar Modelo Word", use_container_width=True):
                     if c_cons == "Selecione um nome": st.error("Selecione seu nome.")
                     elif not c_processo and tipo_cert != "Geral": st.error("Informe o processo.")
                     else:
                         st.session_state.word_buffer = gerar_docx_certidao_internal(tipo_cert, c_processo, c_data.strftime("%d/%m/%Y"), c_cons, c_motivo, c_chamado, c_hora)
-                
-                # BOTÃO DE DOWNLOAD PERSISTENTE (Não some com o refresh)
                 if st.session_state.word_buffer:
                     st.download_button("⬇️ Baixar DOCX", st.session_state.word_buffer, file_name=f"certidao_{c_processo}.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
             
@@ -578,9 +584,8 @@ with col_principal:
                     if c_cons == "Selecione um nome": st.error("Selecione seu nome.")
                     else:
                         try:
-                            # TRAVA REAL DE DUPLICIDADE
                             if verificar_duplicidade_certidao(tipo_cert, n_processo=c_processo, data_evento=c_data, hora_periodo=c_hora):
-                                st.session_state.duplicidade_encontrada = True
+                                st.session_state.aviso_duplicidade = True
                             else:
                                 payload = {"tipo": tipo_cert, "data_evento": c_data.isoformat(), "consultor": c_cons, "n_chamado": c_chamado, "n_processo": c_processo.strip().rstrip('.'), "motivo": c_motivo, "hora_periodo": c_hora}
                                 if salvar_certidao_db(payload):
@@ -589,19 +594,15 @@ with col_principal:
                                     time.sleep(2); st.session_state.active_view = None; st.rerun()
                         except: st.error("Erro técnico.")
 
-            # AVISO DE DUPLICIDADE FIXO (Só some se clicar no botão)
-            if st.session_state.get('duplicidade_encontrada'):
+            if st.session_state.get('aviso_duplicidade'):
                 st.error("⚠️ ATENÇÃO: Registro já existe! Favor procurar Matheus ou Gilberto.")
                 if st.button("Ciente / Fechar Aviso"):
-                    st.session_state.duplicidade_encontrada = False
+                    st.session_state.aviso_duplicidade = False
                     st.rerun()
 
 with col_disponibilidade:
     st.header('Status')
     ui_lists = {'fila': [], 'indisponivel': []}
-    for nome in CONSULCORES: # Erro de digitação na lista CONSULTORES corrigido abaixo
-        pass 
-    # Use a lista CONSULTORES definida no topo
     for nome in CONSULTORES:
         if nome in st.session_state.bastao_queue: ui_lists['fila'].append(nome)
         elif st.session_state.status_texto.get(nome) == 'Indisponível': ui_lists['indisponivel'].append(nome)
