@@ -11,7 +11,6 @@ from operator import itemgetter
 from streamlit_autorefresh import st_autorefresh
 import json
 import re
-import threading
 import random
 import base64
 import os
@@ -364,12 +363,15 @@ def init_session_state():
 # --- AÇÕES DE BOTÕES E REGRAS ---
 
 def toggle_queue(consultor):
-    # REGRA: 20H
-    if get_brazil_time().hour >= 20:
-        st.toast("🚫 Expediente encerrado (após 20h)! Ação bloqueada.", icon="🌙")
-        # Força o estado visual a reverter
+    # REGRA: 20H às 06H (Bloqueio Noturno)
+    now_hour = get_brazil_time().hour
+    if now_hour >= 20 or now_hour < 6:
+        st.toast("💤 Fora do expediente (20h às 06h)! Ação bloqueada.", icon="🌙")
+        # Força visualmente o estado para False
         st.session_state[f'check_{consultor}'] = False 
-        return False # Indica bloqueio
+        time.sleep(1) # Delay para ver o aviso
+        st.rerun() # FORÇA O REDESENHO DA TELA (Desmarca o box)
+        return False
 
     st.session_state.gif_warning = False
     now_br = get_brazil_time()
@@ -399,7 +401,7 @@ def toggle_queue(consultor):
             st.session_state.status_texto[consultor] = ''
         check_and_assume_baton()
     save_state()
-    return True # Indica sucesso
+    return True
 
 def leave_specific_status(consultor, status_type_to_remove):
     st.session_state.gif_warning = False
@@ -424,10 +426,13 @@ def leave_specific_status(consultor, status_type_to_remove):
     save_state()
 
 def enter_from_indisponivel(consultor):
-    # REGRA: 20H
-    if get_brazil_time().hour >= 20:
-        st.toast("🚫 Expediente encerrado (após 20h)! Ação bloqueada.", icon="🌙")
+    # REGRA: 20H às 06H
+    now_hour = get_brazil_time().hour
+    if now_hour >= 20 or now_hour < 6:
+        st.toast("💤 Fora do expediente (20h às 06h)! Ação bloqueada.", icon="🌙")
         st.session_state[f'check_simples_Indisponível_{consultor}'] = False 
+        time.sleep(1)
+        st.rerun() # Força o checkbox a desmarcar
         return
 
     st.session_state.gif_warning = False
@@ -535,7 +540,10 @@ def update_status(new_status_part, force_exit_queue=False):
 
 def auto_manage_time():
     now = get_brazil_time()
-    if now.hour >= 23:
+    # Verifica se a data atual é maior que a última execução
+    # Isso garante limpeza se o sistema rodar na manhã seguinte (pós 23h do dia anterior)
+    last_run = st.session_state.report_last_run_date
+    if now.date() > last_run.date() or now.hour >= 23:
         has_data = len(st.session_state.bastao_queue) > 0 or any(v > 0 for v in st.session_state.bastao_counts.values())
         if has_data:
             st.session_state.bastao_queue = []
@@ -545,8 +553,14 @@ def auto_manage_time():
             st.session_state.daily_logs = []
             st.session_state.current_status_starts = {n: now for n in CONSULTORES}
             for n in CONSULTORES: st.session_state[f'check_{n}'] = False
+            
+            # Atualiza data da ultima limpeza
+            st.session_state.report_last_run_date = now
+            
             save_state()
-            st.toast("🧹 Limpeza Diária (23h) realizada.", icon="🌙")
+            st.toast("🧹 Sistema limpo para o novo dia!", icon="☀️")
+            
+    # 20h: Apenas encerra expediente (visual)
     elif now.hour >= 20:
         active = any(s != 'Indisponível' for s in st.session_state.status_texto.values()) or len(st.session_state.bastao_queue) > 0
         if active:
@@ -615,10 +629,8 @@ with c_topo_dir:
                 if toggle_queue(novo_responsavel):
                     st.session_state.consultor_selectbox = novo_responsavel
                     st.success(f"{novo_responsavel} agora está na fila!")
-                    time.sleep(0.5)
                     st.rerun()
-                else:
-                    time.sleep(2) # Pausa para ver o aviso de erro das 20h
+                # Se falhar (horário), a função toggle_queue já deu o toast e fez o sleep
 
 st.markdown("<hr style='border: 1px solid #FFD700; margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
 
