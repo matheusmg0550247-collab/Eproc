@@ -452,32 +452,22 @@ def toggle_skip():
         return
     if not st.session_state.get(f'check_{selected}'):
         st.warning(f'{selected} não está disponível.')
-        return
-    
+        return    
     # Inverte o status de pular
     novo_status_pular = not st.session_state.skip_flags.get(selected, False)
-    st.session_state.skip_flags[selected] = novo_status_pular
-    
-    if novo_status_pular:
-        # Se ativou o pulo, move fisicamente para o fim da fila
-        if selected in st.session_state.bastao_queue:
-            st.session_state.bastao_queue.remove(selected)
-            st.session_state.bastao_queue.append(selected)
-        st.toast(f"⏭️ {selected} pulou e foi para o fim da fila!", icon="⏭️")
-    else:
-        st.toast(f"✅ {selected} voltou para a fila!", icon="✅")
-    
-    save_state()
-    st.rerun()
+    st.session_state.skip_flags[selected] = novo_status_pularif should_exit and selected in st.session_state.bastao_queue:
+        holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
+        if selected == holder:
+            idx = st.session_state.bastao_queue.index(selected)
+            nxt = find_next_holder_index(idx, st.session_state.bastao_queue, st.session_state.skip_flags)
             if nxt == -1 and len(st.session_state.bastao_queue) > 1:
                 nxt = (idx + 1) % len(st.session_state.bastao_queue)
                 st.session_state.skip_flags[st.session_state.bastao_queue[nxt]] = False
-            if nxt != -1: forced_succ = st.session_state.bastao_queue[nxt]
-        st.session_state[f'check_{selected}'] = False; st.session_state.bastao_queue.remove(selected)
-    if new_status_part in ['Almoço', 'Ausente', 'Saída rápida']: final_status = new_status_part
-    else:
-        parts = [p.strip() for p in current.split('|') if p.strip()]
-        type_new = new_status_part.split(':')[0]
+            if nxt != -1:
+                forced_succ = st.session_state.bastao_queue[nxt]
+        st.session_state[f'check_{selected}'] = False
+        st.session_state.bastao_queue.remove(selected)
+        st.session_state.skip_flags.pop(selected, None)
         clean = [p for p in parts if p != 'Indisponível' and not p.startswith(type_new) and p not in blocking]
         clean.append(new_status_part)
         clean.sort(key=lambda x: 0 if 'Bastão' in x else 1 if 'Atividade' in x or 'Projeto' in x else 2)
