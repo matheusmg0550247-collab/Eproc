@@ -206,6 +206,59 @@ def log_status_change(consultor, old_status, new_status, duration):
 # --- HANDLERS ---
 def on_auxilio_change(): save_state()
 
+
+def update_status(novo_status: str, marcar_indisponivel: bool = False):
+    """Atualiza o status do consultor selecionado e registra log/salva estado.
+
+    - novo_status: texto do status (ex.: 'Almoço', 'Saída rápida', 'Atividade: ...')
+    - marcar_indisponivel: quando True, marca como indisponível (desmarca check e coloca skip).
+    """
+
+    selected = st.session_state.get("consultor_selectbox")
+    if not selected or selected == "Selecione um nome":
+        st.warning("Selecione um(a) consultor(a) antes de alterar o status.")
+        return
+
+    # Status atual (para log)
+    current = st.session_state.status_texto.get(selected, "")
+
+    # Marca disponibilidade / pular
+    if marcar_indisponivel:
+        st.session_state[f"check_{selected}"] = False
+        st.session_state.skip_flags[selected] = True
+    else:
+        st.session_state[f"check_{selected}"] = True
+        st.session_state.skip_flags[selected] = False
+
+    # Atualiza status
+    final_status = "" if (novo_status is None or str(novo_status).strip() == "" or novo_status == "Fila Bastão") else str(novo_status).strip()
+    st.session_state.status_texto[selected] = final_status
+
+    # Log / save
+    try:
+        now_br = get_brazil_time()
+        started = st.session_state.current_status_starts.get(selected, now_br)
+        log_status_change(selected, current, final_status, now_br - started)
+    except Exception:
+        pass
+
+    try:
+        save_state()
+    except Exception:
+        pass
+
+    # Se ele estava com Bastão e ficou indisponível, gira o bastão
+    if marcar_indisponivel and isinstance(current, str) and "Bastão" in current:
+        try:
+            check_and_assume_baton()
+        except Exception:
+            pass
+
+    try:
+        st.rerun()
+    except Exception:
+        pass
+
 def send_chat_notification_internal(consultor, status):
     if CHAT_WEBHOOK_BASTAO and status == 'Bastão':
         msg = f"🎉 **BASTÃO GIRADO!** 🎉 \n\n- **Novo(a) Responsável:** {consultor}\n- **Acesse o Painel:** {APP_URL_CLOUD}"
