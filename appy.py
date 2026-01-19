@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from operator import itemgetter
 from streamlit_autorefresh import st_autorefresh
 import json
+import re
 import base64
 import io
 from supabase import create_client
@@ -486,7 +487,7 @@ def toggle_queue(consultor):
 
 def leave_specific_status(consultor, status_type_to_remove):
     ensure_daily_reset(); st.session_state.gif_warning = False
-    if status_type_to_remove in ['Almoço', 'Treinamento', 'Sessão', 'Reunião']:
+    if status_type_to_remove in ['Almoço', 'Treinamento', 'Sessão', 'Reunião', 'Saída rápida', 'Ausente']:
         if consultor not in st.session_state.bastao_queue: st.session_state.bastao_queue.append(consultor)
         st.session_state[f'check_{consultor}'] = True; st.session_state.skip_flags[consultor] = False
     old_status = st.session_state.status_texto.get(consultor, '')
@@ -670,6 +671,27 @@ def toggle_skip():
     save_state()
     st.rerun()
 st.set_page_config(page_title="Controle Bastão Cesupe 2026", layout="wide", page_icon="🥂")
+
+# --- Ajuste visual: botões sempre proporcionais e na mesma linha ---
+st.markdown("""
+<style>
+  div.stButton > button {
+    width: 100%;
+    white-space: nowrap;
+    height: 3rem;
+  }
+</style>
+""", unsafe_allow_html=True)
+st.markdown("""
+<style>
+/* Mantém os botões dos atalhos (Checklist/Chamados/...) alinhados e proporcionais */
+[data-testid='stHorizontalBlock'] div.stButton > button {
+  white-space: nowrap;
+  height: 3rem;
+}
+</style>
+""", unsafe_allow_html=True)
+
 init_session_state(); auto_manage_time()
 st.components.v1.html("<script>window.scrollTo(0, 0);</script>", height=0)
 render_fireworks()
@@ -729,14 +751,14 @@ with col_principal:
             if st.button("❌ Cancelar Registro"): st.session_state.active_view = None; st.rerun()
 
     st.markdown("####"); st.button('🔄 Atualizar (Manual)', on_click=manual_rerun, use_container_width=True); st.markdown("---")
-    c_tool1, c_tool2, c_tool3, c_tool4, c_tool5, c_tool6, c_tool7 = st.columns(7)
-    c_tool1.button("📑 Checklist", on_click=toggle_view, args=("checklist",), use_container_width=True)
-    c_tool2.button("🆘 Chamados", on_click=toggle_view, args=("chamados",), use_container_width=True)
-    c_tool3.button("📝 Atendimentos", on_click=toggle_view, args=("atendimentos",), use_container_width=True)
-    c_tool4.button("⏰ H. Extras", on_click=toggle_view, args=("hextras",), use_container_width=True)
-    c_tool5.button("🧠 Descanso", on_click=toggle_view, args=("descanso",), use_container_width=True)
-    c_tool6.button("🐛 Erro/Novidade", on_click=toggle_view, args=("erro_novidade",), use_container_width=True)
-    c_tool7.button("🖨️ Certidão", on_click=toggle_view, args=("certidao",), use_container_width=True)
+    c_tool1, c_tool2, c_tool3, c_tool4, c_tool5, c_tool6 = st.columns(6)
+
+    c_tool1.button("📑 Checklist", help="Gerador de Checklist Eproc", use_container_width=True, on_click=toggle_view, args=("checklist",))
+    c_tool2.button("🆘 Chamados", help="Guia de Abertura de Chamados", use_container_width=True, on_click=toggle_view, args=("chamados",))
+    c_tool3.button("📝 Atendimentos", help="Registrar Atendimento", use_container_width=True, on_click=toggle_view, args=("atendimentos",))
+    c_tool4.button("⏰ H. Extras", help="Registrar Horas Extras", use_container_width=True, on_click=toggle_view, args=("hextras",))
+    c_tool5.button("🐛 Erro/Novidade", help="Relatar Erro ou Novidade", use_container_width=True, on_click=toggle_view, args=("erro_novidade",))
+    c_tool6.button("🖨️ Certidão", help="Gerar Certidão de Indisponibilidade", use_container_width=True, on_click=toggle_view, args=("certidao",))
 
     if st.session_state.active_view == "checklist":
         with st.container(border=True):
@@ -808,8 +830,6 @@ with col_principal:
                         st.rerun()
                     else:
                         st.error('Erro ao enviar. Verifique o canal/webhook.')
-    if st.session_state.active_view == "descanso": simon_game_ui()
-
     if st.session_state.active_view == "hextras":
         with st.container(border=True):
             st.header("⏰ Horas Extras")
@@ -853,24 +873,144 @@ with col_principal:
                 if st.button("Ciente"): st.session_state.aviso_duplicidade = False; st.rerun()
 
 with col_disponibilidade:
-    st.header('Status')
-    ui_lists = {'fila': [], 'almoco': [], 'indisponivel': []}
-    for nome in CONSULTORES:
-        if nome in st.session_state.bastao_queue: ui_lists['fila'].append(nome)
-        status = st.session_state.status_texto.get(nome, 'Indisponível')
-        if status == 'Almoço': ui_lists['almoco'].append(nome)
-        elif status == 'Indisponível' and nome not in st.session_state.bastao_queue: ui_lists['indisponivel'].append(nome)
-    
-    st.subheader(f'✅ Na Fila ({len(ui_lists["fila"])})')
-    for nome in [c for c in queue if c in ui_lists["fila"]]:
-        c1, c2 = st.columns([0.85, 0.15])
-        c2.checkbox(' ', key=f'chk_f_{nome}', value=True, on_change=toggle_queue, args=(nome,), label_visibility='collapsed')
-        lbl = f"🥂 {nome}" if nome == responsavel else nome
-        if st.session_state.skip_flags.get(nome): lbl += " ⏭️"
-        c1.markdown(f"**{lbl}** - {st.session_state.status_texto.get(nome)}")
+    st.header('Status dos(as) Consultores(as)')
 
-    st.subheader(f'❌ Indisponível ({len(ui_lists["indisponivel"])})')
-    for nome in ui_lists['indisponivel']:
-        c1, c2 = st.columns([0.85, 0.15])
-        c2.checkbox(' ', key=f'chk_i_{nome}', value=False, on_change=enter_from_indisponivel, args=(nome,), label_visibility='collapsed')
-        c1.write(nome)
+    ui_lists = {
+        'fila': [], 'almoco': [], 'saida': [], 'ausente': [], 'atividade_especifica': [],
+        'sessao_especifica': [], 'projeto_especifico': [], 'reuniao_especifica': [],
+        'treinamento_especifico': [], 'indisponivel': []
+    }
+
+    for nome in CONSULTORES:
+        if nome in st.session_state.bastao_queue:
+            ui_lists['fila'].append(nome)
+
+        status = st.session_state.status_texto.get(nome, 'Indisponível')
+        status = status if status is not None else 'Indisponível'
+
+        if status in ('', None):
+            pass
+        elif status == 'Almoço':
+            ui_lists['almoco'].append(nome)
+        elif status == 'Ausente':
+            ui_lists['ausente'].append(nome)
+        elif status == 'Saída rápida':
+            ui_lists['saida'].append(nome)
+        elif status == 'Indisponível' and nome not in st.session_state.bastao_queue:
+            ui_lists['indisponivel'].append(nome)
+
+        # Detalhados
+        if isinstance(status, str):
+            if 'Sessão:' in status or status.strip() == 'Sessão':
+                match = re.search(r'Sessão:\s*(.*)', status)
+                desc = match.group(1).split('|')[0].strip() if match else 'Sessão'
+                ui_lists['sessao_especifica'].append((nome, desc))
+
+            if 'Reunião:' in status or status.strip() == 'Reunião':
+                match = re.search(r'Reunião:\s*(.*)', status)
+                desc = match.group(1).split('|')[0].strip() if match else 'Reunião'
+                ui_lists['reuniao_especifica'].append((nome, desc))
+
+            if 'Projeto:' in status or status.strip() == 'Projeto':
+                match = re.search(r'Projeto:\s*(.*)', status)
+                desc = match.group(1).split('|')[0].strip() if match else 'Projeto'
+                ui_lists['projeto_especifico'].append((nome, desc))
+
+            if 'Treinamento:' in status or status.strip() == 'Treinamento':
+                match = re.search(r'Treinamento:\s*(.*)', status)
+                desc = match.group(1).split('|')[0].strip() if match else 'Treinamento'
+                ui_lists['treinamento_especifico'].append((nome, desc))
+
+            if 'Atividade:' in status or status.strip() == 'Atendimento':
+                if status.strip() == 'Atendimento':
+                    ui_lists['atividade_especifica'].append((nome, 'Atendimento'))
+                else:
+                    match = re.search(r'Atividade:\s*(.*)', status)
+                    desc = match.group(1).split('|')[0].strip() if match else 'Em demanda'
+                    ui_lists['atividade_especifica'].append((nome, desc))
+
+    # ----------------------------
+    # Fila
+    # ----------------------------
+    st.subheader(f'✅ Na Fila ({len(ui_lists["fila"])})')
+    render_order = [c for c in queue if c in ui_lists['fila']]
+
+    if not render_order:
+        st.markdown('_Ninguém na fila._')
+    else:
+        for nome in render_order:
+            col_nome, col_check = st.columns([0.85, 0.15], vertical_alignment='center')
+            col_check.checkbox(' ', key=f'chk_fila_{nome}', value=True, on_change=toggle_queue, args=(nome,), label_visibility='collapsed')
+
+            skip_flag = skips.get(nome, False)
+            status_atual = st.session_state.status_texto.get(nome, '') or ''
+            extra = ''
+            if 'Atividade' in status_atual: extra += ' 📋'
+            if 'Projeto' in status_atual: extra += ' 🏗️'
+
+            if nome == responsavel:
+                display = f'<span style="background-color: #FFD700; color: #000; padding: 2px 6px; border-radius: 5px; font-weight: 800;">🥂 {nome}</span>'
+            elif skip_flag:
+                display = f'<strong>{nome}</strong>{extra} <span style="background-color: #FFECB3; padding: 2px 8px; border-radius: 10px;">Pulando ⏭️</span>'
+            else:
+                display = f'<strong>{nome}</strong>{extra} <span style="background-color: #BBDEFB; padding: 2px 8px; border-radius: 10px;">Aguardando</span>'
+
+            col_nome.markdown(display, unsafe_allow_html=True)
+
+    st.markdown('---')
+
+    # ----------------------------
+    # Seções auxiliares
+    # ----------------------------
+    def _render_section_detalhada(titulo, icon, lista_tuplas, badge_color, keyword_removal):
+        colors = {
+            'orange': '#FFECB3', 'blue': '#BBDEFB', 'teal': '#B2DFDB',
+            'violet': '#E1BEE7', 'green': '#C8E6C9', 'red': '#FFCDD2', 'grey': '#EEEEEE'
+        }
+        bg_hex = colors.get(badge_color, '#EEEEEE')
+        st.subheader(f'{icon} {titulo} ({len(lista_tuplas)})')
+        if not lista_tuplas:
+            st.markdown(f'_Nenhum registro em {titulo.lower()}._')
+        else:
+            for nome, desc in sorted(lista_tuplas, key=lambda x: x[0]):
+                col_nome, col_check = st.columns([0.85, 0.15], vertical_alignment='center')
+                col_check.checkbox(' ', key=f'chk_{titulo}_{nome}', value=True, on_change=leave_specific_status, args=(nome, keyword_removal), label_visibility='collapsed')
+                col_nome.markdown(
+                    f"<div style='font-size: 16px; margin: 2px 0;'><strong>{nome}</strong><span style='background-color: {bg_hex}; color: #333; padding: 2px 8px; border-radius: 12px; font-size: 14px; margin-left: 8px;'>{desc}</span></div>",
+                    unsafe_allow_html=True
+                )
+        st.markdown('---')
+
+    def _render_section_simples(titulo, icon, nomes, badge_color):
+        colors = {
+            'orange': '#FFECB3', 'blue': '#BBDEFB', 'teal': '#B2DFDB',
+            'violet': '#E1BEE7', 'green': '#C8E6C9', 'red': '#FFCDD2', 'grey': '#EEEEEE'
+        }
+        bg_hex = colors.get(badge_color, '#EEEEEE')
+        st.subheader(f'{icon} {titulo} ({len(nomes)})')
+        if not nomes:
+            st.markdown(f'_Ninguém em {titulo.lower()}._')
+        else:
+            for nome in sorted(nomes):
+                col_nome, col_check = st.columns([0.85, 0.15], vertical_alignment='center')
+                if titulo == 'Indisponível':
+                    col_check.checkbox(' ', key=f'chk_{titulo}_{nome}', value=False, on_change=enter_from_indisponivel, args=(nome,), label_visibility='collapsed')
+                else:
+                    col_check.checkbox(' ', key=f'chk_{titulo}_{nome}', value=True, on_change=leave_specific_status, args=(nome, titulo), label_visibility='collapsed')
+
+                col_nome.markdown(
+                    f"<div style='font-size: 16px; margin: 2px 0;'><strong>{nome}</strong><span style='background-color: {bg_hex}; color: #444; padding: 2px 6px; border-radius: 6px; font-size: 12px; margin-left: 6px; vertical-align: middle; text-transform: uppercase;'>{titulo}</span></div>",
+                    unsafe_allow_html=True
+                )
+        st.markdown('---')
+
+    _render_section_detalhada('Em Demanda', '📋', ui_lists['atividade_especifica'], 'orange', 'Atividade')
+    _render_section_detalhada('Projetos', '🏗️', ui_lists['projeto_especifico'], 'blue', 'Projeto')
+    _render_section_detalhada('Treinamento', '🎓', ui_lists['treinamento_especifico'], 'teal', 'Treinamento')
+    _render_section_detalhada('Reuniões', '📅', ui_lists['reuniao_especifica'], 'violet', 'Reunião')
+
+    _render_section_simples('Almoço', '🍽️', ui_lists['almoco'], 'red')
+    _render_section_detalhada('Sessão', '🎙️', ui_lists['sessao_especifica'], 'green', 'Sessão')
+    _render_section_simples('Saída rápida', '🚶', ui_lists['saida'], 'red')
+    _render_section_simples('Ausente', '👤', ui_lists['ausente'], 'violet')
+    _render_section_simples('Indisponível', '❌', ui_lists['indisponivel'], 'grey')
