@@ -436,12 +436,12 @@ def rotate_bastao():
 def toggle_skip():
    def rotate_bastao():
     queue = st.session_state.bastao_queue
-    holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
-    if not holder: 
+    current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
+    if not current_holder:
         return
-    idx = queue.index(holder) if holder in queue else -1
+    idx = queue.index(current_holder) if current_holder in queue else -1
     nxt = find_next_holder_index(idx, queue, st.session_state.skip_flags)
-    if nxt != -1: 
+    if nxt != -1:
         check_and_assume_baton(forced_successor=queue[nxt])
     st.rerun()
 
@@ -453,31 +453,22 @@ def toggle_skip():
     if not st.session_state.get(f'check_{selected}'):
         st.warning(f'{selected} não está disponível.')
         return
-    novo = not st.session_state.skip_flags.get(selected, False)
-    st.session_state.skip_flags[selected] = novo
-    if novo and selected in st.session_state.bastao_queue:
-        st.session_state.bastao_queue.remove(selected)
-        st.session_state.bastao_queue.append(selected)
+    
+    # Inverte o status de pular
+    novo_status_pular = not st.session_state.skip_flags.get(selected, False)
+    st.session_state.skip_flags[selected] = novo_status_pular
+    
+    if novo_status_pular:
+        # Se ativou o pulo, move fisicamente para o fim da fila
+        if selected in st.session_state.bastao_queue:
+            st.session_state.bastao_queue.remove(selected)
+            st.session_state.bastao_queue.append(selected)
+        st.toast(f"⏭️ {selected} pulou e foi para o fim da fila!", icon="⏭️")
+    else:
+        st.toast(f"✅ {selected} voltou para a fila!", icon="✅")
+    
     save_state()
     st.rerun()
-            st.session_state.bastao_queue.remove(selected); st.session_state.bastao_queue.append(selected)
-        st.toast(f"⏭️ {selected} pulou e foi para o fim da fila!", icon="⏭️")
-    else: st.toast(f"✅ {selected} voltou para a fila!", icon="✅")
-    save_state(); st.rerun()
-
-def update_status(new_status_part, force_exit_queue=False):
-    ensure_daily_reset(); selected = st.session_state.consultor_selectbox
-    if not selected or selected == 'Selecione um nome': st.warning('Selecione um consultor.'); return
-    current = st.session_state.status_texto.get(selected, '')
-    blocking = ['Almoço', 'Ausente', 'Saída rápida', 'Sessão', 'Reunião', 'Treinamento']
-    should_exit = force_exit_queue or any(b in new_status_part for b in blocking)
-    is_holder = 'Bastão' in current
-    forced_succ = None
-    if should_exit and selected in st.session_state.bastao_queue:
-        holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
-        if selected == holder:
-            idx = st.session_state.bastao_queue.index(selected)
-            nxt = find_next_holder_index(idx, st.session_state.bastao_queue, st.session_state.skip_flags)
             if nxt == -1 and len(st.session_state.bastao_queue) > 1:
                 nxt = (idx + 1) % len(st.session_state.bastao_queue)
                 st.session_state.skip_flags[st.session_state.bastao_queue[nxt]] = False
