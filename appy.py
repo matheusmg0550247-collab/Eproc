@@ -433,52 +433,6 @@ def rotate_bastao():
         send_chat_notification_internal(next_holder, 'Bastão'); save_state()
     else: st.warning('Ninguém elegível.'); check_and_assume_baton()
 
-def toggle_skip():
-   def rotate_bastao():
-    queue = st.session_state.bastao_queue
-    current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
-    if not current_holder:
-        return
-    idx = queue.index(current_holder) if current_holder in queue else -1
-    nxt = find_next_holder_index(idx, queue, st.session_state.skip_flags)
-    if nxt != -1:
-        check_and_assume_baton(forced_successor=queue[nxt])
-    st.rerun()
-
-def toggle_skip():
-    selected = st.session_state.consultor_selectbox
-    if not selected or selected == 'Selecione um nome':
-        st.warning('Selecione um(a) consultor(a).')
-        return
-    if not st.session_state.get(f'check_{selected}'):
-        st.warning(f'{selected} não está disponível.')
-        return    
-    # Inverte o status de pular
-    novo_status_pular = not st.session_state.skip_flags.get(selected, False)
-    st.session_state.skip_flags[selected] = novo_status_pularif should_exit and selected in st.session_state.bastao_queue:
-        holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
-        if selected == holder:
-            idx = st.session_state.bastao_queue.index(selected)
-            nxt = find_next_holder_index(idx, st.session_state.bastao_queue, st.session_state.skip_flags)
-            if nxt == -1 and len(st.session_state.bastao_queue) > 1:
-                nxt = (idx + 1) % len(st.session_state.bastao_queue)
-                st.session_state.skip_flags[st.session_state.bastao_queue[nxt]] = False
-            if nxt != -1:
-                forced_succ = st.session_state.bastao_queue[nxt]
-        st.session_state[f'check_{selected}'] = False
-        st.session_state.bastao_queue.remove(selected)
-        st.session_state.skip_flags.pop(selected, None)
-        clean = [p for p in parts if p != 'Indisponível' and not p.startswith(type_new) and p not in blocking]
-        clean.append(new_status_part)
-        clean.sort(key=lambda x: 0 if 'Bastão' in x else 1 if 'Atividade' in x or 'Projeto' in x else 2)
-        final_status = " | ".join(clean)
-        if is_holder and not should_exit and 'Bastão' not in final_status: final_status = f"Bastão | {final_status}"
-        if should_exit: final_status = final_status.replace("Bastão | ", "").replace("Bastão", "").strip()
-    now_br = get_brazil_time()
-    log_status_change(selected, current, final_status, now_br - st.session_state.current_status_starts.get(selected, now_br))
-    st.session_state.status_texto[selected] = final_status
-    if is_holder: check_and_assume_baton(forced_succ, immune_consultant=selected)
-    save_state()
 
 def manual_rerun(): st.session_state.gif_warning = False; st.rerun()
 def toggle_view(v): st.session_state.active_view = v if st.session_state.active_view != v else None
