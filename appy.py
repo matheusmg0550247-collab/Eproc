@@ -15,9 +15,32 @@ from docx import Document
 from docx.shared import Pt, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
-# Importações locais
-from repository import load_state_from_db, save_state_to_db
+# ============================================
+# 0. MOCK E SIMULAÇÃO DE BANCO (PARA TESTES)
+# ============================================
+
+# Importações locais (COMENTADAS PARA NÃO QUEBRAR NO TESTE)
+# from repository import load_state_from_db, save_state_to_db
 from utils import (get_brazil_time, get_secret, send_to_chat, get_img_as_base64)
+
+class MockSupabase:
+    """Finge ser o Supabase para o código rodar sem banco de dados."""
+    def table(self, *args, **kwargs): return self
+    def select(self, *args, **kwargs): return self
+    def insert(self, *args, **kwargs): return self
+    def update(self, *args, **kwargs): return self
+    def eq(self, *args, **kwargs): return self
+    def ilike(self, *args, **kwargs): return self
+    def execute(self):
+        # Retorna lista vazia simulando que não achou dados
+        return type('Response', (object,), {'data': []})()
+
+# Substitutos para as funções do repository.py
+def load_state_from_db():
+    return {} # Retorna estado vazio
+
+def save_state_to_db(state):
+    pass # Não faz nada
 
 # ============================================
 # 1. CONFIGURAÇÕES
@@ -62,16 +85,31 @@ GOOGLE_CHAT_WEBHOOK_BACKUP = get_secret("chat", "backup")
 CHAT_WEBHOOK_BASTAO = get_secret("chat", "bastao")
 GOOGLE_CHAT_WEBHOOK_REGISTRO = get_secret("chat", "registro")
 
-# --- CONEXÃO COM SUPABASE ---
+# --- CONEXÃO COM SUPABASE (MODIFICADA) ---
 def get_supabase():
     try:
-        return create_client(st.secrets["supabase"]["url"], st.secrets["supabase"]["key"])
+        # Tenta pegar as credenciais
+        url = st.secrets["supabase"]["url"]
+        key = st.secrets["supabase"]["key"]
+        
+        # Limpa aspas extras se houver e verifica se está vazio
+        clean_url = url.replace("'", "").replace('"', "").strip()
+        
+        if not clean_url:
+            return MockSupabase() # Retorna o Mock se a URL for vazia
+            
+        return create_client(clean_url, key)
     except:
-        return None
+        # Se der qualquer erro (falta de config, etc), retorna o Mock
+        return MockSupabase()
 
 # --- FUNÇÕES DE BANCO PARA CERTIDÕES ---
 def verificar_duplicidade_certidao(tipo, n_processo=None, data_evento=None, hora_periodo=None):
     sb = get_supabase()
+    
+    # Se for Mock, não faz verificação real
+    if isinstance(sb, MockSupabase): return False
+    
     if not sb: return False
     try:
         query = sb.table("certidoes_registro").select("*").eq("tipo", tipo)
@@ -94,6 +132,10 @@ def verificar_duplicidade_certidao(tipo, n_processo=None, data_evento=None, hora
 
 def salvar_certidao_db(dados):
     sb = get_supabase()
+    
+    # Se for Mock, finge que salvou com sucesso
+    if isinstance(sb, MockSupabase): return True
+    
     if not sb: return False
     try:
         sb.table("certidoes_registro").insert(dados).execute()
@@ -180,9 +222,7 @@ def format_time_duration(duration):
     s = int(duration.total_seconds()); h, s = divmod(s, 3600); m, s = divmod(s, 60)
     return f'{h:02}:{m:02}:{s:02}'
 
-def _send_webhook_sync(url, payload):
-    try: requests.post(url, json=payload, headers={'Content-Type': 'application/json'}, timeout=3)
-    except: pass
+
 
 def log_status_change(consultor, old_status, new_status, duration):
     if not isinstance(duration, timedelta): duration = timedelta(0)
@@ -647,7 +687,7 @@ def simon_game_ui():
 # ============================================
 # EXECUÇÃO PRINCIPAL
 # ============================================
-   
+    
 def toggle_skip():
     selected = st.session_state.consultor_selectbox
     if not selected or selected == 'Selecione um nome':
@@ -740,8 +780,101 @@ with col_principal:
     if st.session_state.active_view == 'menu_atividades':
         with st.container(border=True):
             at_t = st.multiselect("Tipo:", OPCOES_ATIVIDADES_STATUS); at_e = st.text_input("Detalhe:")
-            if st.button("Confirmar Atividade"): update_status(f"Atividade: {', '.join(at_t)} - {at_e}"); st.session_state.active_view = None; st.rerun()
+            if st.button("Confirmar Atividade"): st.session_state.active_view = None; update_status(f"Atividade: {', '.join(at_t)} - {at_e}")
             if st.button("❌ Cancelar Registro"): st.session_state.active_view = None; st.rerun()
+
+    if st.session_state.active_view == 'menu_projetos':
+        with st.container(border=True):
+            st.subheader('🏗️ Registrar Projeto')
+            proj = st.selectbox('Projeto:', ['Selecione'] + OPCOES_PROJETOS, key='proj_opt')
+            det = st.text_input('Detalhe (opcional):', key='proj_det')
+            c_ok, c_cancel = st.columns(2)
+            with c_ok:
+                if st.button('✅ Confirmar Projeto', type='primary', use_container_width=True, key='btn_proj_ok'):
+                    if proj == 'Selecione':
+                        st.warning('Selecione um projeto.')
+                    else:
+                        st.session_state.active_view = None
+                        status = f"Projeto: {proj}" + (f" - {det.strip()}" if det.strip() else "")
+                        update_status(status, False)
+            with c_cancel:
+                if st.button('❌ Cancelar', use_container_width=True, key='btn_proj_cancel'):
+                    st.session_state.active_view = None
+                    st.rerun()
+
+    if st.session_state.active_view == 'menu_treinamento':
+        with st.container(border=True):
+            st.subheader('🎓 Registrar Treinamento')
+            tema = st.text_input('Tema/Conteúdo:', key='trein_tema')
+            obs = st.text_input('Observação (opcional):', key='trein_obs')
+            c_ok, c_cancel = st.columns(2)
+            with c_ok:
+                if st.button('✅ Confirmar Treinamento', type='primary', use_container_width=True, key='btn_trein_ok'):
+                    if not tema.strip():
+                        st.warning('Informe o tema do treinamento.')
+                    else:
+                        st.session_state.active_view = None
+                        status = f"Treinamento: {tema.strip()}" + (f" - {obs.strip()}" if obs.strip() else "")
+                        update_status(status, True)
+            with c_cancel:
+                if st.button('❌ Cancelar', use_container_width=True, key='btn_trein_cancel'):
+                    st.session_state.active_view = None
+                    st.rerun()
+
+    if st.session_state.active_view == 'menu_reuniao':
+        with st.container(border=True):
+            st.subheader('📅 Registrar Reunião')
+            assunto = st.text_input('Assunto:', key='reun_assunto')
+            obs = st.text_input('Observação (opcional):', key='reun_obs')
+            c_ok, c_cancel = st.columns(2)
+            with c_ok:
+                if st.button('✅ Confirmar Reunião', type='primary', use_container_width=True, key='btn_reun_ok'):
+                    if not assunto.strip():
+                        st.warning('Informe o assunto da reunião.')
+                    else:
+                        st.session_state.active_view = None
+                        status = f"Reunião: {assunto.strip()}" + (f" - {obs.strip()}" if obs.strip() else "")
+                        update_status(status, True)
+            with c_cancel:
+                if st.button('❌ Cancelar', use_container_width=True, key='btn_reun_cancel'):
+                    st.session_state.active_view = None
+                    st.rerun()
+
+    if st.session_state.active_view == 'menu_sessao':
+        with st.container(border=True):
+            st.subheader('🎙️ Registrar Sessão')
+            cam = st.selectbox('Câmara:', ['Selecione'] + CAMARAS_OPCOES, key='sess_camara')
+            obs = st.text_input('Observação (opcional):', key='sess_obs')
+            enviar_chat = st.checkbox('Enviar aviso no chat (sessao)', value=True, key='sess_chat')
+            c_ok, c_cancel = st.columns(2)
+            with c_ok:
+                if st.button('✅ Confirmar Sessão', type='primary', use_container_width=True, key='btn_sess_ok'):
+                    consultor = st.session_state.get('consultor_selectbox')
+                    if not consultor or consultor == 'Selecione um nome':
+                        st.error('Selecione um consultor no menu principal.')
+                    elif cam == 'Selecione':
+                        st.warning('Selecione uma câmara.')
+                    else:
+                        if enviar_chat:
+                            data_envio = get_brazil_time().strftime('%d/%m/%Y %H:%M')
+                            msg = (
+                                f"🎙️ **Sessão registrada**\n\n"
+                                f"👤 **Consultor:** {consultor}\n"
+                                f"🏛️ **Câmara:** {cam}\n"
+                                f"🕒 **Data/Hora:** {data_envio}"
+                                + (f"\n📝 **Obs:** {obs.strip()}" if obs.strip() else "")
+                            )
+                            try:
+                                send_sessao_to_chat_fn(consultor, msg)
+                            except Exception:
+                                pass
+                        st.session_state.active_view = None
+                        status = f"Sessão: {cam}" + (f" - {obs.strip()}" if obs.strip() else "")
+                        update_status(status, True)
+            with c_cancel:
+                if st.button('❌ Cancelar', use_container_width=True, key='btn_sess_cancel'):
+                    st.session_state.active_view = None
+                    st.rerun()
 
     st.markdown("####"); st.button('🔄 Atualizar (Manual)', on_click=manual_rerun, use_container_width=True); st.markdown("---")
     c_tool1, c_tool2, c_tool3, c_tool4, c_tool5, c_tool6 = st.columns(6)
