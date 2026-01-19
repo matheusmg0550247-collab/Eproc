@@ -207,57 +207,75 @@ def log_status_change(consultor, old_status, new_status, duration):
 def on_auxilio_change(): save_state()
 
 
+# --- STATUS RÁPIDO (Almoço / Saída / Ausente / Atividades etc.) ---
 def update_status(novo_status: str, marcar_indisponivel: bool = False):
-    """Atualiza o status do consultor selecionado e registra log/salva estado.
-
-    - novo_status: texto do status (ex.: 'Almoço', 'Saída rápida', 'Atividade: ...')
-    - marcar_indisponivel: quando True, marca como indisponível (desmarca check e coloca skip).
-    """
-
-    selected = st.session_state.get("consultor_selectbox")
-    if not selected or selected == "Selecione um nome":
-        st.warning("Selecione um(a) consultor(a) antes de alterar o status.")
+    selected = st.session_state.get('consultor_selectbox')
+    if not selected or selected == 'Selecione um nome':
+        st.warning('Selecione um(a) consultor(a) antes de alterar o status.')
         return
 
-    # Status atual (para log)
-    current = st.session_state.status_texto.get(selected, "")
+    ensure_daily_reset()
+    now_br = get_brazil_time()
+    current = st.session_state.status_texto.get(selected, '')
 
-    # Marca disponibilidade / pular
+    # Se está com o Bastão e vai ficar indisponível, definimos um sucessor antes de remover
+    forced_successor = None
+    current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in (s or '')), None)
+    if marcar_indisponivel and selected == current_holder and selected in st.session_state.bastao_queue:
+        try:
+            idx = st.session_state.bastao_queue.index(selected)
+            nxt = find_next_holder_index(idx, st.session_state.bastao_queue, st.session_state.skip_flags)
+            if nxt != -1:
+                forced_successor = st.session_state.bastao_queue[nxt]
+        except Exception:
+            forced_successor = None
+
+    # Marca check/skip e fila
     if marcar_indisponivel:
-        st.session_state[f"check_{selected}"] = False
+        st.session_state[f'check_{selected}'] = False
         st.session_state.skip_flags[selected] = True
+        if selected in st.session_state.bastao_queue:
+            st.session_state.bastao_queue.remove(selected)
+            # volta com prioridade depois
+            if selected not in st.session_state.priority_return_queue:
+                st.session_state.priority_return_queue.append(selected)
     else:
-        st.session_state[f"check_{selected}"] = True
+        # Mantém disponível
+        st.session_state[f'check_{selected}'] = True
         st.session_state.skip_flags[selected] = False
 
-    # Atualiza status
-    final_status = "" if (novo_status is None or str(novo_status).strip() == "" or novo_status == "Fila Bastão") else str(novo_status).strip()
-    st.session_state.status_texto[selected] = final_status
+    # Monta status final (preserva 'Bastão |' se for o holder e NÃO estiver marcando indisponível)
+    clean_new = (novo_status or '').strip()
+    if clean_new == 'Fila Bastão':
+        clean_new = ''
+    if (not marcar_indisponivel) and selected == current_holder:
+        final_status = ('Bastão | ' + clean_new).strip(' |') if clean_new else 'Bastão'
+    else:
+        final_status = clean_new
+    if not final_status and (selected in st.session_state.bastao_queue):
+        final_status = ''
+    if not final_status and (selected not in st.session_state.bastao_queue):
+        # Fora da fila sem status -> indisponível
+        final_status = 'Indisponível'
 
-    # Log / save
+    # Log + aplica
     try:
-        now_br = get_brazil_time()
         started = st.session_state.current_status_starts.get(selected, now_br)
         log_status_change(selected, current, final_status, now_br - started)
     except Exception:
         pass
+    st.session_state.status_texto[selected] = final_status
 
+    # Se mexeu com bastão, revalida
     try:
-        save_state()
+        check_and_assume_baton(forced_successor=forced_successor)
     except Exception:
         pass
 
-    # Se ele estava com Bastão e ficou indisponível, gira o bastão
-    if marcar_indisponivel and isinstance(current, str) and "Bastão" in current:
-        try:
-            check_and_assume_baton()
-        except Exception:
-            pass
+    save_state()
+    st.rerun()
 
-    try:
-        st.rerun()
-    except Exception:
-        pass
+
 
 def send_chat_notification_internal(consultor, status):
     if CHAT_WEBHOOK_BASTAO and status == 'Bastão':
@@ -274,9 +292,46 @@ def send_atendimento_to_chat(consultor, data, usuario, nome_setor, sistema, desc
     msg = f"📋 **Novo Registro de Atendimento**\n\n👤 **Consultor:** {consultor}\n📅 **Data:** {data.strftime('%d/%m/%Y')}\n👥 **Usuário:** {usuario}\n🏢 **Nome/Setor:** {nome_setor}\n💻 **Sistema:** {sistema}\n📝 **Descrição:** {descricao}\n📞 **Canal:** {canal}\n✅ **Desfecho:** {desfecho}{jira_str}"
     send_to_chat("registro", msg); return True
 
+
+# --- CHAMADOS / JIRA (rascunho para enviar ao chat) ---
+def send_chamado_to_chat(consultor, texto):
+    if not consultor or consultor == 'Selecione um nome':
+        return False
+    texto = (texto or '').strip()
+    if not texto:
+        return False
+    data_envio = get_brazil_time().strftime('%d/%m/%Y %H:%M')
+    msg = (
+        f"🆘 **Rascunho de Chamado/Jira**\n"
+        f"📅 **Data:** {data_envio}\n\n"
+        f"👤 **Autor:** {consultor}\n\n"
+        f"📝 **Texto:**\n{texto}"
+    )
+    try:
+        send_to_chat('chamado', msg)
+        return True
+    except Exception:
+        try:
+            send_to_chat('registro', msg)
+            return True
+        except Exception:
+            return False
+
+def set_chamado_step(step):
+    st.session_state.chamado_guide_step = int(step)
+
+def handle_chamado_submission():
+    consultor = st.session_state.get('consultor_selectbox')
+    texto = st.session_state.get('chamado_textarea', '')
+    ok = send_chamado_to_chat(consultor, texto)
+    if ok:
+        st.session_state.chamado_textarea = ''
+        st.session_state.chamado_guide_step = 1
+    return ok
+
 def handle_erro_novidade_submission(consultor, titulo, objetivo, relato, resultado):
     data_envio = get_brazil_time().strftime("%d/%m/%Y %H:%M")
-    msg = f"🐛 **Novo Relato de Erro e Novidade**\n📅 **Data:** {data_envio}\n\n👤 **Autor:** {consultor}\n📌 **Título:** {titulo}\n\n🎯 **Objetivo:**\n{objetivo}\n\n🧪 **Relato:**\n{relato}\n\n🏁 **Resultado:**\n{resultado}"
+    msg = f"🐛 **Novo Relato de Erro/Novidade**\n📅 **Data:** {data_envio}\n\n👤 **Autor:** {consultor}\n📌 **Título:** {titulo}\n\n🎯 **Objetivo:**\n{objetivo}\n\n🧪 **Relato:**\n{relato}\n\n🏁 **Resultado:**\n{resultado}"
     send_to_chat("erro", msg); return True
 
 def send_sessao_to_chat_fn(consultor, texto_mensagem):
@@ -488,44 +543,113 @@ def rotate_bastao():
 
 
 def manual_rerun(): st.session_state.gif_warning = False; st.rerun()
-def toggle_view(v): st.session_state.active_view = v if st.session_state.active_view != v else None
+def toggle_view(v):
+    # Alterna a exibição de painéis (tools/menus)
+    if st.session_state.active_view == v:
+        st.session_state.active_view = None
+        return
+    st.session_state.active_view = v
+    if v == 'chamados':
+        st.session_state.chamado_guide_step = 1
 
 # --- SIMON GAME ---
-def handle_simon_input(color):
-    st.session_state.simon_user_input.append(color)
-    idx = len(st.session_state.simon_user_input) - 1
-    if st.session_state.simon_user_input[idx] != st.session_state.simon_sequence[idx]:
-        st.session_state.simon_status = 'game_over'
-    elif len(st.session_state.simon_user_input) == len(st.session_state.simon_sequence):
-        st.session_state.simon_status = 'level_up'
-
 def simon_game_ui():
-    st.subheader("🧠 Simon Game - Descanso")
-    colors = {"🔴": "Red", "🟢": "Green", "🔵": "Blue", "🟡": "Yellow"}
-    if st.session_state.simon_status == 'start':
-        if st.button("Iniciar Jogo"):
-            import random
-            st.session_state.simon_sequence = [random.choice(list(colors.values())) for _ in range(3)]
-            st.session_state.simon_level = 1; st.session_state.simon_status = 'showing'; st.rerun()
-    elif st.session_state.simon_status == 'showing':
-        st.write(f"Nível: {st.session_state.simon_level}")
-        st.write("Memorize a sequência...")
-        time.sleep(1)
-        st.session_state.simon_status = 'waiting'; st.rerun()
-    elif st.session_state.simon_status == 'waiting':
-        cols = st.columns(4)
-        for i, (emoji, name) in enumerate(colors.items()):
-            if cols[i].button(emoji, key=f"simon_{name}"): handle_simon_input(name); st.rerun()
-    elif st.session_state.simon_status == 'level_up':
-        import random
-        st.session_state.simon_level += 1
-        st.session_state.simon_sequence.append(random.choice(list(colors.values())))
-        st.session_state.simon_user_input = []; st.session_state.simon_status = 'showing'; st.success("Muito bem!"); st.rerun()
-    elif st.session_state.simon_status == 'game_over':
-        st.error(f"Fim de jogo! Pontuação: {st.session_state.simon_level}")
-        if st.button("Tentar Novamente"): st.session_state.simon_status = 'start'; st.rerun()
-    if st.button("❌ Sair"): st.session_state.active_view = None; st.rerun()
+    # Modo Descanso: mini jogo de memória (Simon)
+    import random
+    COLORS = ['🔴', '🔵', '🟢', '🟡']
 
+    st.session_state.setdefault('simon_sequence', [])
+    st.session_state.setdefault('simon_user_input', [])
+    st.session_state.setdefault('simon_status', 'start')
+    st.session_state.setdefault('simon_level', 1)
+    st.session_state.setdefault('simon_ranking', [])
+
+    st.markdown('### 🧠 Descanso: Jogo da Memória (Simon)')
+    st.caption('Repita a sequência de cores!')
+
+    status = st.session_state.simon_status
+
+    if status == 'start':
+        if st.button('▶️ Iniciar Jogo', type='primary', use_container_width=True):
+            st.session_state.simon_sequence = [random.choice(COLORS)]
+            st.session_state.simon_user_input = []
+            st.session_state.simon_level = 1
+            st.session_state.simon_status = 'showing'
+            st.rerun()
+
+    elif status == 'showing':
+        st.info(f'Nível {st.session_state.simon_level}: memorize a sequência!')
+        cols = st.columns(len(st.session_state.simon_sequence))
+        for i, color in enumerate(st.session_state.simon_sequence):
+            with cols[i]:
+                st.markdown(f"<h1 style='text-align:center; margin:0;'>{color}</h1>", unsafe_allow_html=True)
+        st.markdown('---')
+        if st.button('🙈 Já decorei! Responder', use_container_width=True):
+            st.session_state.simon_status = 'playing'
+            st.session_state.simon_user_input = []
+            st.rerun()
+
+    elif status == 'playing':
+        st.markdown(f'**Nível {st.session_state.simon_level}** - clique na ordem:')
+        c1, c2, c3, c4 = st.columns(4)
+        pressed = None
+        if c1.button('🔴', use_container_width=True): pressed = '🔴'
+        if c2.button('🔵', use_container_width=True): pressed = '🔵'
+        if c3.button('🟢', use_container_width=True): pressed = '🟢'
+        if c4.button('🟡', use_container_width=True): pressed = '🟡'
+
+        if pressed:
+            st.session_state.simon_user_input.append(pressed)
+            idx = len(st.session_state.simon_user_input) - 1
+            if st.session_state.simon_user_input[idx] != st.session_state.simon_sequence[idx]:
+                st.session_state.simon_status = 'lost'
+                st.rerun()
+            elif len(st.session_state.simon_user_input) == len(st.session_state.simon_sequence):
+                st.success('Correto! Próximo nível...')
+                time.sleep(0.35)
+                st.session_state.simon_sequence.append(random.choice(COLORS))
+                st.session_state.simon_user_input = []
+                st.session_state.simon_level += 1
+                st.session_state.simon_status = 'showing'
+                st.rerun()
+
+        if st.session_state.simon_user_input:
+            st.markdown('Sua resposta: ' + ' '.join(st.session_state.simon_user_input))
+
+    elif status == 'lost':
+        st.error(f'❌ Errou! Você chegou ao Nível {st.session_state.simon_level}.')
+        st.markdown('Sequência correta era: ' + ' '.join(st.session_state.simon_sequence))
+
+        consultor = st.session_state.get('consultor_selectbox')
+        if consultor and consultor != 'Selecione um nome':
+            score = st.session_state.simon_level
+            ranking = st.session_state.simon_ranking
+            # salva melhor score por consultor
+            found = False
+            for item in ranking:
+                if item.get('consultor') == consultor:
+                    item['score'] = max(int(item.get('score', 0)), int(score))
+                    found = True
+                    break
+            if not found:
+                ranking.append({'consultor': consultor, 'score': int(score)})
+            ranking.sort(key=lambda x: int(x.get('score', 0)), reverse=True)
+            st.session_state.simon_ranking = ranking[:10]
+            save_state()
+
+        if st.button('🔁 Jogar novamente', use_container_width=True):
+            st.session_state.simon_status = 'start'
+            st.rerun()
+
+    if st.session_state.get('simon_ranking'):
+        st.markdown('---')
+        st.subheader('🏆 Ranking (Top 10)')
+        for i, item in enumerate(st.session_state.simon_ranking, start=1):
+            st.write(f"{i}. {item.get('consultor')} - Nível {item.get('score')}")
+
+    if st.button('❌ Sair', use_container_width=True):
+        st.session_state.active_view = None
+        st.rerun()
 # ============================================
 # EXECUÇÃO PRINCIPAL
 # ============================================
@@ -608,10 +732,10 @@ with col_principal:
     c_tool1, c_tool2, c_tool3, c_tool4, c_tool5, c_tool6, c_tool7 = st.columns(7)
     c_tool1.button("📑 Checklist", on_click=toggle_view, args=("checklist",), use_container_width=True)
     c_tool2.button("🆘 Chamados", on_click=toggle_view, args=("chamados",), use_container_width=True)
-    c_tool3.button("📝 Atend.", on_click=toggle_view, args=("atendimentos",), use_container_width=True)
+    c_tool3.button("📝 Atendimentos", on_click=toggle_view, args=("atendimentos",), use_container_width=True)
     c_tool4.button("⏰ H. Extras", on_click=toggle_view, args=("hextras",), use_container_width=True)
     c_tool5.button("🧠 Descanso", on_click=toggle_view, args=("descanso",), use_container_width=True)
-    c_tool6.button("🐛 Erro", on_click=toggle_view, args=("erro_novidade",), use_container_width=True)
+    c_tool6.button("🐛 Erro/Novidade", on_click=toggle_view, args=("erro_novidade",), use_container_width=True)
     c_tool7.button("🖨️ Certidão", on_click=toggle_view, args=("certidao",), use_container_width=True)
 
     if st.session_state.active_view == "checklist":
@@ -620,6 +744,70 @@ with col_principal:
             if st.button("Gerar HTML"): st.write("Checklist registrado no chat!"); send_to_chat("sessao", f"Consultor {st.session_state.consultor_selectbox} acompanhando sessão {camara_eproc}")
             if st.button("❌ Cancelar Registro"): st.session_state.active_view = None; st.rerun()
 
+
+    if st.session_state.active_view == "chamados":
+        with st.container(border=True):
+            st.header('🆘 Chamados (Padrão / Jira)')
+            guide_step = st.session_state.get('chamado_guide_step', 1) or 1
+            if guide_step == 1:
+                st.subheader('Passo 1: Testes iniciais')
+                st.markdown('Antes de abrir o chamado, realize os testes de suporte e registre evidências.')
+                st.button('Próximo (Passo 2) ➡️', on_click=set_chamado_step, args=(2,), use_container_width=True)
+            elif guide_step == 2:
+                st.subheader('Passo 2: Checklist de abertura')
+                st.markdown('- Dados do usuário\n- Dados do processo\n- Descrição do erro\n- Prints/Vídeo')
+                st.button('Próximo (Passo 3) ➡️', on_click=set_chamado_step, args=(3,), use_container_width=True)
+            elif guide_step == 3:
+                st.subheader('Passo 3: Registrar e informar')
+                st.markdown('Após abrir, informe o número do chamado ao usuário (e-mail institucional).')
+                st.button('Próximo (Observações) ➡️', on_click=set_chamado_step, args=(4,), use_container_width=True)
+            elif guide_step == 4:
+                st.subheader('Observações')
+                st.markdown('- Comunicação via e-mail institucional\n- Atualizar registro interno quando aplicável')
+                st.button('Entendi! Abrir campo ➡️', on_click=set_chamado_step, args=(5,), use_container_width=True)
+            else:
+                st.subheader('Rascunho do Chamado/Jira')
+                st.text_area('Cole aqui o texto do chamado/jira:', height=240, key='chamado_textarea')
+                c_send, c_cancel = st.columns(2)
+                with c_send:
+                    if st.button('📨 Enviar para o Chat', type='primary', use_container_width=True):
+                        ok = handle_chamado_submission()
+                        if ok:
+                            st.success('Rascunho enviado!')
+                            st.session_state.active_view = None
+                            st.rerun()
+                        else:
+                            st.error('Não foi possível enviar. Verifique o canal/webhook.')
+                with c_cancel:
+                    if st.button('❌ Cancelar', use_container_width=True):
+                        st.session_state.active_view = None
+                        st.rerun()
+
+    if st.session_state.active_view == "atendimentos":
+        with st.container(border=True):
+            st.header('📝 Registro de Atendimentos')
+            at_data = st.date_input('Data:', value=get_brazil_time().date(), key='at_data')
+            at_usuario = st.selectbox('Usuário:', REG_USUARIO_OPCOES, key='at_user')
+            at_nome_setor = st.text_input('Nome usuário - Setor:', key='at_setor')
+            at_sistema = st.selectbox('Sistema:', REG_SISTEMA_OPCOES, key='at_sys')
+            at_descricao = st.text_input('Descrição (até 7 palavras):', key='at_desc')
+            at_canal = st.selectbox('Canal:', REG_CANAL_OPCOES, key='at_channel')
+            at_desfecho = st.selectbox('Desfecho:', REG_DESFECHO_OPCOES, key='at_outcome')
+            default_jira = st.session_state.get('last_jira_number', '')
+            at_jira = st.text_input('Número do Jira:', value=default_jira, placeholder='Ex: 1234', key='at_jira_input')
+            if st.button('Enviar Atendimento', type='primary', use_container_width=True):
+                consultor = st.session_state.get('consultor_selectbox')
+                if not consultor or consultor == 'Selecione um nome':
+                    st.error('Selecione um consultor no menu principal.')
+                else:
+                    st.session_state['last_jira_number'] = at_jira
+                    ok = send_atendimento_to_chat(consultor, at_data, at_usuario, at_nome_setor, at_sistema, at_descricao, at_canal, at_desfecho, at_jira)
+                    if ok:
+                        st.success('Atendimento registrado!')
+                        st.session_state.active_view = None
+                        st.rerun()
+                    else:
+                        st.error('Erro ao enviar. Verifique o canal/webhook.')
     if st.session_state.active_view == "descanso": simon_game_ui()
 
     if st.session_state.active_view == "hextras":
@@ -631,7 +819,7 @@ with col_principal:
 
     if st.session_state.active_view == "erro_novidade":
         with st.container(border=True):
-            st.header("🐛 Erro e Novidade")
+            st.header("🐛 Erro/Novidade")
             tit = st.text_input("Título:"); obj = st.text_area("Objetivo:"); rel = st.text_area("Relato:"); res = st.text_area("Resultado:")
             if st.button("Enviar"): handle_erro_novidade_submission(st.session_state.consultor_selectbox, tit, obj, rel, res); st.success("Enviado!"); st.session_state.active_view = None; st.rerun()
             if st.button("❌ Cancelar Registro"): st.session_state.active_view = None; st.rerun()
