@@ -434,31 +434,32 @@ def rotate_bastao():
     else: st.warning('Ninguém elegível.'); check_and_assume_baton()
 
 def toggle_skip():
-    [437] def rotate_bastao():
- queue = st.session_state.bastao_queue
-holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
-     if not holder: 
-     return   
-     idx = queue.index(holder) if holder in queue else -1
-     nxt = find_next_holder_index(idx, queue, st.session_state.skip_flags)
-     if nxt != -1: 
-    check_and_assume_baton(forced_successor=queue[nxt])
-    st.rerun()
-    if not holder: return
+   def rotate_bastao():
+    queue = st.session_state.bastao_queue
+    holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
+    if not holder: 
+        return
     idx = queue.index(holder) if holder in queue else -1
     nxt = find_next_holder_index(idx, queue, st.session_state.skip_flags)
-    if nxt != -1: check_and_assume_baton(forced_successor=queue[nxt])
+    if nxt != -1: 
+        check_and_assume_baton(forced_successor=queue[nxt])
     st.rerun()
+
+def toggle_skip():
     selected = st.session_state.consultor_selectbox
-    if not selected or selected == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
-    if not st.session_state.get(f'check_{selected}'): st.warning(f'{selected} não está disponível.'); return
+    if not selected or selected == 'Selecione um nome':
+        st.warning('Selecione um(a) consultor(a).')
+        return
+    if not st.session_state.get(f'check_{selected}'):
+        st.warning(f'{selected} não está disponível.')
+        return
     novo = not st.session_state.skip_flags.get(selected, False)
     st.session_state.skip_flags[selected] = novo
-    if novo:
-        now_br = get_brazil_time()
-        st.session_state.current_status_starts[selected] = now_br
-        log_status_change(selected, "Fila", "Fila (Final)", timedelta(0))
-        if selected in st.session_state.bastao_queue:
+    if novo and selected in st.session_state.bastao_queue:
+        st.session_state.bastao_queue.remove(selected)
+        st.session_state.bastao_queue.append(selected)
+    save_state()
+    st.rerun()
             st.session_state.bastao_queue.remove(selected); st.session_state.bastao_queue.append(selected)
         st.toast(f"⏭️ {selected} pulou e foi para o fim da fila!", icon="⏭️")
     else: st.toast(f"✅ {selected} voltou para a fila!", icon="✅")
@@ -540,17 +541,7 @@ def simon_game_ui():
 # ============================================
 # EXECUÇÃO PRINCIPAL
 # ============================================
-    def rotate_bastao():
-    queue = st.session_state.bastao_queue
-    holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
-    if not holder: 
-        return
-    idx = queue.index(holder) if holder in queue else -1
-    nxt = find_next_holder_index(idx, queue, st.session_state.skip_flags)
-    if nxt != -1: 
-        check_and_assume_baton(forced_successor=queue[nxt])
-    st.rerun()
-
+   
 def toggle_skip():
     selected = st.session_state.consultor_selectbox
     if not selected or selected == 'Selecione um nome':
