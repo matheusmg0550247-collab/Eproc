@@ -16,7 +16,7 @@ from docx import Document
 from docx.shared import Pt, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
-# Importações locais
+# Importações locais (Certifique-se que repository.py e utils.py estão na mesma pasta)
 from repository import load_state_from_db, save_state_to_db
 from utils import (get_brazil_time, get_secret, send_to_chat, get_img_as_base64)
 
@@ -26,6 +26,13 @@ from utils import (get_brazil_time, get_secret, send_to_chat, get_img_as_base64)
 CONSULTORES = sorted([
     "Barbara Mara", "Bruno Glaicon", "Claudia Luiza", "Douglas Paiva", "Fábio Alves", "Glayce Torres", "Isabela Dias", "Isac Candido", "Ivana Guimarães", "Leonardo Damaceno", "Marcelo PenaGuerra", "Michael Douglas", "Morôni", "Pablo Mol", "Ranyer Segal", "Sarah Leal", "Victoria Lisboa"
 ])
+
+# --- LISTAS DE OPÇÕES (ESSENCIAIS PARA O MENU DE ATENDIMENTO) ---
+REG_USUARIO_OPCOES = ["Cartório", "Gabinete", "Externo"]
+REG_SISTEMA_OPCOES = ["Conveniados", "Outros", "Eproc", "Themis", "JPE", "SIAP"]
+REG_CANAL_OPCOES = ["Presencial", "Telefone", "Email", "Whatsapp", "Outros"]
+REG_DESFECHO_OPCOES = ["Resolvido - Cesupe", "Escalonado"]
+
 CAMARAS_DICT = {
     "Cartório da 1ª Câmara Cível": "caciv1@tjmg.jus.br", "Cartório da 2ª Câmara Cível": "caciv2@tjmg.jus.br",
     "Cartório da 3ª Câmara Cível": "caciv3@tjmg.jus.br", "Cartório da 4ª Câmara Cível": "caciv4@tjmg.jus.br",
@@ -42,6 +49,7 @@ CAMARAS_DICT = {
 CAMARAS_OPCOES = sorted(list(CAMARAS_DICT.keys()))
 OPCOES_ATIVIDADES_STATUS = ["HP", "E-mail", "WhatsApp Plantão", "Homologação", "Redação Documentos", "Outros"]
 OPCOES_PROJETOS = ["Soma", "Treinamentos Eproc", "Manuais Eproc", "Cartilhas Gabinetes", "Notebook Lm", "Inteligência artifical cartórios"]
+
 GIF_BASTAO_HOLDER = "https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExa3Uwazd5cnNra2oxdDkydjZkcHdqcWN2cng0Y2N0cmNmN21vYXVzMiZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/3rXs5J0hZkXwTZjuvM/giphy.gif"
 BASTAO_EMOJI = "🥂" 
 PUG2026_FILENAME = "pug2026.png"
