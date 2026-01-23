@@ -11,19 +11,34 @@ import re
 import base64
 import io
 import altair as alt
-from supabase import create_client
+# from supabase import create_client # Comentado para evitar erro se nao tiver lib
 from docx import Document
 from docx.shared import Pt, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-# Importação condicional para evitar erros em alguns ambientes
+
+# Tenta importar mas define como None se falhar (Modo Teste)
 try:
     from streamlit_javascript import st_javascript
 except ImportError:
     st_javascript = None
 
-# Importações locais
-from repository import load_state_from_db, save_state_to_db
-from utils import (get_brazil_time, get_secret, send_to_chat, get_img_as_base64)
+# Mocks para substituir importações locais que dependem de DB/Secrets
+def load_state_from_db(): return None
+def save_state_to_db(data): pass
+def get_secret(section, key): return ""
+def send_to_chat(webhook_key, msg): return True
+def get_img_as_base64(file): return ""
+
+# Se os arquivos repository.py e utils.py existirem, as importações abaixo funcionam.
+# Caso contrário, os mocks acima garantem que o teste rode.
+try:
+    from repository import load_state_from_db, save_state_to_db
+except ImportError: pass
+
+try:
+    from utils import (get_brazil_time, get_secret, send_to_chat, get_img_as_base64)
+except ImportError:
+    def get_brazil_time(): return datetime.now()
 
 # ============================================
 # 1. CONFIGURAÇÕES E CONSTANTES
@@ -62,44 +77,17 @@ BASTAO_EMOJI = "🥂"
 PUG2026_FILENAME = "pug2026.png"
 APP_URL_CLOUD = 'https://controle-bastao-cesupe.streamlit.app'
 
-# Webhooks (Secrets)
-CHAT_WEBHOOK_BASTAO = get_secret("chat", "bastao")
+# MODO TESTE: Webhook vazio
+CHAT_WEBHOOK_BASTAO = ""
 
 def get_supabase():
-    try: return create_client(st.secrets["supabase"]["url"], st.secrets["supabase"]["key"])
-    except: return None
+    # MODO TESTE: Retorna None para não tentar conectar
+    return None
 
-# --- FUNÇÃO DE IP E ID ---
-def get_browser_id():
-    """Gera ou recupera um ID único do navegador."""
-    if st_javascript is None: return "no_js_lib"
-    js_code = """(function() {
-        let id = localStorage.getItem("device_id");
-        if (!id) {
-            id = "id_" + Math.random().toString(36).substr(2, 9);
-            localStorage.setItem("device_id", id);
-        }
-        return id;
-    })();"""
-    try:
-        # Key única fixa para evitar reexecução desnecessária
-        return st_javascript(js_code, key="browser_id_tag")
-    except: return "unknown_device"
-
+# --- FUNÇÃO NOVA DE IP ---
 def get_remote_ip():
-    try:
-        from streamlit.web.server.websocket_headers import ClientWebSocketRequest
-        ctx = st.runtime.scriptrunner.get_script_run_ctx()
-        if ctx and ctx.session_id:
-            session_info = st.runtime.get_instance().get_client(ctx.session_id)
-            if session_info:
-                request = session_info.request
-                if isinstance(request, ClientWebSocketRequest):
-                    if 'X-Forwarded-For' in request.headers:
-                        return request.headers['X-Forwarded-For'].split(',')[0]
-                    return request.remote_ip
-    except: return "Unknown"
-    return "Unknown"
+    # MODO TESTE: IP Falso
+    return "127.0.0.1 (Teste)"
 
 # --- LÓGICA DE FILA VISUAL ---
 def get_ordered_visual_queue(queue, status_dict):
@@ -112,34 +100,15 @@ def get_ordered_visual_queue(queue, status_dict):
     except ValueError: return list(queue)
 
 # ============================================
-# 2. LÓGICA DE BANCO / CERTIDÃO
+# 2. LÓGICA DE BANCO / CERTIDÃO (SILENCIADA)
 # ============================================
 def verificar_duplicidade_certidao(tipo, n_processo=None, data_evento=None, hora_periodo=None):
-    sb = get_supabase()
-    if not sb: return False
-    try:
-        query = sb.table("certidoes_registro").select("*").eq("tipo", tipo)
-        if tipo in ['Física', 'Eletrônica'] and n_processo:
-            proc_limpo = str(n_processo).strip().rstrip('.')
-            if not proc_limpo: return False
-            response = query.ilike("n_processo", f"%{proc_limpo}%").execute()
-            return len(response.data) > 0
-        elif tipo == 'Geral' and data_evento:
-            data_str = data_evento.isoformat() if hasattr(data_evento, 'isoformat') else str(data_evento)
-            query = query.eq("data_evento", data_str)
-            if hora_periodo: query = query.eq("hora_periodo", hora_periodo)
-            response = query.execute()
-            return len(response.data) > 0
-    except: return False
+    # MODO TESTE: Nunca acha duplicidade
     return False
 
 def salvar_certidao_db(dados):
-    sb = get_supabase()
-    if not sb: return False
-    try:
-        sb.table("certidoes_registro").insert(dados).execute()
-        return True
-    except: return False
+    # MODO TESTE: Finge que salvou com sucesso
+    return True
 
 def gerar_docx_certidao_internal(tipo, numero, data, consultor, motivo, chamado="", hora=""):
     try:
@@ -197,73 +166,42 @@ def gerar_docx_certidao_internal(tipo, numero, data, consultor, motivo, chamado=
     except: return None
 
 # ============================================
-# 3. NOTIFICAÇÕES (ATIVAS)
+# 3. NOTIFICAÇÕES (SILENCIADAS)
 # ============================================
 def send_chat_notification_internal(consultor, status):
-    if CHAT_WEBHOOK_BASTAO and status == 'Bastão':
-        msg = f"🎉 **BASTÃO GIRADO!** 🎉 \n\n- **Novo(a) Responsável:** {consultor}\n- **Acesse o Painel:** {APP_URL_CLOUD}"
-        try: send_to_chat("bastao", msg); return True
-        except: return False
-    return False
+    # MODO TESTE: Finge sucesso
+    return True
 
 def send_horas_extras_to_chat(consultor, data, inicio, tempo, motivo):
-    msg = f"⏰ **Registro de Horas Extras**\n\n👤 **Consultor:** {consultor}\n📅 **Data:** {data.strftime('%d/%m/%Y')}\n🕐 **Início:** {inicio.strftime('%H:%M')}\n⏱️ **Tempo Total:** {tempo}\n📝 **Motivo:** {motivo}"
-    try: send_to_chat("extras", msg); return True
-    except: return False
+    # MODO TESTE: Finge sucesso
+    return True
 
 def send_atendimento_to_chat(consultor, data, usuario, nome_setor, sistema, descricao, canal, desfecho, jira_opcional=""):
-    jira_str = f"\n🔢 **Jira:** CESUPE-{jira_opcional}" if jira_opcional else ""
-    msg = f"📋 **Novo Registro de Atendimento**\n\n👤 **Consultor:** {consultor}\n📅 **Data:** {data.strftime('%d/%m/%Y')}\n👥 **Usuário:** {usuario}\n🏢 **Nome/Setor:** {nome_setor}\n💻 **Sistema:** {sistema}\n📝 **Descrição:** {descricao}\n📞 **Canal:** {canal}\n✅ **Desfecho:** {desfecho}{jira_str}"
-    try: send_to_chat("registro", msg); return True
-    except: return False
+    # MODO TESTE: Finge sucesso
+    return True
 
 def send_chamado_to_chat(consultor, texto):
-    if not consultor or consultor == 'Selecione um nome' or not texto.strip(): return False
-    data_envio = get_brazil_time().strftime('%d/%m/%Y %H:%M')
-    msg = f"🆘 **Rascunho de Chamado/Jira**\n📅 **Data:** {data_envio}\n\n👤 **Autor:** {consultor}\n\n📝 **Texto:**\n{texto}"
-    try: send_to_chat('chamado', msg); return True
-    except:
-        try: send_to_chat('registro', msg); return True
-        except: return False
+    # MODO TESTE: Finge sucesso
+    return True
 
 def handle_erro_novidade_submission(consultor, titulo, objetivo, relato, resultado):
-    data_envio = get_brazil_time().strftime("%d/%m/%Y %H:%M")
-    msg = f"🐛 **Novo Relato de Erro/Novidade**\n📅 **Data:** {data_envio}\n\n👤 **Autor:** {consultor}\n📌 **Título:** {titulo}\n\n🎯 **Objetivo:**\n{objetivo}\n\n🧪 **Relato:**\n{relato}\n\n🏁 **Resultado:**\n{resultado}"
-    try: send_to_chat("erro", msg); return True
-    except: return False
+    # MODO TESTE: Finge sucesso
+    return True
 
 def send_sessao_to_chat_fn(consultor, texto_mensagem):
-    if not consultor or consultor == 'Selecione um nome': return False
-    try: send_to_chat("sessao", texto_mensagem); return True
-    except: return False
+    # MODO TESTE: Finge sucesso
+    return True
 
 def handle_sugestao_submission(consultor, texto):
-    data_envio = get_brazil_time().strftime("%d/%m/%Y %H:%M")
-    ip_usuario = get_remote_ip()
-    msg = f"💡 **Nova Sugestão**\n📅 **Data:** {data_envio}\n👤 **Autor:** {consultor}\n🌐 **IP:** {ip_usuario}\n\n📝 **Sugestão:**\n{texto}"
-    try: send_to_chat("extras", msg); return True
-    except: return False
+    # MODO TESTE: Finge sucesso
+    return True
 
 # ============================================
-# 4. GESTÃO DE ESTADO
+# 4. GESTÃO DE ESTADO (LOCAL APENAS)
 # ============================================
 def save_state():
-    try:
-        last_run = st.session_state.report_last_run_date
-        last_run_iso = last_run.isoformat() if isinstance(last_run, datetime) else datetime.min.isoformat()
-        visual_queue_calculated = get_ordered_visual_queue(st.session_state.bastao_queue, st.session_state.status_texto)
-        
-        state_to_save = {
-            'status_texto': st.session_state.status_texto, 'bastao_queue': st.session_state.bastao_queue,
-            'visual_queue': visual_queue_calculated, 'skip_flags': st.session_state.skip_flags, 
-            'current_status_starts': st.session_state.current_status_starts,
-            'bastao_counts': st.session_state.bastao_counts, 'priority_return_queue': st.session_state.priority_return_queue,
-            'bastao_start_time': st.session_state.bastao_start_time, 'report_last_run_date': last_run_iso, 
-            'rotation_gif_start_time': st.session_state.get('rotation_gif_start_time'), 'auxilio_ativo': st.session_state.get('auxilio_ativo', False), 
-            'daily_logs': st.session_state.daily_logs, 'simon_ranking': st.session_state.get('simon_ranking', [])
-        }
-        save_state_to_db(state_to_save)
-    except Exception as e: print(f"Erro save: {e}")
+    # MODO TESTE: Não salva no Supabase, apenas mantém na sessão
+    pass
 
 def format_time_duration(duration):
     if not isinstance(duration, timedelta): return '--:--:--'
@@ -271,25 +209,8 @@ def format_time_duration(duration):
     return f'{h:02}:{m:02}:{s:02}'
 
 def sync_state_from_db():
-    try:
-        db_data = load_state_from_db()
-        if not db_data: return
-        keys = ['status_texto', 'bastao_queue', 'skip_flags', 'bastao_counts', 'priority_return_queue', 'daily_logs', 'simon_ranking']
-        for k in keys:
-            if k in db_data: st.session_state[k] = db_data[k]
-        if 'bastao_start_time' in db_data and db_data['bastao_start_time']:
-            try:
-                if isinstance(db_data['bastao_start_time'], str): st.session_state['bastao_start_time'] = datetime.fromisoformat(db_data['bastao_start_time'])
-                else: st.session_state['bastao_start_time'] = db_data['bastao_start_time']
-            except: pass
-        if 'current_status_starts' in db_data:
-            starts = db_data['current_status_starts']
-            for nome, val in starts.items():
-                if isinstance(val, str):
-                    try: st.session_state.current_status_starts[nome] = datetime.fromisoformat(val)
-                    except: pass
-                else: st.session_state.current_status_starts[nome] = val
-    except Exception as e: print(f"Erro sync: {e}")
+    # MODO TESTE: Não carrega do banco
+    pass
 
 def log_status_change(consultor, old_status, new_status, duration):
     if not isinstance(duration, timedelta): duration = timedelta(0)
@@ -386,16 +307,11 @@ def check_and_assume_baton(forced_successor=None, immune_consultant=None):
     return changed
 
 def init_session_state():
-    # Inicializa ID do navegador
-    dev_id = get_browser_id()
-    if dev_id: st.session_state['device_id_val'] = dev_id
+    # Inicializa ID do navegador (Teste)
+    st.session_state['device_id_val'] = "TESTE-1234"
 
     if 'db_loaded' not in st.session_state:
-        try:
-            db_data = load_state_from_db()
-            if db_data:
-                for key, value in db_data.items(): st.session_state[key] = value
-        except: pass
+        # Mock load
         st.session_state['db_loaded'] = True
     if 'report_last_run_date' in st.session_state and isinstance(st.session_state['report_last_run_date'], str):
         try: st.session_state['report_last_run_date'] = datetime.fromisoformat(st.session_state['report_last_run_date'])
@@ -553,19 +469,8 @@ def set_chamado_step(step): st.session_state.chamado_guide_step = int(step)
 def send_daily_report_to_webhook():
     logs = st.session_state.daily_logs
     if not logs: return False
-    lines = []
-    lines.append("📊 **Relatório Diário de Atividades (Bastão)**")
-    lines.append(f"📅 Data: {datetime.now().strftime('%d/%m/%Y')}")
-    lines.append("")
-    for l in logs[-50:]:
-        hora = l['timestamp'].strftime('%H:%M')
-        dur = format_time_duration(l['duration'])
-        # ID para auditoria
-        dev_id = l.get('ip', 'N/A')
-        lines.append(f"`{hora}` **{l['consultor']}**: {l['old_status']} ➝ {l['new_status']} ({dur}) [IP:{dev_id}]")
-    msg = "\n".join(lines)
-    try: send_to_chat("extras", msg); return True
-    except: return False
+    # MODO TESTE: Finge envio
+    return True
 
 # ============================================
 # 5. INTERFACE
@@ -588,7 +493,7 @@ with c_topo_dir:
     
     # Exibe ID visual
     dev_id_short = st.session_state.get('device_id_val', '???')[-4:] if 'device_id_val' in st.session_state else '...'
-    st.caption(f"ID: ...{dev_id_short}")
+    st.caption(f"ID: ...{dev_id_short} (MODO TESTE)")
 
 st.markdown("<hr style='border: 1px solid #FFD700; margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
 
@@ -730,7 +635,10 @@ with col_principal:
     if st.session_state.active_view == "checklist":
         with st.container(border=True):
             st.header("Gerador de Checklist"); data_eproc = st.date_input("Data:", value=get_brazil_time().date()); camara_eproc = st.selectbox("Câmara:", CAMARAS_OPCOES)
-            if st.button("Gerar HTML"): send_to_chat("sessao", f"Consultor {st.session_state.consultor_selectbox} acompanhando sessão {camara_eproc}"); st.success("Registrado no chat!")
+            if st.button("Gerar HTML"): 
+                # MODO TESTE:
+                # send_to_chat("sessao", f"Consultor {st.session_state.consultor_selectbox} acompanhando sessão {camara_eproc}"); 
+                st.success("Registrado no chat!")
             if st.button("❌ Cancelar"): st.session_state.active_view = None; st.rerun()
 
     if st.session_state.active_view == "chamados":
@@ -800,9 +708,7 @@ with col_principal:
                         if salvar_certidao_db(payload):
                             # --- WEBHOOK CERTIDÃO AQUI ---
                             msg_cert = f"🖨️ **Nova Certidão Registrada**\n👤 **Autor:** {c_cons}\n📅 **Data:** {c_data.strftime('%d/%m/%Y')}\n📄 **Tipo:** {tipo_cert}"
-                            try: send_to_chat("certidao", msg_cert)
-                            except Exception as e: st.error(f"Erro Webhook: {e}")
-                            # -----------------------------
+                            # send_to_chat("certidao", msg_cert) # MODO TESTE: Comentado
                             st.success("Salvo!"); time.sleep(1); st.session_state.active_view = None; st.session_state.word_buffer = None; st.rerun()
                         else: st.error("Erro ao salvar no banco.")
             if st.button("❌ Cancelar"): st.session_state.active_view = None; st.rerun()
@@ -822,44 +728,45 @@ with col_principal:
             with c2:
                 if st.button("Cancelar", use_container_width=True): st.session_state.active_view = None; st.rerun()
 
-    # --- GRÁFICO OPERACIONAL ABAIXO DOS BOTÕES ---
+    # --- GRÁFICO OPERACIONAL (ABAIXO DOS BOTÕES) ---
     st.markdown("---")
-    st.subheader("📊 Resumo Operacional")
-    sb = get_supabase()
-    if sb:
-        try:
-            res = sb.table("atendimentos_resumo").select("data").eq("id", 2).execute()
-            if res.data:
-                json_data = res.data[0]['data']
-                if 'totais_por_relatorio' in json_data:
-                    df_chart = pd.DataFrame(json_data['totais_por_relatorio'])
-                    # Formato longo para Altair
-                    df_long = df_chart.melt(id_vars=['relatorio'], value_vars=['Eproc', 'Legados'], var_name='Sistema', value_name='Qtd')
-                    
-                    # Gráfico Barras Lado a Lado (xOffset) com Labels
-                    base = alt.Chart(df_long).encode(
-                        x=alt.X('relatorio', title=None, axis=alt.Axis(labels=True, labelAngle=0)),
-                        y=alt.Y('Qtd', title='Quantidade'),
-                        color=alt.Color('Sistema', legend=alt.Legend(title="Sistema")),
-                        xOffset='Sistema' # Agrupamento lado a lado
-                    )
-                    
-                    bars = base.mark_bar()
-                    
-                    text = base.mark_text(dy=-5, color='black').encode(
-                        text='Qtd'
-                    )
-                    
-                    final_chart = (bars + text).properties(height=300)
-                    
-                    st.altair_chart(final_chart, use_container_width=True)
-                    st.caption(f"Gerado em: {json_data.get('gerado_em', '-')}")
-                    
-                    # Tabela de Dados (Sempre visível)
-                    st.markdown("### Dados Detalhados")
-                    st.dataframe(df_chart, use_container_width=True)
-            else: st.info("Sem dados de resumo.")
-        except Exception as e: st.error(f"Erro ao carregar gráfico: {e}")
+    st.subheader("📊 Resumo Operacional (Simulação)")
+    # MODO TESTE: Dados Mockados
+    json_data = {
+        "gerado_em": "2026-01-20 (Simulado)",
+        "totais_por_relatorio": [
+            {"relatorio": "Chat", "Eproc": 16, "Legados": 105},
+            {"relatorio": "Chamados", "Eproc": 31, "Legados": 48},
+            {"relatorio": "Atendimentos", "Eproc": 146, "Legados": 100}
+        ]
+    }
+    
+    df_chart = pd.DataFrame(json_data['totais_por_relatorio'])
+    # Formato longo para Altair
+    df_long = df_chart.melt(id_vars=['relatorio'], value_vars=['Eproc', 'Legados'], var_name='Sistema', value_name='Qtd')
+    
+    # Gráfico Barras Lado a Lado (xOffset) com Labels
+    base = alt.Chart(df_long).encode(
+        x=alt.X('relatorio', title=None, axis=alt.Axis(labels=True, labelAngle=0)),
+        y=alt.Y('Qtd', title='Quantidade'),
+        color=alt.Color('Sistema', legend=alt.Legend(title="Sistema")),
+        xOffset='Sistema' # Agrupamento lado a lado
+    )
+    
+    bars = base.mark_bar()
+    
+    text = base.mark_text(dy=-5, color='black').encode(
+        text='Qtd'
+    )
+    
+    final_chart = (bars + text).properties(height=300)
+    
+    st.altair_chart(final_chart, use_container_width=True)
+    st.caption(f"Gerado em: {json_data.get('gerado_em', '-')}")
+    
+    # Tabela de Dados (Sempre visível)
+    st.markdown("### Dados Detalhados")
+    st.dataframe(df_chart, use_container_width=True)
 
 with col_disponibilidade:
     st.header('Status dos(as) Consultores(as)')
