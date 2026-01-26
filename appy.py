@@ -3,7 +3,7 @@ import streamlit as st
 import pandas as pd
 import requests
 import time
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta
 from operator import itemgetter
 from streamlit_autorefresh import st_autorefresh
 import json
@@ -52,18 +52,17 @@ CHAT_WEBHOOK_BASTAO = get_secret("chat", "bastao")
 WEBHOOK_STATE_DUMP = get_secret("webhook", "test_state")
 
 # ============================================
-# 2. OTIMIZAÇÃO E CONEXÃO
+# 2. OTIMIZAÇÃO DE MEMÓRIA (CACHES)
 # ============================================
 
-# Adicionado cache_resource para evitar reconexão a cada interação
-@st.cache_resource
+# REMOVIDO @st.cache_resource DAQUI PARA GARANTIR CONEXÃO SEMPRE NOVA
 def get_supabase():
     try: 
         return create_client(st.secrets["supabase"]["url"], st.secrets["supabase"]["key"])
-    except Exception as e:
-        st.error(f"Erro Conexão DB: {e}") 
+    except: 
         return None
 
+# MANTIDO CACHE NO GRÁFICO (PESADO)
 @st.cache_data(ttl=86400, show_spinner=False)
 def carregar_dados_grafico():
     sb = get_supabase()
@@ -76,9 +75,10 @@ def carregar_dados_grafico():
                 df = pd.DataFrame(json_data['totais_por_relatorio'])
                 return df, json_data.get('gerado_em', '-')
     except Exception as e:
-        st.error(f"Erro gráfico: {e}")
+        print(f"Erro ao carregar gráfico: {e}")
     return None, None
 
+# MANTIDO CACHE NA IMAGEM (IO DE DISCO)
 @st.cache_data
 def get_img_as_base64_cached(file_path):
     try:
@@ -88,53 +88,27 @@ def get_img_as_base64_cached(file_path):
     except: return None
 
 # ============================================
-# 3. REPOSITÓRIO (CORREÇÃO DE JSON AQUI)
+# 3. REPOSITÓRIO (INLINE - SEM DEPENDÊNCIAS EXTERNAS)
 # ============================================
-
-# Função atualizada para tratar tuplas e garantir serialização correta
-def clean_data_for_db(obj):
-    # Converte tuplas e sets para listas (recursivo)
-    if isinstance(obj, (list, tuple, set)):
-        return [clean_data_for_db(i) for i in obj]
-    # Dicionários: recursividade nos valores
-    elif isinstance(obj, dict):
-        return {k: clean_data_for_db(v) for k, v in obj.items()}
-    # Datas e Horas para String ISO
-    elif isinstance(obj, (datetime, date)):
-        return obj.isoformat()
-    # Timedelta para segundos (float)
-    elif isinstance(obj, timedelta):
-        return obj.total_seconds()
-    # Tratamento para NumPy/Pandas (caso use no futuro)
-    elif hasattr(obj, 'item'): 
-        return obj.item()
-    else:
-        return obj
-
 def load_state_from_db():
     sb = get_supabase()
     if not sb: return {}
     try:
-        response = sb.table("app_state").select("data").eq("id", 2).execute()
+        response = sb.table("app_state").select("state_data").eq("id", 1).execute()
         if response.data and len(response.data) > 0:
-            return response.data[0].get("data", {})
+            return response.data[0].get("state_data", {})
         return {}
     except Exception as e:
-        st.error(f"⚠️ Erro ao ler DB: {e}")
+        print(f"Erro load: {e}")
         return {}
 
 def save_state_to_db(state_data):
     sb = get_supabase()
-    if not sb: 
-        st.error("Sem conexão para salvar.")
-        return
+    if not sb: return
     try:
-        # AQUI A CORREÇÃO ENTRA EM AÇÃO: Limpa os dados antes de salvar
-        sanitized_data = clean_data_for_db(state_data)
-        
-        sb.table("app_state").upsert({"id": 2, "data": sanitized_data}).execute()
+        sb.table("app_state").upsert({"id": 1, "state_data": state_data}).execute()
     except Exception as e:
-        st.error(f"🔥 ERRO DE ESCRITA NO BANCO: {e}")
+        print(f"Erro save: {e}")
 
 # ============================================
 # 4. FUNÇÕES DE UTILIDADE E IP
@@ -185,18 +159,18 @@ def verificar_duplicidade_certidao(tipo, n_processo=None, data_evento=None, hora
     sb = get_supabase()
     if not sb: return False
     try:
-        # OTIMIZAÇÃO: Select apenas ID e Limit 1
-        query = sb.table("certidoes_registro").select("id").eq("tipo", tipo)
+        query = sb.table("certidoes_registro").select("*").eq("tipo", tipo)
         if tipo in ['Física', 'Eletrônica'] and n_processo:
             proc_limpo = str(n_processo).strip().rstrip('.')
             if not proc_limpo: return False
-            query = query.ilike("n_processo", f"%{proc_limpo}%")
-            return len(query.limit(1).execute().data) > 0
+            response = query.ilike("n_processo", f"%{proc_limpo}%").execute()
+            return len(response.data) > 0
         elif tipo == 'Geral' and data_evento:
             data_str = data_evento.isoformat() if hasattr(data_evento, 'isoformat') else str(data_evento)
             query = query.eq("data_evento", data_str)
             if hora_periodo: query = query.eq("hora_periodo", hora_periodo)
-            return len(query.limit(1).execute().data) > 0
+            response = query.execute()
+            return len(response.data) > 0
     except: return False
     return False
 
@@ -230,7 +204,7 @@ def gerar_docx_certidao_internal(tipo, numero, data, consultor, motivo, chamado=
         
         if tipo == 'Geral': doc.add_paragraph("Assunto: Notifica erro no \"JPe – 2ª Instância\" ao peticionar")
         else: doc.add_paragraph("Assunto: Notifica erro no \"JPe – 2ª Instância\" ao peticionar.")
-              
+             
         doc.add_paragraph(f"\nExmo(a). Senhor(a) Relator(a),\n")
         corpo = doc.add_paragraph(); corpo.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         
@@ -271,10 +245,11 @@ def send_chat_notification_internal(consultor, status):
 def send_state_dump_webhook(state_data):
     if not WEBHOOK_STATE_DUMP: return False
     try:
-        # Usa a mesma função de limpeza para o webhook
-        sanitized_data = clean_data_for_db(state_data)
+        def json_serial(obj):
+            if isinstance(obj, (datetime, datetime.date)): return obj.isoformat()
+            raise TypeError ("Type not serializable")
         headers = {'Content-Type': 'application/json'}
-        requests.post(WEBHOOK_STATE_DUMP, data=json.dumps(sanitized_data), headers=headers, timeout=5)
+        requests.post(WEBHOOK_STATE_DUMP, data=json.dumps(state_data, default=json_serial), headers=headers, timeout=5)
         return True
     except: return False
 
@@ -305,6 +280,7 @@ def handle_erro_novidade_submission(consultor, titulo, objetivo, relato, resulta
     except: return False
 
 def send_sessao_to_chat_fn(consultor, texto_mensagem):
+    # Não envia, conforme solicitado
     return True
 
 def handle_sugestao_submission(consultor, texto):
@@ -320,6 +296,7 @@ def handle_sugestao_submission(consultor, texto):
 def save_state():
     try:
         last_run = st.session_state.report_last_run_date
+        last_run_iso = last_run.isoformat() if isinstance(last_run, datetime) else datetime.min.isoformat()
         visual_queue_calculated = get_ordered_visual_queue(st.session_state.bastao_queue, st.session_state.status_texto)
         
         state_to_save = {
@@ -327,15 +304,11 @@ def save_state():
             'visual_queue': visual_queue_calculated, 'skip_flags': st.session_state.skip_flags, 
             'current_status_starts': st.session_state.current_status_starts,
             'bastao_counts': st.session_state.bastao_counts, 'priority_return_queue': st.session_state.priority_return_queue,
-            'bastao_start_time': st.session_state.bastao_start_time, 
-            'report_last_run_date': last_run, 
-            'rotation_gif_start_time': st.session_state.get('rotation_gif_start_time'), 
-            'auxilio_ativo': st.session_state.get('auxilio_ativo', False), 
-            'daily_logs': st.session_state.daily_logs, 
-            'simon_ranking': st.session_state.get('simon_ranking', []),
+            'bastao_start_time': st.session_state.bastao_start_time, 'report_last_run_date': last_run_iso, 
+            'rotation_gif_start_time': st.session_state.get('rotation_gif_start_time'), 'auxilio_ativo': st.session_state.get('auxilio_ativo', False), 
+            'daily_logs': st.session_state.daily_logs, 'simon_ranking': st.session_state.get('simon_ranking', []),
             'previous_states': st.session_state.get('previous_states', {})
         }
-        # Limpeza é feita dentro de save_state_to_db agora
         save_state_to_db(state_to_save)
     except Exception as e: print(f"Erro save: {e}")
 
@@ -383,6 +356,10 @@ def log_status_change(consultor, old_status, new_status, duration):
     st.session_state.current_status_starts[consultor] = now_br
 
 def update_status(novo_status: str, marcar_indisponivel: bool = False, manter_fila_atual: bool = False):
+    """
+    manter_fila_atual: Se True, não força entrada nem saída da fila. Mantém o estado atual.
+    Usado para 'Atividades' e 'Projetos' quando a pessoa já está no bastão.
+    """
     selected = st.session_state.get('consultor_selectbox')
     if not selected or selected == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
     
@@ -392,6 +369,7 @@ def update_status(novo_status: str, marcar_indisponivel: bool = False, manter_fi
     forced_successor = None
     current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in (s or '')), None)
     
+    # === MEMÓRIA DE STATUS (Para retorno de Almoço) ===
     if novo_status == 'Almoço':
         st.session_state.previous_states[selected] = {
             'status': current,
@@ -1039,6 +1017,7 @@ with col_disponibilidade:
         for i, nome in enumerate(render_order):
             if nome not in ui_lists['fila']: continue
             col_nome, col_check = st.columns([0.85, 0.15], vertical_alignment='center')
+            # CHECKBOX AGORA É APENAS VISUAL (DISABLED), CONTROLE PELO BOTÃO BASTÃO
             col_check.checkbox(' ', key=f'chk_fila_{nome}', value=True, disabled=True, label_visibility='collapsed')
             skip_flag = skips.get(nome, False); status_atual = st.session_state.status_texto.get(nome, '') or ''; extra = ''
             if 'Atividade' in status_atual: extra += ' 📋'
