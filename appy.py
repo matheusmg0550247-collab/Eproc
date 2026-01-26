@@ -86,7 +86,7 @@ def get_img_as_base64_cached(file_path):
     except: return None
 
 # ============================================
-# 3. REPOSITÓRIO (CORRIGIDO)
+# 3. REPOSITÓRIO (CORRIGIDO PARA COLUNA 'data' E TIMEDELTA)
 # ============================================
 def load_state_from_db():
     sb = get_supabase()
@@ -247,6 +247,7 @@ def send_state_dump_webhook(state_data):
     try:
         def json_serial(obj):
             if isinstance(obj, (datetime, date)): return obj.isoformat()
+            if isinstance(obj, timedelta): return obj.total_seconds()
             raise TypeError ("Type not serializable")
         headers = {'Content-Type': 'application/json'}
         requests.post(WEBHOOK_STATE_DUMP, data=json.dumps(state_data, default=json_serial), headers=headers, timeout=5)
@@ -290,25 +291,28 @@ def handle_sugestao_submission(consultor, texto):
     except: return False
 
 # ============================================
-# 7. GESTÃO DE ESTADO (COM CORREÇÃO DE DATETIME)
+# 7. GESTÃO DE ESTADO (CORREÇÃO TIMEDELTA)
 # ============================================
 def save_state():
     try:
         last_run = st.session_state.report_last_run_date
-        # Helper para converter datas em string
+        # Helper para converter objetos complexos em tipos simples
         def to_iso(obj):
             if isinstance(obj, (datetime, date)):
                 return obj.isoformat()
+            if isinstance(obj, timedelta):
+                return obj.total_seconds()
             return obj
 
-        # Processar dicionários de datas
+        # Converter dicionario de datas
         curr_starts = {k: to_iso(v) for k, v in st.session_state.current_status_starts.items()}
         
-        # Processar logs
+        # Converter logs (especialmente timedelta duration)
         logs_sanitized = []
         for log in st.session_state.daily_logs:
             l_copy = log.copy()
             l_copy['timestamp'] = to_iso(l_copy.get('timestamp'))
+            l_copy['duration'] = to_iso(l_copy.get('duration')) # Converte timedelta para segundos
             logs_sanitized.append(l_copy)
 
         visual_queue_calculated = get_ordered_visual_queue(st.session_state.bastao_queue, st.session_state.status_texto)
