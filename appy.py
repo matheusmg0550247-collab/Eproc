@@ -55,6 +55,8 @@ WEBHOOK_STATE_DUMP = get_secret("webhook", "test_state")
 # 2. OTIMIZAÇÃO E CONEXÃO
 # ============================================
 
+# Adicionado cache_resource para evitar reconexão a cada interação
+@st.cache_resource
 def get_supabase():
     try: 
         return create_client(st.secrets["supabase"]["url"], st.secrets["supabase"]["key"])
@@ -86,19 +88,26 @@ def get_img_as_base64_cached(file_path):
     except: return None
 
 # ============================================
-# 3. REPOSITÓRIO (COM TRATAMENTO DE TIMEDELTA)
+# 3. REPOSITÓRIO (CORREÇÃO DE JSON AQUI)
 # ============================================
 
-# Função auxiliar para limpar dados antes de enviar para o banco
+# Função atualizada para tratar tuplas e garantir serialização correta
 def clean_data_for_db(obj):
-    if isinstance(obj, dict):
-        return {k: clean_data_for_db(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
+    # Converte tuplas e sets para listas (recursivo)
+    if isinstance(obj, (list, tuple, set)):
         return [clean_data_for_db(i) for i in obj]
+    # Dicionários: recursividade nos valores
+    elif isinstance(obj, dict):
+        return {k: clean_data_for_db(v) for k, v in obj.items()}
+    # Datas e Horas para String ISO
     elif isinstance(obj, (datetime, date)):
         return obj.isoformat()
+    # Timedelta para segundos (float)
     elif isinstance(obj, timedelta):
         return obj.total_seconds()
+    # Tratamento para NumPy/Pandas (caso use no futuro)
+    elif hasattr(obj, 'item'): 
+        return obj.item()
     else:
         return obj
 
@@ -120,7 +129,7 @@ def save_state_to_db(state_data):
         st.error("Sem conexão para salvar.")
         return
     try:
-        # AQUI ESTÁ A CORREÇÃO FINAL: Limpa os dados antes de qualquer coisa
+        # AQUI A CORREÇÃO ENTRA EM AÇÃO: Limpa os dados antes de salvar
         sanitized_data = clean_data_for_db(state_data)
         
         sb.table("app_state").upsert({"id": 2, "data": sanitized_data}).execute()
@@ -176,18 +185,18 @@ def verificar_duplicidade_certidao(tipo, n_processo=None, data_evento=None, hora
     sb = get_supabase()
     if not sb: return False
     try:
-        query = sb.table("certidoes_registro").select("*").eq("tipo", tipo)
+        # OTIMIZAÇÃO: Select apenas ID e Limit 1
+        query = sb.table("certidoes_registro").select("id").eq("tipo", tipo)
         if tipo in ['Física', 'Eletrônica'] and n_processo:
             proc_limpo = str(n_processo).strip().rstrip('.')
             if not proc_limpo: return False
-            response = query.ilike("n_processo", f"%{proc_limpo}%").execute()
-            return len(response.data) > 0
+            query = query.ilike("n_processo", f"%{proc_limpo}%")
+            return len(query.limit(1).execute().data) > 0
         elif tipo == 'Geral' and data_evento:
             data_str = data_evento.isoformat() if hasattr(data_evento, 'isoformat') else str(data_evento)
             query = query.eq("data_evento", data_str)
             if hora_periodo: query = query.eq("hora_periodo", hora_periodo)
-            response = query.execute()
-            return len(response.data) > 0
+            return len(query.limit(1).execute().data) > 0
     except: return False
     return False
 
@@ -221,7 +230,7 @@ def gerar_docx_certidao_internal(tipo, numero, data, consultor, motivo, chamado=
         
         if tipo == 'Geral': doc.add_paragraph("Assunto: Notifica erro no \"JPe – 2ª Instância\" ao peticionar")
         else: doc.add_paragraph("Assunto: Notifica erro no \"JPe – 2ª Instância\" ao peticionar.")
-             
+              
         doc.add_paragraph(f"\nExmo(a). Senhor(a) Relator(a),\n")
         corpo = doc.add_paragraph(); corpo.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         
@@ -326,7 +335,7 @@ def save_state():
             'simon_ranking': st.session_state.get('simon_ranking', []),
             'previous_states': st.session_state.get('previous_states', {})
         }
-        # Limpeza é feita dentro de save_state_to_db agora, mas podemos chamar aqui também para garantir
+        # Limpeza é feita dentro de save_state_to_db agora
         save_state_to_db(state_to_save)
     except Exception as e: print(f"Erro save: {e}")
 
