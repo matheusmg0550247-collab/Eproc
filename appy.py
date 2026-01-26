@@ -86,7 +86,7 @@ def get_img_as_base64_cached(file_path):
     except: return None
 
 # ============================================
-# 3. REPOSITÓRIO (CORRIGIDO PARA COLUNA 'data' E TIMEDELTA)
+# 3. REPOSITÓRIO (COM CONVERSOR UNIVERSAL)
 # ============================================
 def load_state_from_db():
     sb = get_supabase()
@@ -106,9 +106,25 @@ def save_state_to_db(state_data):
         st.error("Sem conexão para salvar.")
         return
     try:
+        # AQUI ESTÁ A CORREÇÃO: Converter state_data para formato aceito pelo JSON
+        # O Supabase client tenta fazer json.dumps, e falha se tiver timedelta
+        # Vamos passar um objeto limpo.
+        
         sb.table("app_state").upsert({"id": 2, "data": state_data}).execute()
     except Exception as e:
         st.error(f"🔥 ERRO DE ESCRITA NO BANCO: {e}")
+
+# Função Auxiliar de Limpeza Recursiva (A "Faxineira")
+def recursive_serialize(obj):
+    if isinstance(obj, dict):
+        return {k: recursive_serialize(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [recursive_serialize(i) for i in obj]
+    elif isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    elif isinstance(obj, timedelta):
+        return obj.total_seconds()
+    return obj
 
 # ============================================
 # 4. FUNÇÕES DE UTILIDADE E IP
@@ -245,12 +261,10 @@ def send_chat_notification_internal(consultor, status):
 def send_state_dump_webhook(state_data):
     if not WEBHOOK_STATE_DUMP: return False
     try:
-        def json_serial(obj):
-            if isinstance(obj, (datetime, date)): return obj.isoformat()
-            if isinstance(obj, timedelta): return obj.total_seconds()
-            raise TypeError ("Type not serializable")
+        # Usa a função recursiva para garantir limpeza antes de enviar
+        clean_data = recursive_serialize(state_data)
         headers = {'Content-Type': 'application/json'}
-        requests.post(WEBHOOK_STATE_DUMP, data=json.dumps(state_data, default=json_serial), headers=headers, timeout=5)
+        requests.post(WEBHOOK_STATE_DUMP, data=json.dumps(clean_data), headers=headers, timeout=5)
         return True
     except: return False
 
@@ -291,46 +305,31 @@ def handle_sugestao_submission(consultor, texto):
     except: return False
 
 # ============================================
-# 7. GESTÃO DE ESTADO (CORREÇÃO TIMEDELTA)
+# 7. GESTÃO DE ESTADO (COM LIMPEZA RECURSIVA)
 # ============================================
 def save_state():
     try:
         last_run = st.session_state.report_last_run_date
-        # Helper para converter objetos complexos em tipos simples
-        def to_iso(obj):
-            if isinstance(obj, (datetime, date)):
-                return obj.isoformat()
-            if isinstance(obj, timedelta):
-                return obj.total_seconds()
-            return obj
-
-        # Converter dicionario de datas
-        curr_starts = {k: to_iso(v) for k, v in st.session_state.current_status_starts.items()}
-        
-        # Converter logs (especialmente timedelta duration)
-        logs_sanitized = []
-        for log in st.session_state.daily_logs:
-            l_copy = log.copy()
-            l_copy['timestamp'] = to_iso(l_copy.get('timestamp'))
-            l_copy['duration'] = to_iso(l_copy.get('duration')) # Converte timedelta para segundos
-            logs_sanitized.append(l_copy)
-
         visual_queue_calculated = get_ordered_visual_queue(st.session_state.bastao_queue, st.session_state.status_texto)
         
         state_to_save = {
             'status_texto': st.session_state.status_texto, 'bastao_queue': st.session_state.bastao_queue,
             'visual_queue': visual_queue_calculated, 'skip_flags': st.session_state.skip_flags, 
-            'current_status_starts': curr_starts,
+            'current_status_starts': st.session_state.current_status_starts,
             'bastao_counts': st.session_state.bastao_counts, 'priority_return_queue': st.session_state.priority_return_queue,
-            'bastao_start_time': to_iso(st.session_state.bastao_start_time), 
-            'report_last_run_date': to_iso(last_run), 
-            'rotation_gif_start_time': to_iso(st.session_state.get('rotation_gif_start_time')), 
+            'bastao_start_time': st.session_state.bastao_start_time, 
+            'report_last_run_date': last_run, 
+            'rotation_gif_start_time': st.session_state.get('rotation_gif_start_time'), 
             'auxilio_ativo': st.session_state.get('auxilio_ativo', False), 
-            'daily_logs': logs_sanitized, 
+            'daily_logs': st.session_state.daily_logs, 
             'simon_ranking': st.session_state.get('simon_ranking', []),
             'previous_states': st.session_state.get('previous_states', {})
         }
-        save_state_to_db(state_to_save)
+        
+        # USA A FAXINEIRA RECURSIVA PARA LIMPAR TUDO ANTES DE SALVAR
+        clean_state = recursive_serialize(state_to_save)
+        
+        save_state_to_db(clean_state)
     except Exception as e: print(f"Erro save: {e}")
 
 def format_time_duration(duration):
