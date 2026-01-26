@@ -86,8 +86,22 @@ def get_img_as_base64_cached(file_path):
     except: return None
 
 # ============================================
-# 3. REPOSITÓRIO (COM CONVERSOR UNIVERSAL)
+# 3. REPOSITÓRIO (COM TRATAMENTO DE TIMEDELTA)
 # ============================================
+
+# Função auxiliar para limpar dados antes de enviar para o banco
+def clean_data_for_db(obj):
+    if isinstance(obj, dict):
+        return {k: clean_data_for_db(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [clean_data_for_db(i) for i in obj]
+    elif isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    elif isinstance(obj, timedelta):
+        return obj.total_seconds()
+    else:
+        return obj
+
 def load_state_from_db():
     sb = get_supabase()
     if not sb: return {}
@@ -106,25 +120,12 @@ def save_state_to_db(state_data):
         st.error("Sem conexão para salvar.")
         return
     try:
-        # AQUI ESTÁ A CORREÇÃO: Converter state_data para formato aceito pelo JSON
-        # O Supabase client tenta fazer json.dumps, e falha se tiver timedelta
-        # Vamos passar um objeto limpo.
+        # AQUI ESTÁ A CORREÇÃO FINAL: Limpa os dados antes de qualquer coisa
+        sanitized_data = clean_data_for_db(state_data)
         
-        sb.table("app_state").upsert({"id": 2, "data": state_data}).execute()
+        sb.table("app_state").upsert({"id": 2, "data": sanitized_data}).execute()
     except Exception as e:
         st.error(f"🔥 ERRO DE ESCRITA NO BANCO: {e}")
-
-# Função Auxiliar de Limpeza Recursiva (A "Faxineira")
-def recursive_serialize(obj):
-    if isinstance(obj, dict):
-        return {k: recursive_serialize(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [recursive_serialize(i) for i in obj]
-    elif isinstance(obj, (datetime, date)):
-        return obj.isoformat()
-    elif isinstance(obj, timedelta):
-        return obj.total_seconds()
-    return obj
 
 # ============================================
 # 4. FUNÇÕES DE UTILIDADE E IP
@@ -261,10 +262,10 @@ def send_chat_notification_internal(consultor, status):
 def send_state_dump_webhook(state_data):
     if not WEBHOOK_STATE_DUMP: return False
     try:
-        # Usa a função recursiva para garantir limpeza antes de enviar
-        clean_data = recursive_serialize(state_data)
+        # Usa a mesma função de limpeza para o webhook
+        sanitized_data = clean_data_for_db(state_data)
         headers = {'Content-Type': 'application/json'}
-        requests.post(WEBHOOK_STATE_DUMP, data=json.dumps(clean_data), headers=headers, timeout=5)
+        requests.post(WEBHOOK_STATE_DUMP, data=json.dumps(sanitized_data), headers=headers, timeout=5)
         return True
     except: return False
 
@@ -305,7 +306,7 @@ def handle_sugestao_submission(consultor, texto):
     except: return False
 
 # ============================================
-# 7. GESTÃO DE ESTADO (COM LIMPEZA RECURSIVA)
+# 7. GESTÃO DE ESTADO
 # ============================================
 def save_state():
     try:
@@ -325,11 +326,8 @@ def save_state():
             'simon_ranking': st.session_state.get('simon_ranking', []),
             'previous_states': st.session_state.get('previous_states', {})
         }
-        
-        # USA A FAXINEIRA RECURSIVA PARA LIMPAR TUDO ANTES DE SALVAR
-        clean_state = recursive_serialize(state_to_save)
-        
-        save_state_to_db(clean_state)
+        # Limpeza é feita dentro de save_state_to_db agora, mas podemos chamar aqui também para garantir
+        save_state_to_db(state_to_save)
     except Exception as e: print(f"Erro save: {e}")
 
 def format_time_duration(duration):
@@ -1032,7 +1030,6 @@ with col_disponibilidade:
         for i, nome in enumerate(render_order):
             if nome not in ui_lists['fila']: continue
             col_nome, col_check = st.columns([0.85, 0.15], vertical_alignment='center')
-            # CHECKBOX AGORA É APENAS VISUAL (DISABLED), CONTROLE PELO BOTÃO BASTÃO
             col_check.checkbox(' ', key=f'chk_fila_{nome}', value=True, disabled=True, label_visibility='collapsed')
             skip_flag = skips.get(nome, False); status_atual = st.session_state.status_texto.get(nome, '') or ''; extra = ''
             if 'Atividade' in status_atual: extra += ' 📋'
