@@ -97,8 +97,8 @@ def load_state_from_db():
     sb = get_supabase()
     if not sb: return {}
     try:
-        # Busca ID 1 (padrão limpo)
-        response = sb.table("app_state").select("data").eq("id", 1).execute()
+        # CORREÇÃO: Busca ID 2
+        response = sb.table("app_state").select("data").eq("id", 2).execute()
         if response.data and len(response.data) > 0:
             return response.data[0].get("data", {})
         return {}
@@ -112,7 +112,8 @@ def save_state_to_db(state_data):
     try:
         # Limpa dados antes de enviar
         clean_data = safe_serialize(state_data)
-        sb.table("app_state").upsert({"id": 1, "data": clean_data}).execute()
+        # CORREÇÃO: Salva no ID 2
+        sb.table("app_state").upsert({"id": 2, "data": clean_data}).execute()
     except Exception as e:
         st.error(f"🔥 ERRO SALVAR: {e}")
 
