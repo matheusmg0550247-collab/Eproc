@@ -45,17 +45,17 @@ REG_DESFECHO_OPCOES = ["Resolvido - Cesupe", "Escalonado"]
 
 OPCOES_ATIVIDADES_STATUS = ["HP", "E-mail", "WhatsApp Plantão", "Homologação", "Redação Documentos", "Outros"]
 
-# URLs e Visuais (ATUALIZADO PARA FEVEREIRO LARANJA / CARNAVAL)
+# URLs e Visuais (TEMA FEVEREIRO LARANJA / CARNAVAL)
 GIF_BASTAO_HOLDER = "https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExa3Uwazd5cnNra2oxdDkydjZkcHdqcWN2cng0Y2N0cmNmN21vYXVzMiZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/3rXs5J0hZkXwTZjuvM/giphy.gif"
 GIF_LOGMEIN_TARGET = "https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExZjFvczlzd3ExMWc2cWJrZ3EwNmplM285OGFqOHE1MXlzdnd4cndibiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/mcsPU3SkKrYDdW3aAU/giphy.gif"
-BASTAO_EMOJI = "🥂" 
+BASTAO_EMOJI = "🎭" 
 CARNAVAL_FILENAME = "Carnaval.gif"
 APP_URL_CLOUD = 'https://controle-bastao-cesupe.streamlit.app'
 
-# Cores Fevereiro Laranja
-COR_PRIMARIA = "#FF8C00"
-COR_SECUNDARIA = "#E65100"
-COR_FUNDO_CARD = "#FFF3E0"
+# Cores do Tema
+COR_LARANJA_PRIMARIA = "#FF8C00"
+COR_LARANJA_SECUNDARIA = "#E65100"
+COR_FUNDO_ALERTA = "#FFF3E0"
 
 # Secrets
 CHAT_WEBHOOK_BASTAO = get_secret("chat", "bastao")
@@ -96,7 +96,7 @@ def get_img_as_base64_cached(file_path):
     except: return None
 
 # ============================================
-# 3. REPOSITÓRIO
+# 3. REPOSITÓRIO (SINCRO COM DB)
 # ============================================
 
 def clean_data_for_db(obj):
@@ -306,7 +306,7 @@ def gerar_docx_certidao_internal(tipo, numero, data, consultor, motivo, chamado=
     except: return None
 
 # ============================================
-# 6. NOTIFICAÇÕES & WEBHOOKS (COM TRAVA DE SEGURANÇA)
+# 6. NOTIFICAÇÕES & WEBHOOKS (REGRAS DE TRAVA)
 # ============================================
 def send_chat_notification_internal(consultor, status):
     if CHAT_WEBHOOK_BASTAO and status == 'Bastão':
@@ -325,20 +325,17 @@ def send_state_dump_webhook(state_data):
     except: return False
 
 def send_horas_extras_to_chat(consultor, data, inicio, tempo, motivo):
-    if not motivo.strip(): return False
     msg = f"⏰ **Registro de Horas Extras**\n\n👤 **Consultor:** {consultor}\n📅 **Data:** {data.strftime('%d/%m/%Y')}\n🕐 **Início:** {inicio.strftime('%H:%M')}\n⏱️ **Tempo Total:** {tempo}\n📝 **Motivo:** {motivo}"
     try: send_to_chat("extras", msg); return True
     except: return False
 
 def send_atendimento_to_chat(consultor, data, usuario, nome_setor, sistema, descricao, canal, desfecho, jira_opcional=""):
-    if not descricao.strip(): return False
     jira_str = f"\n🔢 **Jira:** CESUPE-{jira_opcional}" if jira_opcional else ""
     msg = f"📋 **Novo Registro de Atendimento**\n\n👤 **Consultor:** {consultor}\n📅 **Data:** {data.strftime('%d/%m/%Y')}\n👥 **Usuário:** {usuario}\n🏢 **Nome/Setor:** {nome_setor}\n💻 **Sistema:** {sistema}\n📝 **Descrição:** {descricao}\n📞 **Canal:** {canal}\n✅ **Desfecho:** {desfecho}{jira_str}"
     try: send_to_chat("registro", msg); return True
     except: return False
 
 def send_chamado_to_chat(consultor, texto):
-    # TRAVA: Verifica se o texto é válido e não é repetido (através da limpeza do buffer no handler)
     if not consultor or consultor == 'Selecione um nome' or not texto.strip(): return False
     data_envio = get_brazil_time().strftime('%d/%m/%Y %H:%M')
     msg = f"🆘 **Rascunho de Chamado/Jira**\n📅 **Data:** {data_envio}\n\n👤 **Autor:** {consultor}\n\n📝 **Texto:**\n{texto}"
@@ -348,14 +345,12 @@ def send_chamado_to_chat(consultor, texto):
         except: return False
 
 def handle_erro_novidade_submission(consultor, titulo, objetivo, relato, resultado):
-    if not titulo.strip(): return False
     data_envio = get_brazil_time().strftime("%d/%m/%Y %H:%M")
     msg = f"🐛 **Novo Relato de Erro/Novidade**\n📅 **Data:** {data_envio}\n\n👤 **Autor:** {consultor}\n📌 **Título:** {titulo}\n\n🎯 **Objetivo:**\n{objetivo}\n\n🧪 **Relato:**\n{relato}\n\n🏁 **Resultado:**\n{resultado}"
     try: send_to_chat("erro", msg); return True
     except: return False
 
 def handle_sugestao_submission(consultor, texto):
-    if not texto.strip(): return False
     data_envio = get_brazil_time().strftime("%d/%m/%Y %H:%M")
     ip_usuario = get_remote_ip()
     msg = f"💡 **Nova Sugestão**\n📅 **Data:** {data_envio}\n👤 **Autor:** {consultor}\n🌐 **IP:** {ip_usuario}\n\n📝 **Sugestão:**\n{texto}"
@@ -686,19 +681,30 @@ def toggle_presence_btn():
     if not selected or selected == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
     toggle_queue(selected)
 
-# --- HANDLER PARA CHAMADOS (COM TRAVA) ---
+# --- HANDLER PARA CHAMADOS (COM TRAVA DE SEGURANÇA CONTRA DUPLICIDADE) ---
 def handle_chamado_submission():
     consultor = st.session_state.get('consultor_selectbox')
     texto = st.session_state.get('chamado_textarea', '')
-    if not texto.strip(): return False
+    
+    # Validação inicial
+    if not consultor or consultor == "Selecione um nome":
+        st.error("Selecione um consultor antes de enviar.")
+        return False
+    if not texto.strip():
+        st.error("Erro ao enviar. Verifique o texto.")
+        return False
     
     # Executa o envio
     ok = send_chamado_to_chat(consultor, texto)
     if ok: 
-        # TRAVA: Limpa o buffer imediatamente para evitar duplo clique
+        # TRAVA: Limpa o buffer imediatamente para evitar duplo clique e duplicidade no chat
         st.session_state.chamado_textarea = ''
-        st.session_state.chamado_guide_step = 0
-    return ok
+        st.session_state.active_view = None
+        st.toast("Chamado enviado com sucesso!", icon="✅")
+        return True
+    else:
+        st.error("Falha ao comunicar com o servidor de chat.")
+        return False
 
 def send_daily_report_to_webhook():
     logs = st.session_state.daily_logs
@@ -720,33 +726,41 @@ def open_logmein_ui(): st.session_state.view_logmein_ui = True
 def close_logmein_ui(): st.session_state.view_logmein_ui = False
 
 # ============================================
-# 8. INTERFACE (FEVEREIRO LARANJA + CONFETES)
+# 8. INTERFACE (FEVEREIRO LARANJA + CARNAVAL)
 # ============================================
-st.set_page_config(page_title="Controle Cesupe 2026", layout="wide", page_icon="🥂")
+st.set_page_config(page_title="Controle Cesupe 2026", layout="wide", page_icon="🎭")
 
-# CSS Fevereiro Laranja + Animação de Confetes
+# CSS Fevereiro Laranja + Confetes
 st.markdown(f"""
 <style>
     div.stButton > button {{width: 100%; white-space: nowrap; height: 3rem;}} 
-    [data-testid='stHorizontalBlock'] div.stButton > button {{white-space: nowrap; height: 3rem;}}
     
-    /* Confetes */
+    /* Animação Confetes */
     @keyframes fall {{
         0% {{ top: -10px; transform: translateX(0) rotate(0deg); }}
-        100% {{ top: 100vh; transform: translateX(100px) rotate(360deg); }}
+        100% {{ top: 100vh; transform: translateX(50px) rotate(360deg); }}
     }}
     .confetti {{
-        position: fixed; width: 10px; height: 10px; background-color: {COR_PRIMARIA};
+        position: fixed; width: 10px; height: 10px;
         top: -10px; z-index: 9999; pointer-events: none;
-        animation: fall 4s linear infinite;
+        animation: fall 5s linear infinite;
     }}
 </style>
-<div class="confetti" style="left:10%; background-color: #FFA500; animation-delay: 0s;"></div>
-<div class="confetti" style="left:30%; background-color: #FF4500; animation-delay: 1s;"></div>
-<div class="confetti" style="left:50%; background-color: #FF8C00; animation-delay: 2s;"></div>
-<div class="confetti" style="left:70%; background-color: #FFD700; animation-delay: 1.5s;"></div>
-<div class="confetti" style="left:90%; background-color: #FF6347; animation-delay: 0.5s;"></div>
+<div class="confetti" style="left:10%; background-color:#FF8C00; animation-delay:0s;"></div>
+<div class="confetti" style="left:30%; background-color:#FF4500; animation-delay:1s;"></div>
+<div class="confetti" style="left:50%; background-color:#FFD700; animation-delay:2s;"></div>
+<div class="confetti" style="left:70%; background-color:#FFA500; animation-delay:0.5s;"></div>
+<div class="confetti" style="left:90%; background-color:#FF6347; animation-delay:1.5s;"></div>
 """, unsafe_allow_html=True)
+
+# Texto Fevereiro Laranja (Topo)
+st.markdown(f"""
+<div style="background-color: {COR_FUNDO_ALERTA}; border-left: 6px solid {COR_LARANJA_PRIMARIA}; padding: 15px; border-radius: 8px; margin-bottom: 25px;">
+    <p style="margin: 0; color: #5D4037; font-size: 1.05rem; line-height: 1.5;">
+    <b>Fevereiro Laranja</b> é um convite à consciência e à ação: ele chama atenção para a leucemia e para a importância do diagnóstico precoce, que pode salvar vidas. 💛🧡<br><br>
+    Informar, apoiar quem está em tratamento e incentivar a doação de sangue e de medula óssea são atitudes que fazem diferença. Compartilhe, converse e, se puder, cadastre-se como doador — um gesto simples pode ser a esperança de alguém.
+    </p>
+</div>""", unsafe_allow_html=True)
 
 init_session_state(); auto_manage_time()
 st.components.v1.html("<script>window.scrollTo(0, 0);</script>", height=0)
@@ -755,12 +769,12 @@ c_topo_esq, c_topo_dir = st.columns([2, 1], vertical_alignment="bottom")
 with c_topo_esq:
     img = get_img_as_base64_cached(CARNAVAL_FILENAME)
     src = f"data:image/gif;base64,{img}" if img else GIF_BASTAO_HOLDER
+    # Moldura Quadrada Maior
     st.markdown(f"""
-    <div style="display: flex; align-items: center; gap: 20px;">
-        <img src="{src}" style="width: 150px; height: 150px; border-radius: 50%; border: 4px solid {COR_PRIMARIA}; object-fit: cover;">
+    <div style="display: flex; align-items: center; gap: 25px;">
+        <img src="{src}" style="width: 220px; height: 220px; border-radius: 15px; border: 5px solid {COR_LARANJA_PRIMARIA}; object-fit: cover; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
         <div>
-            <span style="color: {COR_PRIMARIA}; font-weight: bold; font-size: 1.2rem; letter-spacing: 2px;">FEVEREIRO LARANJA</span>
-            <h1 style="margin: 0; padding: 0; font-size: 2.2rem; color: {COR_SECUNDARIA}; text-shadow: 1px 1px 2px #333;">Controle Bastão Cesupe 2026 {BASTAO_EMOJI}</h1>
+            <h1 style="margin: 0; padding: 0; font-size: 2.3rem; color: {COR_LARANJA_SECUNDARIA}; text-shadow: 1px 1px 2px #AAA;">Controle Bastão Cesupe 2026 {BASTAO_EMOJI}</h1>
         </div>
     </div>""", unsafe_allow_html=True)
 
@@ -774,7 +788,7 @@ with c_topo_dir:
     dev_id_short = st.session_state.get('device_id_val', '???')[-4:] if 'device_id_val' in st.session_state else '...'
     st.caption(f"ID: ...{dev_id_short}")
 
-st.markdown(f"<hr style='border: 1px solid {COR_PRIMARIA}; margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
+st.markdown(f"<hr style='border: 1px solid {COR_LARANJA_PRIMARIA}; margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
 
 if st.session_state.active_view is None: st_autorefresh(interval=20000, key='auto_rerun'); sync_state_from_db() 
 else: st.caption("⏸️ Atualização automática pausada durante o registro.")
@@ -789,12 +803,12 @@ proximo = queue[prox_idx] if prox_idx != -1 else None
 with col_principal:
     st.header("Responsável pelo Bastão")
     if responsavel:
-        st.markdown(f"""<div style="background: linear-gradient(135deg, {COR_FUNDO_CARD} 0%, #FFFFFF 100%); border: 3px solid {COR_PRIMARIA}; padding: 25px; border-radius: 15px; display: flex; align-items: center; box-shadow: 0 4px 15px rgba(255, 140, 0, 0.3); margin-bottom: 20px;"><div style="flex-shrink: 0; margin-right: 25px;"><img src="{GIF_BASTAO_HOLDER}" style="width: 90px; height: 90px; border-radius: 50%; object-fit: cover; border: 2px solid {COR_PRIMARIA};"></div><div><span style="font-size: 14px; color: #555; font-weight: bold; text-transform: uppercase; letter-spacing: 1.5px;">Atualmente com:</span><br><span style="font-size: 42px; font-weight: 800; color: #000080; line-height: 1.1;">{responsavel}</span></div></div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div style="background: linear-gradient(135deg, {COR_FUNDO_ALERTA} 0%, #FFFFFF 100%); border: 3px solid {COR_LARANJA_PRIMARIA}; padding: 25px; border-radius: 15px; display: flex; align-items: center; box-shadow: 0 4px 15px rgba(255, 140, 0, 0.3); margin-bottom: 20px;"><div style="flex-shrink: 0; margin-right: 25px;"><img src="{GIF_BASTAO_HOLDER}" style="width: 90px; height: 90px; border-radius: 50%; object-fit: cover; border: 2px solid {COR_LARANJA_PRIMARIA};"></div><div><span style="font-size: 14px; color: #555; font-weight: bold; text-transform: uppercase; letter-spacing: 1.5px;">Atualmente com:</span><br><span style="font-size: 42px; font-weight: 800; color: #000080; line-height: 1.1;">{responsavel}</span></div></div>""", unsafe_allow_html=True)
         dur = get_brazil_time() - (st.session_state.bastao_start_time or get_brazil_time())
         st.caption(f"⏱️ Tempo com o bastão: **{format_time_duration(dur)}**")
     else: st.markdown('<h2>(Ninguém com o bastão)</h2>', unsafe_allow_html=True)
-    
     st.markdown("###"); st.header("Próximos da Fila")
+    
     if responsavel and responsavel in queue:
         c_idx = queue.index(responsavel)
         raw_ordered = queue[c_idx+1:] + queue[:c_idx]
@@ -813,7 +827,7 @@ with col_principal:
     
     c_nome, c_act1, c_act2, c_act3 = st.columns([2, 1, 1, 1], vertical_alignment="bottom")
     with c_nome: st.selectbox('Selecione:', ['Selecione um nome'] + CONSULTORES, key='consultor_selectbox', label_visibility='collapsed')
-    with c_act1: st.button("🥂 Entrar/Sair Fila", on_click=toggle_presence_btn, use_container_width=True)
+    with c_act1: st.button("🎭 Fila", on_click=toggle_presence_btn, use_container_width=True)
     with c_act2: st.button('🎯 Passar', on_click=rotate_bastao, use_container_width=True)
     with c_act3: st.button('⏭️ Pular', on_click=toggle_skip, use_container_width=True)
     
@@ -848,98 +862,36 @@ with col_principal:
 
     if st.session_state.active_view == 'menu_presencial':
         with st.container(border=True):
-            st.subheader('🤝 Registrar Atendimento Presencial'); local_presencial = st.text_input('Local:', key='pres_local'); objetivo_presencial = st.text_input('Objetivo:', key='pres_obj')
+            st.subheader('🤝 Atendimento Presencial'); local_p = st.text_input('Local:'); obj_p = st.text_input('Objetivo:')
             c_ok, c_cancel = st.columns(2)
             with c_ok:
                 if st.button('✅ Confirmar', type='primary', use_container_width=True):
-                    if not local_presencial.strip() or not objetivo_presencial.strip(): st.warning('Preencha Local e Objetivo.')
-                    else: st.session_state.active_view = None; update_status(f"Atendimento Presencial: {local_presencial.strip()} - {objetivo_presencial.strip()}", True)
-            with c_cancel:
-                if st.button('❌ Cancelar', use_container_width=True): st.session_state.active_view = None; st.rerun()
-
-    if st.session_state.active_view == 'menu_projetos':
-        with st.container(border=True):
-            st.subheader('🏗️ Registrar Projeto')
-            proj_nome = st.text_input('Nome do Projeto:', placeholder='Digite o nome do projeto...')
-            manter_bastao = st.checkbox("Continuar recebendo bastão? (Modo Atividade)")
-            c_ok, c_cancel = st.columns(2)
-            with c_ok:
-                if st.button('✅ Confirmar', type='primary', use_container_width=True):
-                    if not proj_nome.strip(): st.warning('Digite o nome do projeto.')
-                    else: 
-                        st.session_state.active_view = None
-                        status_msg = f"Projeto: {proj_nome.strip()}"
-                        if manter_bastao: update_status(status_msg, manter_fila_atual=True)
-                        else: update_status(status_msg, marcar_indisponivel=True)
-            with c_cancel:
-                if st.button('❌ Cancelar', use_container_width=True): st.session_state.active_view = None; st.rerun()
-
-    if st.session_state.active_view == 'menu_treinamento':
-        with st.container(border=True):
-            st.subheader('🎓 Registrar Treinamento'); tema = st.text_input('Tema/Conteúdo:'); obs = st.text_input('Observação (opcional):')
-            c_ok, c_cancel = st.columns(2)
-            with c_ok:
-                if st.button('✅ Confirmar', type='primary', use_container_width=True):
-                    if not tema.strip(): st.warning('Informe o tema.')
-                    else: st.session_state.active_view = None; update_status(f"Treinamento: {tema.strip()}" + (f" - {obs.strip()}" if obs.strip() else ""), True)
-            with c_cancel:
-                if st.button('❌ Cancelar', use_container_width=True): st.session_state.active_view = None; st.rerun()
-
-    if st.session_state.active_view == 'menu_reuniao':
-        with st.container(border=True):
-            st.subheader('📅 Registrar Reunião'); assunto = st.text_input('Assunto:'); obs = st.text_input('Observação (opcional):')
-            c_ok, c_cancel = st.columns(2)
-            with c_ok:
-                if st.button('✅ Confirmar', type='primary', use_container_width=True):
-                    if not assunto.strip(): st.warning('Informe o assunto.')
-                    else: st.session_state.active_view = None; update_status(f"Reunião: {assunto.strip()}" + (f" - {obs.strip()}" if obs.strip() else ""), True)
-            with c_cancel:
-                if st.button('❌ Cancelar', use_container_width=True): st.session_state.active_view = None; st.rerun()
-
-    if st.session_state.active_view == 'menu_sessao':
-        with st.container(border=True):
-            st.subheader('🎙️ Registrar Sessão')
-            sessao_livre = st.text_input('Qual Sessão / Câmara?'); obs = st.text_input('Observação (opcional):')
-            c_ok, c_cancel = st.columns(2)
-            with c_ok:
-                if st.button('✅ Confirmar', type='primary', use_container_width=True):
-                    consultor = st.session_state.get('consultor_selectbox')
-                    if not consultor or consultor == 'Selecione um nome': st.error('Selecione um consultor.')
-                    elif not sessao_livre.strip(): st.warning('Digite qual a sessão.')
-                    else: st.session_state.active_view = None; update_status(f"Sessão: {sessao_livre}" + (f" - {obs.strip()}" if obs.strip() else ""), True)
+                    if not local_p.strip() or not obj_p.strip(): st.warning('Preencha os campos.')
+                    else: st.session_state.active_view = None; update_status(f"Atendimento Presencial: {local_p.strip()} - {obj_p.strip()}", True)
             with c_cancel:
                 if st.button('❌ Cancelar', use_container_width=True): st.session_state.active_view = None; st.rerun()
 
     # --- FERRAMENTAS ---
-    st.markdown(f"<hr style='border: 1px solid {COR_PRIMARIA}; margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
+    st.markdown(f"<hr style='border: 1px solid {COR_LARANJA_PRIMARIA}; margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
     c_tool1, c_tool2, c_tool3, c_tool4, c_tool5, c_tool6, c_tool7 = st.columns(7)
     c_tool1.button("📑 Checklist", use_container_width=True, on_click=toggle_view, args=("checklist",))
     c_tool2.button("🆘 Chamados", use_container_width=True, on_click=toggle_view, args=("chamados",))
-    c_tool3.button("📝 Atendimentos", use_container_width=True, on_click=toggle_view, args=("atendimentos",))
+    c_tool3.button("📝 Atend.", use_container_width=True, on_click=toggle_view, args=("atendimentos",))
     c_tool4.button("⏰ H. Extras", use_container_width=True, on_click=toggle_view, args=("hextras",))
-    c_tool5.button("🐛 Erro/Novidade", use_container_width=True, on_click=toggle_view, args=("erro_novidade",))
+    c_tool5.button("🐛 Erro/Nov.", use_container_width=True, on_click=toggle_view, args=("erro_novidade",))
     c_tool6.button("🖨️ Certidão", use_container_width=True, on_click=toggle_view, args=("certidao",))
     c_tool7.button("💡 Sugestão", use_container_width=True, on_click=toggle_view, args=("sugestao",))
-
-    if st.session_state.active_view == "checklist":
-        with st.container(border=True):
-            st.header("Gerador de Checklist"); camara_eproc = st.text_input("Câmara:")
-            if st.button("Gerar HTML"): send_to_chat("sessao", f"Consultor {st.session_state.consultor_selectbox} acompanhando sessão {camara_eproc}"); st.success("Registrado no chat!")
-            if st.button("❌ Cancelar"): st.session_state.active_view = None; st.rerun()
 
     if st.session_state.active_view == "chamados":
         with st.container(border=True):
             st.header('🆘 Registro de Chamado (Jira)')
-            st.text_area('Texto do chamado:', height=240, key='chamado_textarea', placeholder="Descreva os detalhes do erro ou incidente aqui...")
+            st.text_area('Texto do chamado:', height=240, key='chamado_textarea')
             c1, c2 = st.columns(2)
             with c1:
-                # TRAVA IMPLEMENTADA NO HANDLE
-                if st.button('📨 Enviar para o Chat', type='primary', use_container_width=True):
+                # TRAVA: Apenas Enviar
+                if st.button('📨 Enviar', type='primary', use_container_width=True):
                     if handle_chamado_submission(): 
-                        st.success('Enviado com sucesso!')
-                        time.sleep(1)
-                        st.session_state.active_view = None; st.rerun()
-                    else: st.error('Erro ao enviar. Verifique o texto.')
+                        st.success('Enviado!'); time.sleep(1); st.rerun()
             with c2:
                 if st.button('❌ Cancelar', use_container_width=True): st.session_state.active_view = None; st.rerun()
 
@@ -949,140 +901,39 @@ with col_principal:
             at_data = st.date_input('Data:', value=get_brazil_time().date())
             at_usuario = st.selectbox('Usuário:', REG_USUARIO_OPCOES); at_setor = st.text_input('Setor:'); at_sys = st.selectbox('Sistema:', REG_SISTEMA_OPCOES)
             at_desc = st.text_input('Descrição:'); at_canal = st.selectbox('Canal:', REG_CANAL_OPCOES); at_res = st.selectbox('Desfecho:', REG_DESFECHO_OPCOES); at_jira = st.text_input('Jira:')
-            if st.button('Enviar', type='primary', use_container_width=True):
+            if st.button('Enviar Atendimento', type='primary', use_container_width=True):
                 if send_atendimento_to_chat(st.session_state.consultor_selectbox, at_data, at_usuario, at_setor, at_sys, at_desc, at_canal, at_res, at_jira):
                     st.success('Enviado!'); st.session_state.active_view = None; st.rerun()
-                else: st.error('Erro.')
-            if st.button('❌ Cancelar', use_container_width=True): st.session_state.active_view = None; st.rerun()
-
-    if st.session_state.active_view == "hextras":
-        with st.container(border=True):
-            st.header("⏰ Horas Extras"); d_ex = st.date_input("Data:"); h_in = st.time_input("Início:"); t_ex = st.text_input("Tempo Total:"); mot = st.text_input("Motivo:")
-            if st.button("Registrar"): 
-                if send_horas_extras_to_chat(st.session_state.consultor_selectbox, d_ex, h_in, t_ex, mot): st.success("Registrado!"); st.session_state.active_view = None; st.rerun()
-            if st.button("❌ Cancelar"): st.session_state.active_view = None; st.rerun()
-
-    if st.session_state.active_view == "erro_novidade":
-        with st.container(border=True):
-            st.header("🐛 Erro/Novidade"); tit = st.text_input("Título:"); obj = st.text_area("Objetivo:"); rel = st.text_area("Relato:"); res = st.text_area("Resultado:")
-            if st.button("Enviar"): 
-                if handle_erro_novidade_submission(st.session_state.consultor_selectbox, tit, obj, rel, res): st.success("Enviado!"); st.session_state.active_view = None; st.rerun()
-            if st.button("❌ Cancelar"): st.session_state.active_view = None; st.rerun()
+            if st.button('❌ Cancelar Atend.', use_container_width=True): st.session_state.active_view = None; st.rerun()
 
     if st.session_state.active_view == "certidao":
         with st.container(border=True):
-            st.header("🖨️ Registro de Certidão (2026)")
-            c_data = st.date_input("Data do Evento:", value=get_brazil_time().date(), format="DD/MM/YYYY")
-            tipo_cert = st.selectbox("Tipo:", ["Física", "Eletrônica", "Geral"])
-            c_cons = st.session_state.consultor_selectbox
-            c_hora = ""; c_motivo = st.text_area("Motivo/Detalhes:", height=100)
-            if tipo_cert == "Geral": 
-                c_hora = st.text_input("Horário/Período (Ex: 13h às 15h):")
-                c_proc = ""; c_chamado = ""; c_nome_parte = ""; c_peticao = ""
-                if c_hora: c_motivo = f"{c_motivo} - Período: {c_hora}"
-            else: 
-                c1, c2 = st.columns(2)
-                c_proc = c1.text_input("Processo (Com pontuação):")
-                c_chamado = c2.text_input("Incidente/Chamado:")
-                c3, c4 = st.columns(2)
-                c_nome_parte = c3.text_input("Nome da Parte/Advogado:")
-                c_peticao = c4.selectbox("Tipo de Petição:", ["Inicial", "Recursal", "Intermediária", "Outros"])
-            
+            st.header("🖨️ Certidão (2026)"); c_data = st.date_input("Data Evento:"); tipo_cert = st.selectbox("Tipo:", ["Eletrônica", "Física", "Geral"])
+            c_proc = st.text_input("Processo:"); c_chamado = st.text_input("Chamado:")
+            c_motivo = st.text_area("Motivo:"); c_cons = st.session_state.consultor_selectbox
             c1, c2 = st.columns(2)
             with c1:
-                if st.button("📄 Gerar Word", use_container_width=True): 
-                    st.session_state.word_buffer = gerar_docx_certidao_internal(tipo_cert, c_proc, c_data.strftime("%d/%m/%Y"), c_cons, c_motivo, c_chamado, c_hora, c_nome_parte)
-                if st.session_state.word_buffer: 
-                    st.download_button("⬇️ Baixar", st.session_state.word_buffer, file_name="certidao.docx")
+                if st.button("📄 Gerar", use_container_width=True): 
+                    st.session_state.word_buffer = gerar_docx_certidao_internal(tipo_cert, c_proc, c_data.strftime("%d/%m/%Y"), c_cons, c_motivo, c_chamado)
+                if st.session_state.word_buffer: st.download_button("⬇️ Baixar", st.session_state.word_buffer, file_name="certidao.docx")
             with c2:
-                if st.button("💾 Salvar e Notificar", type="primary", use_container_width=True):
-                    if verificar_duplicidade_certidao(tipo_cert, c_proc, c_data): 
-                        st.session_state.aviso_duplicidade = True
-                    else:
-                        payload = {"tipo": tipo_cert, "data": c_data.isoformat(), "consultor": c_cons, "incidente": c_chamado, "processo": c_proc, "motivo": c_motivo, "nome_parte": c_nome_parte, "peticao": c_peticao}
-                        if salvar_certidao_db(payload):
-                            msg_cert = f"🖨️ **Nova Certidão Registrada**\n👤 **Autor:** {c_cons}\n📅 **Data:** {c_data.strftime('%d/%m/%Y')}\n📄 **Tipo:** {tipo_cert}\n📂 **Proc:** {c_proc}"
-                            try: send_to_chat("certidao", msg_cert)
-                            except: pass
-                            st.success("Salvo!"); time.sleep(1); st.session_state.active_view = None; st.session_state.word_buffer = None; st.rerun()
-            if st.button("❌ Cancelar"): st.session_state.active_view = None; st.rerun()
-
-    if st.session_state.active_view == "sugestao":
-        with st.container(border=True):
-            st.header("💡 Enviar Sugestão"); sug_txt = st.text_area("Sua ideia ou melhoria:")
-            c1, c2 = st.columns(2)
-            with c1:
-                if st.button("Enviar Sugestão", type="primary", use_container_width=True):
-                    if handle_sugestao_submission(st.session_state.consultor_selectbox, sug_txt):
-                        st.success("Enviado com sucesso!"); st.session_state.active_view = None; st.rerun()
-            with c2:
-                if st.button("Cancelar", use_container_width=True): st.session_state.active_view = None; st.rerun()
-
-    st.markdown("---")
-    st.subheader("📊 Resumo Operacional (Semanal)")
-    df_chart, gerado_em = carregar_dados_grafico()
-    if df_chart is not None:
-        try:
-            df_long = df_chart.melt(id_vars=['relatorio'], value_vars=['Eproc', 'Legados'], var_name='Sistema', value_name='Qtd')
-            base = alt.Chart(df_long).encode(x=alt.X('relatorio', title=None, axis=alt.Axis(labels=True, labelAngle=0)), y=alt.Y('Qtd', title='Quantidade'), color=alt.Color('Sistema', legend=alt.Legend(title="Sistema")), xOffset='Sistema')
-            bars = base.mark_bar(); text = base.mark_text(dy=-5, color='black').encode(text='Qtd')
-            st.altair_chart((bars + text).properties(height=300), use_container_width=True)
-            st.caption(f"Dados do dia: {gerado_em}")
-        except: st.error("Erro ao carregar gráfico.")
+                if st.button("💾 Salvar", type="primary", use_container_width=True):
+                    payload = {"tipo": tipo_cert, "data": c_data.isoformat(), "consultor": c_cons, "incidente": c_chamado, "processo": c_proc, "motivo": c_motivo}
+                    if salvar_certidao_db(payload): st.success("Salvo!"); time.sleep(1); st.session_state.active_view = None; st.rerun()
 
 with col_disponibilidade:
-    st.header('Status dos Consultores')
+    st.header('Status')
     ui_lists = {'fila': [], 'almoco': [], 'saida': [], 'ausente': [], 'atividade_especifica': [], 'sessao_especifica': [], 'projeto_especifico': [], 'reuniao_especifica': [], 'treinamento_especifico': [], 'indisponivel': [], 'presencial_especifico': []}
     for nome in CONSULTORES:
         if nome in st.session_state.bastao_queue: ui_lists['fila'].append(nome)
         status = st.session_state.status_texto.get(nome, 'Indisponível')
-        if status in ('', None): pass
-        elif status == 'Almoço': ui_lists['almoco'].append(nome)
-        elif status == 'Saída rápida': ui_lists['saida'].append(nome)
-        elif status == 'Indisponível' and nome not in st.session_state.bastao_queue: ui_lists['indisponivel'].append(nome)
-        if isinstance(status, str):
-            if 'Sessão:' in status: ui_lists['sessao_especifica'].append((nome, status.replace('Sessão:', '').strip()))
-            if 'Reunião:' in status: ui_lists['reuniao_especifica'].append((nome, status.replace('Reunião:', '').strip()))
-            if 'Projeto:' in status: ui_lists['projeto_especifico'].append((nome, status.replace('Projeto:', '').strip()))
-            if 'Treinamento:' in status: ui_lists['treinamento_especifico'].append((nome, status.replace('Treinamento:', '').strip()))
-            if 'Atividade:' in status: ui_lists['atividade_especifica'].append((nome, status.replace('Atividade:', '').strip()))
-            if 'Atendimento Presencial:' in status: ui_lists['presencial_especifico'].append((nome, status.replace('Atendimento Presencial:', '').strip()))
+        if status == 'Almoço': ui_lists['almoco'].append(nome)
+        elif 'Sessão:' in str(status): ui_lists['sessao_especifica'].append((nome, status))
+        elif 'Atividade:' in str(status): ui_lists['atividade_especifica'].append((nome, status))
 
     st.subheader(f'✅ Na Fila ({len(ui_lists["fila"])})')
     render_order = get_ordered_visual_queue(queue, st.session_state.status_texto)
-    if not render_order: st.markdown('_Ninguém na fila._')
-    else:
-        for i, nome in enumerate(render_order):
-            if nome not in ui_lists['fila']: continue
-            col_nome, col_check = st.columns([0.85, 0.15], vertical_alignment='center')
-            col_check.checkbox(' ', key=f'chk_fila_{nome}', value=True, disabled=True, label_visibility='collapsed')
-            skip_flag = skips.get(nome, False); status_atual = st.session_state.status_texto.get(nome, '') or ''; extra = ''
-            if 'Atividade' in status_atual: extra += ' 📋'
-            if 'Projeto' in status_atual: extra += ' 🏗️'
-            if nome == responsavel: display = f'<span style="background-color: {COR_PRIMARIA}; color: #FFF; padding: 2px 6px; border-radius: 5px; font-weight: 800;">🥂 {nome}</span>'
-            elif skip_flag: display = f'<strong>{i}º {nome}</strong>{extra} <span style="background-color: #FFE0B2; padding: 2px 8px; border-radius: 10px;">Pulando ⏭️</span>'
-            else: display = f'<strong>{i}º {nome}</strong>{extra} <span style="background-color: #FFF3E0; padding: 2px 8px; border-radius: 10px;">Aguardando</span>'
-            col_nome.markdown(display, unsafe_allow_html=True)
-    st.markdown('---')
-
-    def _render_section(titulo, icon, itens, cor):
-        st.subheader(f'{icon} {titulo} ({len(itens)})')
-        if not itens: st.markdown(f'_Nenhum._')
-        else:
-            for item in itens:
-                nome = item[0] if isinstance(item, tuple) else item
-                desc = item[1] if isinstance(item, tuple) else titulo
-                col_n, col_c = st.columns([0.85, 0.15], vertical_alignment='center')
-                if titulo == 'Indisponível': col_c.checkbox(' ', key=f'chk_{titulo}_{nome}', value=False, on_change=enter_from_indisponivel, args=(nome,), label_visibility='collapsed')
-                col_n.markdown(f"<div style='font-size: 16px; margin: 2px 0;'><strong>{nome}</strong><span style='background-color: {COR_FUNDO_CARD}; color: #333; padding: 2px 8px; border-radius: 12px; font-size: 14px; margin-left: 8px;'>{desc}</span></div>", unsafe_allow_html=True)
-        st.markdown('---')
-        
-    _render_section('Atend. Presencial', '🤝', ui_lists['presencial_especifico'], 'orange')
-    _render_section('Em Demanda', '📋', ui_lists['atividade_especifica'], 'orange')
-    _render_section('Projetos', '🏗️', ui_lists['projeto_especifico'], 'blue')
-    _render_section('Treinamento', '🎓', ui_lists['treinamento_especifico'], 'teal')
-    _render_section('Reuniões', '📅', ui_lists['reuniao_especifica'], 'violet')
-    _render_section('Almoço', '🍽️', ui_lists['almoco'], 'red')
-    _render_section('Sessão', '🎙️', ui_lists['sessao_especifica'], 'green')
-    _render_section('Saída rápida', '🚶', ui_lists['saida'], 'red')
-    _render_section('Indisponível', '❌', ui_lists['indisponivel'], 'grey')
+    for i, nome in enumerate(render_order):
+        if nome in ui_lists['fila']:
+            clr = COR_LARANJA_PRIMARIA if nome == holder else COR_FUNDO_ALERTA
+            st.markdown(f"<div style='background:{clr}; padding:8px; border-radius:5px; margin-bottom:5px;'><b>{i+1}º {nome}</b></div>", unsafe_allow_html=True)
