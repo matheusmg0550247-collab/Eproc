@@ -3,7 +3,7 @@ import streamlit as st
 import pandas as pd
 import requests
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from operator import itemgetter
 from streamlit_autorefresh import st_autorefresh
 import json
@@ -26,8 +26,11 @@ except ImportError:
 from utils import (get_brazil_time, get_secret, send_to_chat)
 
 # ============================================
-# 1. CONFIGURAÇÕES E CONSTANTES
+# 1. CONFIGURAÇÕES E CONSTANTES (EQUIPE ID 2 - CESUPE)
 # ============================================
+DB_APP_ID = 2        # ID da Fila desta equipe
+LOGMEIN_DB_ID = 1    # ID do LogMeIn (COMPARTILHADO - SEMPRE 1)
+
 CONSULTORES = sorted([
     "Barbara Mara", "Bruno Glaicon", "Claudia Luiza", "Douglas Paiva", "Fábio Alves", "Glayce Torres", 
     "Isabela Dias", "Isac Candido", "Ivana Guimarães", "Leonardo Damaceno", "Marcelo PenaGuerra", 
@@ -42,7 +45,9 @@ REG_DESFECHO_OPCOES = ["Resolvido - Cesupe", "Escalonado"]
 
 OPCOES_ATIVIDADES_STATUS = ["HP", "E-mail", "WhatsApp Plantão", "Homologação", "Redação Documentos", "Outros"]
 
+# URLs e Visuais (PADRÃO DOURADO ORIGINAL)
 GIF_BASTAO_HOLDER = "https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExa3Uwazd5cnNra2oxdDkydjZkcHdqcWN2cng0Y2N0cmNmN21vYXVzMiZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/3rXs5J0hZkXwTZjuvM/giphy.gif"
+GIF_LOGMEIN_TARGET = "https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExZjFvczlzd3ExMWc2cWJrZ3EwNmplM285OGFqOHE1MXlzdnd4cndibiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/mcsPU3SkKrYDdW3aAU/giphy.gif"
 BASTAO_EMOJI = "🥂" 
 PUG2026_FILENAME = "pug2026.png"
 APP_URL_CLOUD = 'https://controle-bastao-cesupe.streamlit.app'
@@ -52,33 +57,32 @@ CHAT_WEBHOOK_BASTAO = get_secret("chat", "bastao")
 WEBHOOK_STATE_DUMP = get_secret("webhook", "test_state")
 
 # ============================================
-# 2. OTIMIZAÇÃO DE MEMÓRIA (CACHES)
+# 2. OTIMIZAÇÃO E CONEXÃO
 # ============================================
 
-# REMOVIDO @st.cache_resource DAQUI PARA GARANTIR CONEXÃO SEMPRE NOVA
 def get_supabase():
     try: 
         return create_client(st.secrets["supabase"]["url"], st.secrets["supabase"]["key"])
-    except: 
+    except Exception as e:
+        st.error(f"Erro Conexão DB: {e}") 
         return None
 
-# MANTIDO CACHE NO GRÁFICO (PESADO)
 @st.cache_data(ttl=86400, show_spinner=False)
 def carregar_dados_grafico():
     sb = get_supabase()
     if not sb: return None, None
     try:
-        res = sb.table("atendimentos_resumo").select("data").eq("id", 2).execute()
+        # ID 2
+        res = sb.table("atendimentos_resumo").select("data").eq("id", DB_APP_ID).execute()
         if res.data:
             json_data = res.data[0]['data']
             if 'totais_por_relatorio' in json_data:
                 df = pd.DataFrame(json_data['totais_por_relatorio'])
                 return df, json_data.get('gerado_em', '-')
     except Exception as e:
-        print(f"Erro ao carregar gráfico: {e}")
+        st.error(f"Erro gráfico: {e}")
     return None, None
 
-# MANTIDO CACHE NA IMAGEM (IO DE DISCO)
 @st.cache_data
 def get_img_as_base64_cached(file_path):
     try:
@@ -88,27 +92,68 @@ def get_img_as_base64_cached(file_path):
     except: return None
 
 # ============================================
-# 3. REPOSITÓRIO (INLINE - SEM DEPENDÊNCIAS EXTERNAS)
+# 3. REPOSITÓRIO (COM TRATAMENTO DE TIMEDELTA)
 # ============================================
+
+def clean_data_for_db(obj):
+    if isinstance(obj, dict):
+        return {k: clean_data_for_db(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [clean_data_for_db(i) for i in obj]
+    elif isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    elif isinstance(obj, timedelta):
+        return obj.total_seconds()
+    else:
+        return obj
+
 def load_state_from_db():
     sb = get_supabase()
     if not sb: return {}
     try:
-        response = sb.table("app_state").select("state_data").eq("id", 1).execute()
+        # ID 2
+        response = sb.table("app_state").select("data").eq("id", DB_APP_ID).execute()
         if response.data and len(response.data) > 0:
-            return response.data[0].get("state_data", {})
+            return response.data[0].get("data", {})
         return {}
     except Exception as e:
-        print(f"Erro load: {e}")
+        st.error(f"⚠️ Erro ao ler DB: {e}")
         return {}
 
 def save_state_to_db(state_data):
     sb = get_supabase()
+    if not sb: 
+        st.error("Sem conexão para salvar.")
+        return
+    try:
+        sanitized_data = clean_data_for_db(state_data)
+        # ID 2
+        sb.table("app_state").upsert({"id": DB_APP_ID, "data": sanitized_data}).execute()
+    except Exception as e:
+        st.error(f"🔥 ERRO DE ESCRITA NO BANCO: {e}")
+
+# --- LOGMEIN DB ---
+def get_logmein_status():
+    sb = get_supabase()
+    if not sb: return None, False
+    try:
+        res = sb.table("controle_logmein").select("*").eq("id", LOGMEIN_DB_ID).execute()
+        if res.data:
+            return res.data[0].get('consultor_atual'), res.data[0].get('em_uso', False)
+    except: pass
+    return None, False
+
+def set_logmein_status(consultor, em_uso):
+    sb = get_supabase()
     if not sb: return
     try:
-        sb.table("app_state").upsert({"id": 1, "state_data": state_data}).execute()
-    except Exception as e:
-        print(f"Erro save: {e}")
+        dados = {
+            "consultor_atual": consultor if em_uso else None,
+            "em_uso": em_uso,
+            "data_inicio": datetime.now().isoformat()
+        }
+        sb.table("controle_logmein").update(dados).eq("id", LOGMEIN_DB_ID).execute()
+    except Exception as e: st.error(f"Erro LogMeIn DB: {e}")
 
 # ============================================
 # 4. FUNÇÕES DE UTILIDADE E IP
@@ -155,35 +200,46 @@ def get_ordered_visual_queue(queue, status_dict):
 # ============================================
 # 5. LÓGICA DE BANCO / CERTIDÃO / LOGS
 # ============================================
-def verificar_duplicidade_certidao(tipo, n_processo=None, data_evento=None, hora_periodo=None):
+
+def verificar_duplicidade_certidao(tipo, processo=None, data=None):
     sb = get_supabase()
     if not sb: return False
     try:
-        query = sb.table("certidoes_registro").select("*").eq("tipo", tipo)
-        if tipo in ['Física', 'Eletrônica'] and n_processo:
-            proc_limpo = str(n_processo).strip().rstrip('.')
+        query = sb.table("certidoes_registro").select("*")
+        if tipo in ['Físico', 'Eletrônico', 'Física', 'Eletrônica'] and processo:
+            proc_limpo = str(processo).strip()
             if not proc_limpo: return False
-            response = query.ilike("n_processo", f"%{proc_limpo}%").execute()
+            response = query.eq("processo", proc_limpo).execute()
             return len(response.data) > 0
-        elif tipo == 'Geral' and data_evento:
-            data_str = data_evento.isoformat() if hasattr(data_evento, 'isoformat') else str(data_evento)
-            query = query.eq("data_evento", data_str)
-            if hora_periodo: query = query.eq("hora_periodo", hora_periodo)
-            response = query.execute()
-            return len(response.data) > 0
-    except: return False
-    return False
+        return False
+    except Exception as e:
+        print(f"Erro duplicidade: {e}")
+        return False
 
 def salvar_certidao_db(dados):
     sb = get_supabase()
     if not sb: return False
     try:
-        dados['device_id'] = st.session_state.get('device_id_val', 'unknown')
+        if isinstance(dados.get('data'), (date, datetime)):
+            dados['data'] = dados['data'].isoformat()
+        if 'hora_periodo' in dados:
+            if dados['hora_periodo']:
+                dados['motivo'] = f"{dados.get('motivo', '')} - Hora/Período: {dados['hora_periodo']}"
+            del dados['hora_periodo']
+        if 'n_processo' in dados: 
+            dados['processo'] = dados.pop('n_processo')
+        if 'n_chamado' in dados: 
+            dados['incidente'] = dados.pop('n_chamado')
+        if 'data_evento' in dados:
+            dados['data'] = dados.pop('data_evento')
+
         sb.table("certidoes_registro").insert(dados).execute()
         return True
-    except: return False
+    except Exception as e:
+        st.error(f"Erro ao salvar no Supabase: {e}")
+        return False
 
-def gerar_docx_certidao_internal(tipo, numero, data, consultor, motivo, chamado="", hora=""):
+def gerar_docx_certidao_internal(tipo, numero, data, consultor, motivo, chamado="", hora="", nome_parte=""):
     try:
         doc = Document()
         section = doc.sections[0]
@@ -198,35 +254,59 @@ def gerar_docx_certidao_internal(tipo, numero, data, consultor, motivo, chamado=
         head_p.add_run("Rua Ouro Preto, N° 1564 - Bairro Santo Agostinho - CEP 30170-041 - Belo Horizonte - MG\nwww.tjmg.jus.br - Andar: 3º e 4º PV")
         doc.add_paragraph("\n")
         
-        if tipo == 'Geral': p_num = doc.add_paragraph(f"Parecer GEJUD/DIRTEC/TJMG nº ____/2026.")
-        else: p_num = doc.add_paragraph(f"Parecer Técnico GEJUD/DIRTEC/TJMG nº ____/2026.")
+        # Numeração
+        if tipo == 'Geral': p_num = doc.add_paragraph(f"Parecer GEJUD/DIRTEC/TJMG nº ____/2026. Assunto: Notifica erro no “JPe – 2ª Instância” ao peticionar.")
+        else: p_num = doc.add_paragraph(f"Parecer Técnico GEJUD/DIRTEC/TJMG nº ____/2026. Assunto: Notifica erro no “JPe – 2ª Instância” ao peticionar.")
         p_num.runs[0].bold = True
         
-        if tipo == 'Geral': doc.add_paragraph("Assunto: Notifica erro no \"JPe – 2ª Instância\" ao peticionar")
-        else: doc.add_paragraph("Assunto: Notifica erro no \"JPe – 2ª Instância\" ao peticionar.")
-             
-        doc.add_paragraph(f"\nExmo(a). Senhor(a) Relator(a),\n")
-        corpo = doc.add_paragraph(); corpo.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        # Data por extenso (Estilo do Modelo)
+        # Tenta converter a string 'data' (dd/mm/aaaa) para objeto para extrair dia/mês/ano
+        data_extenso_str = ""
+        try:
+            dt_obj = datetime.strptime(data, "%d/%m/%Y")
+            meses = {1:'janeiro', 2:'fevereiro', 3:'março', 4:'abril', 5:'maio', 6:'junho', 
+                     7:'julho', 8:'agosto', 9:'setembro', 10:'outubro', 11:'novembro', 12:'dezembro'}
+            data_extenso_str = f"Belo Horizonte, {dt_obj.day} de {meses[dt_obj.month]} de {dt_obj.year}"
+        except:
+            data_extenso_str = f"Belo Horizonte, {data}" # Fallback
+            
+        doc.add_paragraph(data_extenso_str)
+              
+        doc.add_paragraph(f"Exmo(a). Senhor(a) Relator(a),")
         
         if tipo == 'Geral':
+            corpo = doc.add_paragraph(); corpo.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
             txt = (f"Para fins de cumprimento dos artigos 13 e 14 da Resolução nº 780/2014 do Tribunal de Justiça do Estado de Minas Gerais, "
                    f"informamos que em {data} houve indisponibilidade do portal JPe, superior a uma hora, {hora}, que impossibilitou o peticionamento eletrônico de recursos em processos que já tramitavam no sistema.")
             corpo.add_run(txt)
             doc.add_paragraph("\nColocamo-nos à disposição para outras que se fizerem necessárias.")
             
-        elif tipo == 'Eletrônica':
-            corpo.add_run(f"Informamos que de {data}, houve indisponibilidade específica do sistema para o peticionamento do processo nº {numero}.\n\n")
+        elif tipo in ['Eletrônica', 'Eletrônico']:
+            corpo = doc.add_paragraph(); corpo.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+            corpo.add_run(f"Informamos que de {data}, houve indisponibilidade específica do sistema para o peticionamento do processo nº {numero}")
+            if nome_parte: corpo.add_run(f", Parte/Advogado: {nome_parte}")
+            corpo.add_run(".\n\n")
             corpo.add_run(f"O Chamado de número {chamado if chamado else '_____'}, foi aberto e encaminhado à DIRTEC (Diretoria Executiva de Tecnologia da Informação e Comunicação).\n\n")
             corpo.add_run("Esperamos ter prestado as informações solicitadas e colocamo-nos à disposição para outras que se fizerem necessárias.")
 
-        elif tipo == 'Física':
-            corpo.add_run(f"Informamos que no dia {data}, houve indisponibilidade específica do sistema para o peticionamento do processo nº {numero}.\n\n")
-            corpo.add_run(f"O Chamado de número {chamado if chamado else '_____'}, foi aberto e encaminhado à DIRTEC (Diretoria Executiva de Tecnologia da Informação e Comunicação).\n\n")
-            corpo.add_run("Diante da indisponibilidade específica, não havendo um prazo para solução do problema, a Primeira Vice-Presidência recomenda o ingresso dos autos físicos, nos termos do § 2º, do artigo 14º, da Resolução nº 780/2014, do Tribunal de Justiça do Estado de Minas Gerais.")
-            doc.add_paragraph("\nColocamo-nos à disposição para outras informações que se fizerem necessárias.")
+        elif tipo in ['Física', 'Físico']:
+            # Modelo exato solicitado
+            corpo1 = doc.add_paragraph(); corpo1.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+            corpo1.add_run(f"Informamos que no dia {data}, houve indisponibilidade específica do sistema para o peticionamento do processo nº {numero}")
+            if nome_parte: corpo1.add_run(f", Parte/Advogado: {nome_parte}")
+            corpo1.add_run(".")
+            
+            corpo2 = doc.add_paragraph(); corpo2.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+            corpo2.add_run(f"O Chamado de número {chamado if chamado else '_____'}, foi aberto e encaminhado à DIRTEC (Diretoria Executiva de Tecnologia da Informação e Comunicação).")
+            
+            corpo3 = doc.add_paragraph(); corpo3.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+            corpo3.add_run("Diante da indisponibilidade específica, não havendo um prazo para solução do problema, a Primeira Vice-Presidência recomenda o ingresso dos autos físicos, nos termos do § 2º, do artigo 14º, da Resolução nº 780/2014, do Tribunal de Justiça do Estado de Minas Gerais.")
+            
+            doc.add_paragraph("Colocamo-nos à disposição para outras informações que se fizerem necessárias.")
 
         doc.add_paragraph("\nRespeitosamente,")
-        doc.add_paragraph("\n\n___________________________________\nWaner Andrade Silva\n0-009020-9\nCoordenação de Análise e Integração de Sistemas Judiciais Informatizados - COJIN\nGerência de Sistemas Judiciais - GEJUD\nDiretoria Executiva de Tecnologia da Informação e Comunicação - DIRTEC")
+        sign = doc.add_paragraph("\n___________________________________\nWaner Andrade Silva\n0-009020-9\nCoordenação de Análise e Integração de Sistemas Judiciais Informatizados - COJIN\nGerência de Sistemas Judiciais - GEJUD\nDiretoria Executiva de Tecnologia da Informação e Comunicação - DIRTEC")
+        sign.runs[0].bold = True # Waner em negrito se desejar, ou padrão
         
         buffer = io.BytesIO(); doc.save(buffer); buffer.seek(0)
         return buffer
@@ -245,11 +325,9 @@ def send_chat_notification_internal(consultor, status):
 def send_state_dump_webhook(state_data):
     if not WEBHOOK_STATE_DUMP: return False
     try:
-        def json_serial(obj):
-            if isinstance(obj, (datetime, datetime.date)): return obj.isoformat()
-            raise TypeError ("Type not serializable")
+        sanitized_data = clean_data_for_db(state_data)
         headers = {'Content-Type': 'application/json'}
-        requests.post(WEBHOOK_STATE_DUMP, data=json.dumps(state_data, default=json_serial), headers=headers, timeout=5)
+        requests.post(WEBHOOK_STATE_DUMP, data=json.dumps(sanitized_data), headers=headers, timeout=5)
         return True
     except: return False
 
@@ -280,7 +358,6 @@ def handle_erro_novidade_submission(consultor, titulo, objetivo, relato, resulta
     except: return False
 
 def send_sessao_to_chat_fn(consultor, texto_mensagem):
-    # Não envia, conforme solicitado
     return True
 
 def handle_sugestao_submission(consultor, texto):
@@ -296,7 +373,6 @@ def handle_sugestao_submission(consultor, texto):
 def save_state():
     try:
         last_run = st.session_state.report_last_run_date
-        last_run_iso = last_run.isoformat() if isinstance(last_run, datetime) else datetime.min.isoformat()
         visual_queue_calculated = get_ordered_visual_queue(st.session_state.bastao_queue, st.session_state.status_texto)
         
         state_to_save = {
@@ -304,9 +380,12 @@ def save_state():
             'visual_queue': visual_queue_calculated, 'skip_flags': st.session_state.skip_flags, 
             'current_status_starts': st.session_state.current_status_starts,
             'bastao_counts': st.session_state.bastao_counts, 'priority_return_queue': st.session_state.priority_return_queue,
-            'bastao_start_time': st.session_state.bastao_start_time, 'report_last_run_date': last_run_iso, 
-            'rotation_gif_start_time': st.session_state.get('rotation_gif_start_time'), 'auxilio_ativo': st.session_state.get('auxilio_ativo', False), 
-            'daily_logs': st.session_state.daily_logs, 'simon_ranking': st.session_state.get('simon_ranking', []),
+            'bastao_start_time': st.session_state.bastao_start_time, 
+            'report_last_run_date': last_run, 
+            'rotation_gif_start_time': st.session_state.get('rotation_gif_start_time'), 
+            'auxilio_ativo': st.session_state.get('auxilio_ativo', False), 
+            'daily_logs': st.session_state.daily_logs, 
+            'simon_ranking': st.session_state.get('simon_ranking', []),
             'previous_states': st.session_state.get('previous_states', {})
         }
         save_state_to_db(state_to_save)
@@ -355,11 +434,8 @@ def log_status_change(consultor, old_status, new_status, duration):
     })
     st.session_state.current_status_starts[consultor] = now_br
 
+# --- ATUALIZADO: LOGICA EXCLUDENTE DE FILA VS STATUS ---
 def update_status(novo_status: str, marcar_indisponivel: bool = False, manter_fila_atual: bool = False):
-    """
-    manter_fila_atual: Se True, não força entrada nem saída da fila. Mantém o estado atual.
-    Usado para 'Atividades' e 'Projetos' quando a pessoa já está no bastão.
-    """
     selected = st.session_state.get('consultor_selectbox')
     if not selected or selected == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
     
@@ -369,32 +445,24 @@ def update_status(novo_status: str, marcar_indisponivel: bool = False, manter_fi
     forced_successor = None
     current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in (s or '')), None)
     
-    # === MEMÓRIA DE STATUS (Para retorno de Almoço) ===
     if novo_status == 'Almoço':
         st.session_state.previous_states[selected] = {
             'status': current,
             'in_queue': selected in st.session_state.bastao_queue
         }
     
-    if marcar_indisponivel and selected == current_holder and selected in st.session_state.bastao_queue:
-        try:
-            idx = st.session_state.bastao_queue.index(selected)
-            nxt = find_next_holder_index(idx, st.session_state.bastao_queue, st.session_state.skip_flags)
-            if nxt != -1: forced_successor = st.session_state.bastao_queue[nxt]
-        except: forced_successor = None
-    
     if marcar_indisponivel:
         st.session_state[f'check_{selected}'] = False; st.session_state.skip_flags[selected] = True
         if selected in st.session_state.bastao_queue:
             st.session_state.bastao_queue.remove(selected)
             if selected not in st.session_state.priority_return_queue: st.session_state.priority_return_queue.append(selected)
+    
+    if novo_status == 'Indisponível':
+        if selected in st.session_state.bastao_queue:
+            st.session_state.bastao_queue.remove(selected)
+    
     elif manter_fila_atual:
         pass 
-    else:
-        if selected not in st.session_state.bastao_queue:
-             st.session_state.bastao_queue.append(selected)
-        st.session_state[f'check_{selected}'] = True
-        st.session_state.skip_flags[selected] = False
     
     clean_new = (novo_status or '').strip()
     if clean_new == 'Fila Bastão': clean_new = ''
@@ -403,7 +471,6 @@ def update_status(novo_status: str, marcar_indisponivel: bool = False, manter_fi
     if selected == current_holder and selected in st.session_state.bastao_queue:
          final_status = ('Bastão | ' + clean_new).strip(' |') if clean_new else 'Bastão'
 
-    if not final_status and (selected in st.session_state.bastao_queue): final_status = ''
     if not final_status and (selected not in st.session_state.bastao_queue): final_status = 'Indisponível'
     
     try:
@@ -494,7 +561,7 @@ def init_session_state():
         'consultor_selectbox': "Selecione um nome", 'status_texto': {nome: 'Indisponível' for nome in CONSULTORES},
         'bastao_queue': [], 'skip_flags': {}, 'current_status_starts': {nome: now for nome in CONSULTORES},
         'bastao_counts': {nome: 0 for nome in CONSULTORES}, 'priority_return_queue': [], 'daily_logs': [], 'simon_ranking': [],
-        'word_buffer': None, 'aviso_duplicidade': False, 'previous_states': {}
+        'word_buffer': None, 'aviso_duplicidade': False, 'previous_states': {}, 'view_logmein_ui': False
     }
     for key, default in defaults.items():
         if key not in st.session_state: st.session_state[key] = default
@@ -559,9 +626,8 @@ def toggle_queue(consultor):
         st.session_state.skip_flags[consultor] = False
         if consultor in st.session_state.priority_return_queue: st.session_state.priority_return_queue.remove(consultor)
         current_s = st.session_state.status_texto.get(consultor, 'Indisponível')
-        if 'Indisponível' in current_s:
-            log_status_change(consultor, current_s, '', now_br - st.session_state.current_status_starts.get(consultor, now_br))
-            st.session_state.status_texto[consultor] = ''
+        log_status_change(consultor, current_s, '', now_br - st.session_state.current_status_starts.get(consultor, now_br))
+        st.session_state.status_texto[consultor] = ''
         check_and_assume_baton()
     save_state()
 
@@ -576,7 +642,6 @@ def leave_specific_status(consultor, status_type_to_remove):
         elif not saved['in_queue'] and consultor in st.session_state.bastao_queue:
              st.session_state.bastao_queue.remove(consultor)
         
-        # Restaura texto
         old_status = st.session_state.status_texto.get(consultor, '')
         new_status = saved['status']
         st.session_state[f'check_{consultor}'] = (consultor in st.session_state.bastao_queue)
@@ -617,7 +682,6 @@ def rotate_bastao():
     queue = st.session_state.bastao_queue; skips = st.session_state.skip_flags
     current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
     
-    # === VALIDAÇÃO: SÓ TITULAR PODE PASSAR ===
     if selected != current_holder:
         st.error(f"⚠️ Apenas quem está com o bastão ({current_holder}) pode passá-lo!")
         return
@@ -692,10 +756,16 @@ def send_daily_report_to_webhook():
     try: send_to_chat("extras", msg); return True
     except: return False
 
+def open_logmein_ui():
+    st.session_state.view_logmein_ui = True
+
+def close_logmein_ui():
+    st.session_state.view_logmein_ui = False
+
 # ============================================
 # 8. INTERFACE
 # ============================================
-st.set_page_config(page_title="Controle Bastão Cesupe 2026", layout="wide", page_icon="🥂")
+st.set_page_config(page_title="Controle Cesupe 2026", layout="wide", page_icon="🥂")
 st.markdown("""<style>div.stButton > button {width: 100%; white-space: nowrap; height: 3rem;} [data-testid='stHorizontalBlock'] div.stButton > button {white-space: nowrap; height: 3rem;}</style>""", unsafe_allow_html=True)
 init_session_state(); auto_manage_time()
 st.components.v1.html("<script>window.scrollTo(0, 0);</script>", height=0)
@@ -772,7 +842,7 @@ with col_principal:
     r3c1, r3c2, r3c3, r3c4 = st.columns(4)
     r3c1.button('🎙️ Sessão', on_click=toggle_view, args=('menu_sessao',), use_container_width=True)
     r3c2.button('🚶 Saída', on_click=update_status, args=('Saída rápida', True), use_container_width=True)
-    r3c3.button('🏃 Sair Bastão', on_click=update_status, args=('Ausente', True), use_container_width=True)
+    r3c3.button('🏃 Sair', on_click=update_status, args=('Indisponível', True), use_container_width=True)
     if r3c4.button("🤝 Atend. Presencial", use_container_width=True): toggle_view('menu_presencial')
 
     # --- MENUS DE AÇÃO ---
@@ -783,11 +853,11 @@ with col_principal:
             with c1:
                 if st.button("Confirmar", type="primary", use_container_width=True): 
                     st.session_state.active_view = None
-                    update_status(f"Atividade: {', '.join(at_t)} - {at_e}", manter_fila_atual=True)
+                    update_status(f"Atividade: {', '.join(at_t)} - {at_e}", manter_fila_atual=True) # MANTÉM FILA
             with c2:
                 if st.button("Sair de atividades", use_container_width=True):
                     st.session_state.active_view = None
-                    update_status("", manter_fila_atual=True) # Limpa texto, mantém fila/bastão
+                    update_status("", manter_fila_atual=True) 
             with c3:
                 if st.button("Cancelar", use_container_width=True): st.session_state.active_view = None; st.rerun()
 
@@ -798,7 +868,7 @@ with col_principal:
             with c_ok:
                 if st.button('✅ Confirmar', type='primary', use_container_width=True):
                     if not local_presencial.strip() or not objetivo_presencial.strip(): st.warning('Preencha Local e Objetivo.')
-                    else: st.session_state.active_view = None; update_status(f"Atendimento Presencial: {local_presencial.strip()} - {objetivo_presencial.strip()}", True)
+                    else: st.session_state.active_view = None; update_status(f"Atendimento Presencial: {local_presencial.strip()} - {objetivo_presencial.strip()}", True) # REMOVE DA FILA (TRUE)
             with c_cancel:
                 if st.button('❌ Cancelar', use_container_width=True): st.session_state.active_view = None; st.rerun()
 
@@ -807,7 +877,6 @@ with col_principal:
             st.subheader('🏗️ Registrar Projeto')
             proj_nome = st.text_input('Nome do Projeto:', placeholder='Digite o nome do projeto...')
             manter_bastao = st.checkbox("Continuar recebendo bastão? (Modo Atividade)")
-            
             c_ok, c_cancel = st.columns(2)
             with c_ok:
                 if st.button('✅ Confirmar', type='primary', use_container_width=True):
@@ -815,10 +884,8 @@ with col_principal:
                     else: 
                         st.session_state.active_view = None
                         status_msg = f"Projeto: {proj_nome.strip()}"
-                        if manter_bastao:
-                            update_status(status_msg, manter_fila_atual=True)
-                        else:
-                            update_status(status_msg, marcar_indisponivel=True)
+                        if manter_bastao: update_status(status_msg, manter_fila_atual=True)
+                        else: update_status(status_msg, marcar_indisponivel=True)
             with c_cancel:
                 if st.button('❌ Cancelar', use_container_width=True): st.session_state.active_view = None; st.rerun()
 
@@ -860,7 +927,42 @@ with col_principal:
             with c_cancel:
                 if st.button('❌ Cancelar', use_container_width=True): st.session_state.active_view = None; st.rerun()
 
-    st.markdown("####"); st.button('🔄 Atualizar (Manual)', on_click=manual_rerun, use_container_width=True); st.markdown("---")
+    st.markdown("####")
+    
+    # === LOGMEIN ===
+    if st.button('🔑 LogMeIn', use_container_width=True):
+        open_logmein_ui()
+    
+    if st.session_state.view_logmein_ui:
+        with st.container(border=True):
+            st.markdown("### 💻 Acesso LogMeIn")
+            l_user, l_in_use = get_logmein_status()
+            st.image(GIF_LOGMEIN_TARGET, width=300)
+            if l_in_use:
+                st.error(f"🔴 EM USO POR: **{l_user}**")
+                meu_nome = st.session_state.get('consultor_selectbox')
+                if meu_nome == l_user or meu_nome in CONSULTORES:
+                    if st.button("🔓 LIBERAR AGORA", type="primary", use_container_width=True):
+                        set_logmein_status(None, False)
+                        close_logmein_ui()
+                        st.rerun()
+                else:
+                    st.info("Aguarde a liberação.")
+            else:
+                st.success("✅ LIVRE PARA USO")
+                meu_nome = st.session_state.get('consultor_selectbox')
+                if meu_nome and meu_nome != "Selecione um nome":
+                    if st.button("🚀 ASSUMIR AGORA", use_container_width=True):
+                        set_logmein_status(meu_nome, True)
+                        close_logmein_ui()
+                        st.rerun()
+                else:
+                    st.warning("Selecione seu nome no topo para assumir.")
+            if st.button("Fechar", use_container_width=True):
+                close_logmein_ui()
+                st.rerun()
+
+    st.markdown("<hr style='border: 1px solid #FFD700; margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
     
     # --- FERRAMENTAS ---
     c_tool1, c_tool2, c_tool3, c_tool4, c_tool5, c_tool6, c_tool7 = st.columns(7)
@@ -928,28 +1030,55 @@ with col_principal:
 
     if st.session_state.active_view == "certidao":
         with st.container(border=True):
-            st.header("🖨️ Registro de Certidão (2026)"); tipo_cert = st.selectbox("Tipo:", ["Física", "Eletrônica", "Geral"]); c_data = st.date_input("Data do Evento:", value=get_brazil_time().date())
+            st.header("🖨️ Registro de Certidão (2026)")
+            c_data = st.date_input("Data do Evento:", value=get_brazil_time().date(), format="DD/MM/YYYY")
+            tipo_cert = st.selectbox("Tipo:", ["Física", "Eletrônica", "Geral"])
             c_cons = st.session_state.consultor_selectbox
-            if tipo_cert == "Geral": c_hora = st.text_input("Horário/Período:"); c_motivo = st.text_input("Motivo:"); c_proc = ""; c_chamado = ""
-            else: c_hora = ""; c1, c2 = st.columns(2); c_chamado = c1.text_input("Chamado:"); c_proc = c2.text_input("Processo:"); c_motivo = st.text_area("Motivo:")
+            
+            c_hora = ""
+            c_motivo = st.text_area("Motivo/Detalhes:", height=100)
+            
+            if tipo_cert == "Geral": 
+                c_hora = st.text_input("Horário/Período (Ex: 13h às 15h):")
+                c_proc = ""; c_chamado = ""; c_nome_parte = ""; c_peticao = ""
+                if c_hora: c_motivo = f"{c_motivo} - Período: {c_hora}"
+            else: 
+                c1, c2 = st.columns(2)
+                c_proc = c1.text_input("Processo (Com pontuação):")
+                c_chamado = c2.text_input("Incidente/Chamado:")
+                c3, c4 = st.columns(2)
+                c_nome_parte = c3.text_input("Nome da Parte/Advogado:")
+                c_peticao = c4.selectbox("Tipo de Petição:", ["Inicial", "Recursal", "Intermediária", "Outros"])
             
             c1, c2 = st.columns(2)
             with c1:
-                if st.button("📄 Gerar Word", use_container_width=True): st.session_state.word_buffer = gerar_docx_certidao_internal(tipo_cert, c_proc, c_data.strftime("%d/%m/%Y"), c_cons, c_motivo, c_chamado, c_hora)
-                if st.session_state.word_buffer: st.download_button("⬇️ Baixar", st.session_state.word_buffer, file_name="certidao.docx")
+                if st.button("📄 Gerar Word", use_container_width=True): 
+                    st.session_state.word_buffer = gerar_docx_certidao_internal(tipo_cert, c_proc, c_data.strftime("%d/%m/%Y"), c_cons, c_motivo, c_chamado, c_hora, c_nome_parte)
+                if st.session_state.word_buffer: 
+                    st.download_button("⬇️ Baixar", st.session_state.word_buffer, file_name="certidao.docx")
             with c2:
                 if st.button("💾 Salvar e Notificar", type="primary", use_container_width=True):
-                    if verificar_duplicidade_certidao(tipo_cert, c_proc, c_data, c_hora): st.session_state.aviso_duplicidade = True
+                    if verificar_duplicidade_certidao(tipo_cert, c_proc, c_data): 
+                        st.session_state.aviso_duplicidade = True
                     else:
-                        payload = {"tipo": tipo_cert, "data_evento": c_data.isoformat(), "consultor": c_cons, "n_chamado": c_chamado, "n_processo": c_proc, "motivo": c_motivo, "hora_periodo": c_hora}
+                        payload = {
+                            "tipo": tipo_cert, 
+                            "data": c_data.isoformat(), 
+                            "consultor": c_cons, 
+                            "incidente": c_chamado, 
+                            "processo": c_proc, 
+                            "motivo": c_motivo,
+                            "nome_parte": c_nome_parte,
+                            "peticao": c_peticao
+                        }
                         if salvar_certidao_db(payload):
-                            msg_cert = f"🖨️ **Nova Certidão Registrada**\n👤 **Autor:** {c_cons}\n📅 **Data:** {c_data.strftime('%d/%m/%Y')}\n📄 **Tipo:** {tipo_cert}"
+                            msg_cert = f"🖨️ **Nova Certidão Registrada**\n👤 **Autor:** {c_cons}\n📅 **Data:** {c_data.strftime('%d/%m/%Y')}\n📄 **Tipo:** {tipo_cert}\n📂 **Proc:** {c_proc}"
                             try: send_to_chat("certidao", msg_cert)
                             except Exception as e: st.error(f"Erro Webhook: {e}")
                             st.success("Salvo!"); time.sleep(1); st.session_state.active_view = None; st.session_state.word_buffer = None; st.rerun()
                         else: st.error("Erro ao salvar no banco.")
             if st.button("❌ Cancelar"): st.session_state.active_view = None; st.rerun()
-            if st.session_state.get('aviso_duplicidade'): st.error("Registro já existe!"); st.button("Ok", on_click=st.rerun)
+            if st.session_state.get('aviso_duplicidade'): st.error("⚠️ Este processo já possui registro de certidão!"); st.button("Ok, entendi", on_click=st.rerun)
 
     if st.session_state.active_view == "sugestao":
         with st.container(border=True):
@@ -965,12 +1094,9 @@ with col_principal:
             with c2:
                 if st.button("Cancelar", use_container_width=True): st.session_state.active_view = None; st.rerun()
 
-    # --- GRÁFICO OPERACIONAL (Cache de 24h) ---
     st.markdown("---")
     st.subheader("📊 Resumo Operacional (Semanal)")
-    
     df_chart, gerado_em = carregar_dados_grafico()
-    
     if df_chart is not None:
         try:
             df_long = df_chart.melt(id_vars=['relatorio'], value_vars=['Eproc', 'Legados'], var_name='Sistema', value_name='Qtd')
@@ -998,7 +1124,6 @@ with col_disponibilidade:
         status = st.session_state.status_texto.get(nome, 'Indisponível'); status = status if status is not None else 'Indisponível'
         if status in ('', None): pass
         elif status == 'Almoço': ui_lists['almoco'].append(nome)
-        elif status == 'Ausente': ui_lists['ausente'].append(nome)
         elif status == 'Saída rápida': ui_lists['saida'].append(nome)
         elif status == 'Indisponível' and nome not in st.session_state.bastao_queue: ui_lists['indisponivel'].append(nome)
         if isinstance(status, str):
@@ -1017,7 +1142,6 @@ with col_disponibilidade:
         for i, nome in enumerate(render_order):
             if nome not in ui_lists['fila']: continue
             col_nome, col_check = st.columns([0.85, 0.15], vertical_alignment='center')
-            # CHECKBOX AGORA É APENAS VISUAL (DISABLED), CONTROLE PELO BOTÃO BASTÃO
             col_check.checkbox(' ', key=f'chk_fila_{nome}', value=True, disabled=True, label_visibility='collapsed')
             skip_flag = skips.get(nome, False); status_atual = st.session_state.status_texto.get(nome, '') or ''; extra = ''
             if 'Atividade' in status_atual: extra += ' 📋'
@@ -1039,8 +1163,6 @@ with col_disponibilidade:
                 col_n, col_c = st.columns([0.85, 0.15], vertical_alignment='center')
                 if titulo == 'Indisponível': 
                     col_c.checkbox(' ', key=f'chk_{titulo}_{nome}', value=False, on_change=enter_from_indisponivel, args=(nome,), label_visibility='collapsed')
-                else:
-                    pass
                 col_n.markdown(f"<div style='font-size: 16px; margin: 2px 0;'><strong>{nome}</strong><span style='background-color: {bg_hex}; color: #333; padding: 2px 8px; border-radius: 12px; font-size: 14px; margin-left: 8px;'>{desc}</span></div>", unsafe_allow_html=True)
         st.markdown('---')
         
@@ -1052,5 +1174,4 @@ with col_disponibilidade:
     _render_section('Almoço', '🍽️', ui_lists['almoco'], 'red', 'Almoço')
     _render_section('Sessão', '🎙️', ui_lists['sessao_especifica'], 'green', 'Sessão')
     _render_section('Saída rápida', '🚶', ui_lists['saida'], 'red', 'Saída rápida')
-    _render_section('Ausente', '👤', ui_lists['ausente'], 'violet', 'Ausente')
     _render_section('Indisponível', '❌', ui_lists['indisponivel'], 'grey', '')
