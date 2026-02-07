@@ -1,9 +1,8 @@
 streamlit
 pandas
 requests
-plotly
-streamlit-autorefresh
 supabase
-altair
 python-docx
-pytz
+altair
+watchdog
+playwright==1.41.0
