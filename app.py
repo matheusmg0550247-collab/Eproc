@@ -38,29 +38,12 @@ st.markdown("""
     [data-testid="stSidebarNav"] {display: none;}
     .stDeployButton {display: none;}
     
-    .card-container {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-        gap: 15px;
-        padding: 20px;
+    div.stButton > button {
+        width: 100%;
+        border-radius: 8px;
+        height: auto;
+        padding: 10px;
     }
-    .user-card {
-        background-color: #f9f9f9;
-        border: 1px solid #ddd;
-        border-radius: 10px;
-        padding: 15px;
-        text-align: center;
-        cursor: pointer;
-        transition: transform 0.2s, box-shadow 0.2s;
-    }
-    .user-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-        border-color: #aaa;
-    }
-    .card-icon { font-size: 24px; margin-bottom: 8px; }
-    .card-name { font-weight: bold; color: #333; font-size: 16px; }
-    .card-team { font-size: 12px; color: #666; margin-top: 5px; text-transform: uppercase; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -83,20 +66,18 @@ if st.session_state["time_selecionado"] is None:
     # Ordena alfabeticamente
     todos_consultores.sort(key=lambda x: x["nome"])
 
-    # Renderiza Grade de Botões (Streamlit nativo para funcionalidade de clique)
-    # Usamos colunas para simular a grid
-    cols = st.columns(5) # 5 cards por linha
+    # Renderiza Grade de Botões (5 por linha)
+    cols = st.columns(5)
     for i, user in enumerate(todos_consultores):
         col = cols[i % 5]
         with col:
-            # Botão funcional com visual limpo
+            # O label inclui o ícone da equipe e o nome
             label = f"{user['dados']['icone']} {user['nome']}"
+            # A cor do botão pode ser personalizada via CSS se desejar, aqui usamos o padrão
             if st.button(label, key=f"btn_{user['nome']}", use_container_width=True):
                 st.session_state["time_selecionado"] = user["equipe"]
                 st.session_state["consultor_logado"] = user["nome"] # Define o login automaticamente
                 st.rerun()
-            # Legenda pequena abaixo do botão
-            st.markdown(f"<div style='text-align:center; font-size:10px; color:grey; margin-top:-10px; margin-bottom:10px;'>{user['equipe']}</div>", unsafe_allow_html=True)
 
 # DASHBOARD CARREGADO
 else:
@@ -112,9 +93,9 @@ else:
         team_id=dados_time["id"],
         team_name=dados_time["nome_exibicao"] if "nome_exibicao" in dados_time else chave,
         consultores_list=dados_time["consultores"],
-        webhook_key="bastao_eq1" if dados_time["id"] == 1 else "bastao_eq2", # Ajuste dinâmico da chave
-        app_url="http://138.197.212.187:8501", # IP da DigitalOcean
+        webhook_key="bastao_eq1" if dados_time["id"] == 1 else "bastao_eq2",
+        app_url="http://138.197.212.187:8501", # Ajuste conforme seu IP real
         other_team_id=outro_id,
         other_team_name=nome_outra_equipe,
-        usuario_logado=st.session_state["consultor_logado"] # Passa o usuário logado
+        usuario_logado=st.session_state["consultor_logado"]
     )
