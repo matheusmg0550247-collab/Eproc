@@ -2,14 +2,13 @@ import streamlit as st
 from dashboard import render_dashboard
 
 # ============================================
-# CONFIGURAÇÃO DAS EQUIPES
+# CONFIGURAÇÃO DAS EQUIPES E MEMBROS
 # ============================================
 EQUIPES = {
     "Equipe Legados": {
         "id": 1,
-        "nome_exibicao": "Equipe Legados", # Antiga Equipe 1
-        "webhook_key": "bastao_eq1",
-        "url_app": "https://controle-bastao-equipe1.streamlit.app",
+        "cor": "#FF8C00", # Laranja
+        "icone": "🏛️",
         "consultores": [
             "Alex Paulo", "Dirceu Gonçalves", "Douglas De Souza", "Farley Leandro", "Gleis Da Silva", 
             "Hugo Leonardo", "Igor Dayrell", "Jerry Marcos", "Jonatas Gomes", "Leandro Victor", 
@@ -18,9 +17,8 @@ EQUIPES = {
     },
     "Equipe Eproc": {
         "id": 2,
-        "nome_exibicao": "Equipe Eproc", # Antiga Equipe Cesupe
-        "webhook_key": "bastao_eq2",
-        "url_app": "https://controle-bastao-cesupe.streamlit.app",
+        "cor": "#1E88E5", # Azul
+        "icone": "⚖️",
         "consultores": [
             "Barbara Mara", "Bruno Glaicon", "Claudia Luiza", "Douglas Paiva", "Fábio Alves", "Glayce Torres", 
             "Isabela Dias", "Isac Candido", "Ivana Guimarães", "Leonardo Damaceno", "Marcelo PenaGuerra", 
@@ -30,54 +28,93 @@ EQUIPES = {
 }
 
 # ============================================
-# INTERFACE DE ENTRADA
+# INTERFACE DE ENTRADA (CARDS)
 # ============================================
 st.set_page_config(page_title="Central Bastão TJMG", layout="wide", page_icon="⚖️")
 
-# Esconde menu padrão para limpar a tela
+# CSS para os Cards e limpeza visual
 st.markdown("""
 <style>
     [data-testid="stSidebarNav"] {display: none;}
     .stDeployButton {display: none;}
+    
+    .card-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 15px;
+        padding: 20px;
+    }
+    .user-card {
+        background-color: #f9f9f9;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        padding: 15px;
+        text-align: center;
+        cursor: pointer;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .user-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        border-color: #aaa;
+    }
+    .card-icon { font-size: 24px; margin-bottom: 8px; }
+    .card-name { font-weight: bold; color: #333; font-size: 16px; }
+    .card-team { font-size: 12px; color: #666; margin-top: 5px; text-transform: uppercase; }
 </style>
 """, unsafe_allow_html=True)
 
 if "time_selecionado" not in st.session_state:
     st.session_state["time_selecionado"] = None
+if "consultor_logado" not in st.session_state:
+    st.session_state["consultor_logado"] = None
 
-# TELA DE LOGIN
+# TELA DE SELEÇÃO (LOGIN VIA CARD)
 if st.session_state["time_selecionado"] is None:
-    st.markdown("<h1 style='text-align: center; color: #FF8C00;'>🔐 Central Unificada de Bastão</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center;'>Selecione sua equipe para acessar o painel.</p>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; color: #333;'>🔐 Central Unificada de Bastão</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #666;'>Selecione seu nome para entrar:</p>", unsafe_allow_html=True)
     
-    st.divider()
+    # Organiza todos os consultores em uma lista única para exibir
+    todos_consultores = []
+    for nome_eq, dados in EQUIPES.items():
+        for c in dados["consultores"]:
+            todos_consultores.append({"nome": c, "equipe": nome_eq, "dados": dados})
     
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        for nome_chave, dados in EQUIPES.items():
-            if st.button(f"🚀 Acessar {dados['nome_exibicao']}", use_container_width=True, type="secondary"):
-                st.session_state["time_selecionado"] = nome_chave
+    # Ordena alfabeticamente
+    todos_consultores.sort(key=lambda x: x["nome"])
+
+    # Renderiza Grade de Botões (Streamlit nativo para funcionalidade de clique)
+    # Usamos colunas para simular a grid
+    cols = st.columns(5) # 5 cards por linha
+    for i, user in enumerate(todos_consultores):
+        col = cols[i % 5]
+        with col:
+            # Botão funcional com visual limpo
+            label = f"{user['dados']['icone']} {user['nome']}"
+            if st.button(label, key=f"btn_{user['nome']}", use_container_width=True):
+                st.session_state["time_selecionado"] = user["equipe"]
+                st.session_state["consultor_logado"] = user["nome"] # Define o login automaticamente
                 st.rerun()
-    
-    st.markdown("<br><br><p style='text-align: center; color: grey;'>Sistema Unificado 2026 - Docker Version</p>", unsafe_allow_html=True)
+            # Legenda pequena abaixo do botão
+            st.markdown(f"<div style='text-align:center; font-size:10px; color:grey; margin-top:-10px; margin-bottom:10px;'>{user['equipe']}</div>", unsafe_allow_html=True)
 
 # DASHBOARD CARREGADO
 else:
     chave = st.session_state["time_selecionado"]
     dados_time = EQUIPES[chave]
     
-    # Determina quem é a "Outra Equipe" para a função de espiar fila
-    # Se sou ID 1, o outro é 2. Se sou 2, o outro é 1.
+    # Define o ID da "Outra Equipe" para a função de espiar
     outro_id = 2 if dados_time["id"] == 1 else 1
     nome_outra_equipe = "Equipe Eproc" if dados_time["id"] == 1 else "Equipe Legados"
     
-    # CHAMA O MOTOR COMPLETO
+    # CHAMA O MOTOR (dashboard.py)
     render_dashboard(
         team_id=dados_time["id"],
-        team_name=dados_time["nome_exibicao"],
+        team_name=dados_time["nome_exibicao"] if "nome_exibicao" in dados_time else chave,
         consultores_list=dados_time["consultores"],
-        webhook_key=dados_time["webhook_key"],
-        app_url=dados_time["url_app"],
+        webhook_key="bastao_eq1" if dados_time["id"] == 1 else "bastao_eq2", # Ajuste dinâmico da chave
+        app_url="http://138.197.212.187:8501", # IP da DigitalOcean
         other_team_id=outro_id,
-        other_team_name=nome_outra_equipe
+        other_team_name=nome_outra_equipe,
+        usuario_logado=st.session_state["consultor_logado"] # Passa o usuário logado
     )
