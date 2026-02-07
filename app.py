@@ -1,5 +1,4 @@
 import streamlit as st
-from dashboard import render_dashboard
 
 # ============================================
 # CONFIGURAÇÃO DAS EQUIPES E MEMBROS
@@ -58,12 +57,14 @@ EQUIPES = {
 # ============================================
 st.set_page_config(page_title="Central Bastão TJMG", layout="wide", page_icon="⚖️")
 
+from dashboard import render_dashboard
+
 # CSS: Cards, limpeza visual e remoção de menu padrão
 st.markdown("""
 <style>
     [data-testid="stSidebarNav"] {display: none;}
     .stDeployButton {display: none;}
-    
+
     /* Estilo dos Botões da Home para parecerem Cards */
     div.stButton > button {
         width: 100%;
@@ -104,15 +105,15 @@ if "consultor_logado" not in st.session_state:
 if st.session_state["time_selecionado"] is None:
     st.markdown("<h1 style='text-align: center; color: #333;'>🔐 Central Unificada de Bastão</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #666;'>Selecione seu nome para entrar no sistema:</p>", unsafe_allow_html=True)
-    
+
     st.divider()
-    
+
     # Prepara lista unificada de todos os consultores
     todos_consultores = []
     for nome_eq, dados in EQUIPES.items():
         for c in dados["consultores"]:
             todos_consultores.append({"nome": c, "equipe": nome_eq, "dados": dados})
-    
+
     # Ordena alfabeticamente
     todos_consultores.sort(key=lambda x: x["nome"])
 
@@ -132,11 +133,11 @@ if st.session_state["time_selecionado"] is None:
 else:
     chave = st.session_state["time_selecionado"]
     dados_time = EQUIPES[chave]
-    
+
     # Lógica da "Outra Equipe" para visualização cruzada
     outro_id = 2 if dados_time["id"] == 1 else 1
     nome_outra_equipe = "Equipe Eproc" if dados_time["id"] == 1 else "Equipe Legados"
-    
+
     # Chama o motor principal passando o usuário logado e configurações
     render_dashboard(
         team_id=dados_time["id"],
