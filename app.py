@@ -2,7 +2,7 @@ import streamlit as st
 from dashboard import render_dashboard
 
 # ============================================
-# CONFIGURAÇÃO DAS EQUIPES
+# CONFIGURAÇÃO DAS EQUIPES E MEMBROS
 # ============================================
 EQUIPES = {
     "Equipe Legados": {
@@ -10,9 +10,21 @@ EQUIPES = {
         "cor": "#FF8C00", # Laranja
         "icone": "🏛️",
         "consultores": [
-            "Alex Paulo", "Dirceu Gonçalves", "Douglas De Souza", "Farley Leandro", "Gleis Da Silva", 
-            "Hugo Leonardo", "Igor Dayrell", "Jerry Marcos", "Jonatas Gomes", "Leandro Victor", 
-            "Luiz Henrique", "Marcelo Dos Santos", "Marina Silva", "Marina Torres", "Vanessa Ligiane"
+            "Alex Paulo", 
+            "Dirceu Gonçalves", 
+            "Douglas De Souza", 
+            "Farley Leandro", 
+            "Gleis Da Silva", 
+            "Hugo Leonardo", 
+            "Igor Dayrell", 
+            "Jerry Marcos", 
+            "Jonatas Gomes", 
+            "Leandro Victor", 
+            "Luiz Henrique", 
+            "Marcelo Dos Santos", 
+            "Marina Silva", 
+            "Marina Torres", 
+            "Vanessa Ligiane"
         ]
     },
     "Equipe Eproc": {
@@ -20,19 +32,33 @@ EQUIPES = {
         "cor": "#1E88E5", # Azul
         "icone": "⚖️",
         "consultores": [
-            "Barbara Mara", "Bruno Glaicon", "Claudia Luiza", "Douglas Paiva", "Fábio Alves", "Glayce Torres", 
-            "Isabela Dias", "Isac Candido", "Ivana Guimarães", "Leonardo Damaceno", "Marcelo PenaGuerra", 
-            "Michael Douglas", "Morôni", "Pablo Mol", "Ranyer Segal", "Sarah Leal", "Victoria Lisboa"
+            "Barbara Mara", 
+            "Bruno Glaicon", 
+            "Claudia Luiza", 
+            "Douglas Paiva", 
+            "Fábio Alves", 
+            "Glayce Torres", 
+            "Isabela Dias", 
+            "Isac Candido", 
+            "Ivana Guimarães", 
+            "Leonardo Damaceno", 
+            "Marcelo PenaGuerra", 
+            "Michael Douglas", 
+            "Morôni", 
+            "Pablo Mol", 
+            "Ranyer Segal", 
+            "Sarah Leal", 
+            "Victoria Lisboa"
         ]
     }
 }
 
 # ============================================
-# INTERFACE DE ENTRADA (CARDS)
+# INTERFACE DE ENTRADA (CARDS VISUAIS)
 # ============================================
 st.set_page_config(page_title="Central Bastão TJMG", layout="wide", page_icon="⚖️")
 
-# CSS para limpar a interface e estilizar os cards
+# CSS: Cards, limpeza visual e remoção de menu padrão
 st.markdown("""
 <style>
     [data-testid="stSidebarNav"] {display: none;}
@@ -68,6 +94,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# Inicialização de Estado de Login
 if "time_selecionado" not in st.session_state:
     st.session_state["time_selecionado"] = None
 if "consultor_logado" not in st.session_state:
@@ -77,14 +104,16 @@ if "consultor_logado" not in st.session_state:
 if st.session_state["time_selecionado"] is None:
     st.markdown("<h1 style='text-align: center; color: #333;'>🔐 Central Unificada de Bastão</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #666;'>Selecione seu nome para entrar no sistema:</p>", unsafe_allow_html=True)
+    
     st.divider()
     
-    # Prepara lista unificada
+    # Prepara lista unificada de todos os consultores
     todos_consultores = []
     for nome_eq, dados in EQUIPES.items():
         for c in dados["consultores"]:
             todos_consultores.append({"nome": c, "equipe": nome_eq, "dados": dados})
     
+    # Ordena alfabeticamente
     todos_consultores.sort(key=lambda x: x["nome"])
 
     # Renderiza Grade (5 colunas)
@@ -99,16 +128,16 @@ if st.session_state["time_selecionado"] is None:
                 st.session_state["consultor_logado"] = user["nome"]
                 st.rerun()
 
-# DASHBOARD CARREGADO
+# DASHBOARD CARREGADO (Se já logado)
 else:
     chave = st.session_state["time_selecionado"]
     dados_time = EQUIPES[chave]
     
-    # Lógica da "Outra Equipe"
+    # Lógica da "Outra Equipe" para visualização cruzada
     outro_id = 2 if dados_time["id"] == 1 else 1
     nome_outra_equipe = "Equipe Eproc" if dados_time["id"] == 1 else "Equipe Legados"
     
-    # Chama o motor principal passando o usuário logado
+    # Chama o motor principal passando o usuário logado e configurações
     render_dashboard(
         team_id=dados_time["id"],
         team_name=dados_time["nome_exibicao"] if "nome_exibicao" in dados_time else chave,
