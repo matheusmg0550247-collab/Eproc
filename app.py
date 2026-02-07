@@ -2,12 +2,12 @@ import streamlit as st
 from dashboard import render_dashboard
 
 # ============================================
-# CONFIGURAÇÃO DAS EQUIPES (NOVOS NOMES)
+# CONFIGURAÇÃO DAS EQUIPES
 # ============================================
 EQUIPES = {
     "Equipe Legados": {
         "id": 1,
-        "nome_exibicao": "Equipe Legados",
+        "nome_exibicao": "Equipe Legados", # Antiga Equipe 1
         "webhook_key": "bastao_eq1",
         "url_app": "https://controle-bastao-equipe1.streamlit.app",
         "consultores": [
@@ -18,7 +18,7 @@ EQUIPES = {
     },
     "Equipe Eproc": {
         "id": 2,
-        "nome_exibicao": "Equipe Eproc",
+        "nome_exibicao": "Equipe Eproc", # Antiga Equipe Cesupe
         "webhook_key": "bastao_eq2",
         "url_app": "https://controle-bastao-cesupe.streamlit.app",
         "consultores": [
@@ -34,7 +34,7 @@ EQUIPES = {
 # ============================================
 st.set_page_config(page_title="Central Bastão TJMG", layout="wide", page_icon="⚖️")
 
-# CSS para esconder elementos padrão e deixar mais limpo
+# Esconde menu padrão para limpar a tela
 st.markdown("""
 <style>
     [data-testid="stSidebarNav"] {display: none;}
@@ -45,7 +45,7 @@ st.markdown("""
 if "time_selecionado" not in st.session_state:
     st.session_state["time_selecionado"] = None
 
-# TELA DE LOGIN (SELEÇÃO)
+# TELA DE LOGIN
 if st.session_state["time_selecionado"] is None:
     st.markdown("<h1 style='text-align: center; color: #FF8C00;'>🔐 Central Unificada de Bastão</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center;'>Selecione sua equipe para acessar o painel.</p>", unsafe_allow_html=True)
@@ -58,17 +58,20 @@ if st.session_state["time_selecionado"] is None:
             if st.button(f"🚀 Acessar {dados['nome_exibicao']}", use_container_width=True, type="secondary"):
                 st.session_state["time_selecionado"] = nome_chave
                 st.rerun()
+    
+    st.markdown("<br><br><p style='text-align: center; color: grey;'>Sistema Unificado 2026 - Docker Version</p>", unsafe_allow_html=True)
 
 # DASHBOARD CARREGADO
 else:
     chave = st.session_state["time_selecionado"]
     dados_time = EQUIPES[chave]
     
-    # Define o ID da "Outra Equipe" para a função de espiar
+    # Determina quem é a "Outra Equipe" para a função de espiar fila
+    # Se sou ID 1, o outro é 2. Se sou 2, o outro é 1.
     outro_id = 2 if dados_time["id"] == 1 else 1
     nome_outra_equipe = "Equipe Eproc" if dados_time["id"] == 1 else "Equipe Legados"
     
-    # CHAMA O MOTOR (dashboard.py)
+    # CHAMA O MOTOR COMPLETO
     render_dashboard(
         team_id=dados_time["id"],
         team_name=dados_time["nome_exibicao"],
