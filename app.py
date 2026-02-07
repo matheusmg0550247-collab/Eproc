@@ -32,7 +32,7 @@ EQUIPES = {
 # ============================================
 st.set_page_config(page_title="Central Bastão TJMG", layout="wide", page_icon="⚖️")
 
-# CSS para os Cards e limpeza visual
+# CSS para melhorar a aparência dos botões-card
 st.markdown("""
 <style>
     [data-testid="stSidebarNav"] {display: none;}
@@ -42,7 +42,15 @@ st.markdown("""
         width: 100%;
         border-radius: 8px;
         height: auto;
-        padding: 10px;
+        padding: 15px 10px;
+        border: 1px solid #ddd;
+        transition: all 0.3s;
+    }
+    div.stButton > button:hover {
+        border-color: #FF8C00;
+        background-color: #FFF3E0;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -55,7 +63,8 @@ if "consultor_logado" not in st.session_state:
 # TELA DE SELEÇÃO (LOGIN VIA CARD)
 if st.session_state["time_selecionado"] is None:
     st.markdown("<h1 style='text-align: center; color: #333;'>🔐 Central Unificada de Bastão</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #666;'>Selecione seu nome para entrar:</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #666;'>Clique no seu nome para acessar o painel:</p>", unsafe_allow_html=True)
+    st.divider()
     
     # Organiza todos os consultores em uma lista única para exibir
     todos_consultores = []
@@ -63,7 +72,7 @@ if st.session_state["time_selecionado"] is None:
         for c in dados["consultores"]:
             todos_consultores.append({"nome": c, "equipe": nome_eq, "dados": dados})
     
-    # Ordena alfabeticamente
+    # Ordena alfabeticamente para facilitar a busca
     todos_consultores.sort(key=lambda x: x["nome"])
 
     # Renderiza Grade de Botões (5 por linha)
@@ -72,8 +81,7 @@ if st.session_state["time_selecionado"] is None:
         col = cols[i % 5]
         with col:
             # O label inclui o ícone da equipe e o nome
-            label = f"{user['dados']['icone']} {user['nome']}"
-            # A cor do botão pode ser personalizada via CSS se desejar, aqui usamos o padrão
+            label = f"{user['dados']['icone']} {user['nome']}\n({user['equipe']})"
             if st.button(label, key=f"btn_{user['nome']}", use_container_width=True):
                 st.session_state["time_selecionado"] = user["equipe"]
                 st.session_state["consultor_logado"] = user["nome"] # Define o login automaticamente
@@ -94,7 +102,7 @@ else:
         team_name=dados_time["nome_exibicao"] if "nome_exibicao" in dados_time else chave,
         consultores_list=dados_time["consultores"],
         webhook_key="bastao_eq1" if dados_time["id"] == 1 else "bastao_eq2",
-        app_url="http://138.197.212.187:8501", # Ajuste conforme seu IP real
+        app_url="http://138.197.212.187:8501", # IP da DigitalOcean
         other_team_id=outro_id,
         other_team_name=nome_outra_equipe,
         usuario_logado=st.session_state["consultor_logado"]
