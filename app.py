@@ -2,23 +2,23 @@ import streamlit as st
 from dashboard import render_dashboard
 
 # ============================================
-# CONFIGURAÇÃO DAS EQUIPES
+# CONFIGURAÇÃO DAS EQUIPES (NOVOS NOMES)
 # ============================================
 EQUIPES = {
-    "Equipe 1": {
+    "Equipe Legados": {
         "id": 1,
-        "nome_exibicao": "Equipe 1",
-        "webhook_key": "bastao_eq1", # Nome da chave que colocaremos no secrets.toml
-        "url_app": "https://controle-bastao-equipe1.streamlit.app", # Apenas referência
+        "nome_exibicao": "Equipe Legados",
+        "webhook_key": "bastao_eq1",
+        "url_app": "https://controle-bastao-equipe1.streamlit.app",
         "consultores": [
             "Alex Paulo", "Dirceu Gonçalves", "Douglas De Souza", "Farley Leandro", "Gleis Da Silva", 
             "Hugo Leonardo", "Igor Dayrell", "Jerry Marcos", "Jonatas Gomes", "Leandro Victor", 
             "Luiz Henrique", "Marcelo Dos Santos", "Marina Silva", "Marina Torres", "Vanessa Ligiane"
         ]
     },
-    "Equipe 2 (Cesupe)": {
+    "Equipe Eproc": {
         "id": 2,
-        "nome_exibicao": "Equipe 2 - Cesupe",
+        "nome_exibicao": "Equipe Eproc",
         "webhook_key": "bastao_eq2",
         "url_app": "https://controle-bastao-cesupe.streamlit.app",
         "consultores": [
@@ -34,46 +34,47 @@ EQUIPES = {
 # ============================================
 st.set_page_config(page_title="Central Bastão TJMG", layout="wide", page_icon="⚖️")
 
-# Estado de sessão para persistir a escolha
+# CSS para esconder elementos padrão e deixar mais limpo
+st.markdown("""
+<style>
+    [data-testid="stSidebarNav"] {display: none;}
+    .stDeployButton {display: none;}
+</style>
+""", unsafe_allow_html=True)
+
 if "time_selecionado" not in st.session_state:
     st.session_state["time_selecionado"] = None
 
-# SE NENHUM TIME FOI SELECIONADO, MOSTRA O MENU
+# TELA DE LOGIN (SELEÇÃO)
 if st.session_state["time_selecionado"] is None:
     st.markdown("<h1 style='text-align: center; color: #FF8C00;'>🔐 Central Unificada de Bastão</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center;'>Selecione sua equipe para acessar o painel de controle.</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center;'>Selecione sua equipe para acessar o painel.</p>", unsafe_allow_html=True)
     
     st.divider()
     
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         for nome_chave, dados in EQUIPES.items():
-            # Botão grande para cada equipe
             if st.button(f"🚀 Acessar {dados['nome_exibicao']}", use_container_width=True, type="secondary"):
                 st.session_state["time_selecionado"] = nome_chave
                 st.rerun()
-                
-    st.markdown("<br><br><p style='text-align: center; color: grey; font-size: 0.8rem;'>Sistema Unificado - 2026</p>", unsafe_allow_html=True)
 
-# SE UM TIME JÁ FOI SELECIONADO, CARREGA O DASHBOARD
+# DASHBOARD CARREGADO
 else:
     chave = st.session_state["time_selecionado"]
     dados_time = EQUIPES[chave]
     
-    # Barra lateral para trocar de equipe
-    with st.sidebar:
-        st.caption(f"Logado em: **{dados_time['nome_exibicao']}**")
-        if st.button("🔙 Trocar Equipe", use_container_width=True):
-            st.session_state["time_selecionado"] = None
-            st.cache_data.clear() # Limpa cache visual ao trocar
-            st.rerun()
-        st.divider()
-
+    # Define o ID da "Outra Equipe" para a função de espiar
+    outro_id = 2 if dados_time["id"] == 1 else 1
+    nome_outra_equipe = "Equipe Eproc" if dados_time["id"] == 1 else "Equipe Legados"
+    
     # CHAMA O MOTOR (dashboard.py)
     render_dashboard(
         team_id=dados_time["id"],
         team_name=dados_time["nome_exibicao"],
         consultores_list=dados_time["consultores"],
         webhook_key=dados_time["webhook_key"],
-        app_url=dados_time["url_app"]
+        app_url=dados_time["url_app"],
+        other_team_id=outro_id,
+        other_team_name=nome_outra_equipe
     )
