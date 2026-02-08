@@ -28,84 +28,6 @@ except ImportError:
 from utils import (get_brazil_time, get_secret, send_to_chat)
 
 # ============================================
-# COMPATIBILIDADE DE SECRETS/WEBHOOKS (DigitalOcean / Streamlit)
-# - Prioriza st.secrets (secrets.toml) e variáveis de ambiente
-# - Mantém fallback para implementações existentes em utils
-# ============================================
-_utils_get_secret = get_secret
-_utils_send_to_chat = send_to_chat
-
-def get_secret(section, key, default=None):
-    """Obtém um segredo com fallback: st.secrets -> env vars -> utils.get_secret."""
-    # 1) st.secrets
-    try:
-        sec = st.secrets.get(section, {})
-        if isinstance(sec, dict) and key in sec and sec.get(key) not in (None, ''):
-            return sec.get(key)
-    except Exception:
-        pass
-
-    # 2) Variáveis de ambiente (ex.: CHAT_BASTAO, CHAT_BASTAO_WEBHOOK, STREAMLIT_CHAT_BASTAO)
-    import os
-    cand = [
-        f"{section}_{key}".upper(),
-        f"{section}_{key}_WEBHOOK".upper(),
-        f"STREAMLIT_{section}_{key}".upper(),
-        f"STREAMLIT_{section}_{key}_WEBHOOK".upper(),
-    ]
-    for env_key in cand:
-        val = os.getenv(env_key)
-        if val:
-            return val
-
-    # 3) Fallback para utils.get_secret (caso exista e esteja funcional)
-    try:
-        val = _utils_get_secret(section, key)
-        if val not in (None, ''):
-            return val
-    except Exception:
-        pass
-
-    return default
-
-def send_to_chat(tipo, mensagem):
-    """Envia mensagem ao chat via webhook. Tenta utils.send_to_chat e faz fallback por requests.post."""
-    # 1) Tenta implementação original (se existir e estiver ok)
-    try:
-        ok = _utils_send_to_chat(tipo, mensagem)
-        if ok:
-            return True
-    except Exception:
-        pass
-
-    # 2) Fallback: resolve URL e envia via HTTP
-    url = get_secret('chat', tipo) or (get_secret('chat', 'bastao') if tipo == 'bastao' else None)
-    if not url:
-        return False
-
-    # Tenta payloads comuns (n8n/Slack/Discord/serviços genéricos)
-    payloads = [
-        {'text': mensagem, 'tipo': tipo},
-        {'message': mensagem, 'type': tipo},
-        {'content': mensagem, 'channel': tipo},
-    ]
-    for payload in payloads:
-        try:
-            r = requests.post(url, json=payload, timeout=8)
-            if 200 <= getattr(r, 'status_code', 0) < 300:
-                return True
-        except Exception:
-            continue
-
-    # Último fallback: texto puro
-    try:
-        r = requests.post(url, data=mensagem.encode('utf-8'), headers={'Content-Type': 'text/plain; charset=utf-8'}, timeout=8)
-        return bool(getattr(r, 'ok', False))
-    except Exception:
-        return False
-
-
-# ============================================
 # 1. CONFIGURAÇÕES E CONSTANTES (EQUIPE ID 2 - CESUPE)
 # ============================================
 DB_APP_ID = 2        # ID da Fila desta equipe
@@ -282,8 +204,29 @@ def _icons_telefone_cafe(indic: dict):
 APP_URL_CLOUD = 'https://controle-bastao-cesupe.streamlit.app'
 
 # Secrets
-CHAT_WEBHOOK_BASTAO = get_secret("chat", "bastao")
+# N8N / WhatsApp (Z-API via n8n)
+# Preferencialmente configure em .streamlit/secrets.toml:
+# [n8n]
+# bastao_giro = "https://.../webhook/...."
+# registros   = "https://.../webhook/...."
+#
+# Compatibilidade: caso não exista [n8n], usamos as chaves antigas em [chat]
+# - chat.bastao_eq1 / chat.bastao_eq2 (giro do bastão)
+# - chat.registro (demais registros/ferramentas)
+N8N_WEBHOOK_BASTAO_GIRO = get_secret("n8n", "bastao_giro") or get_secret("chat", "bastao_eq1") or get_secret("chat", "bastao_eq2")
+N8N_WEBHOOK_REGISTROS   = get_secret("n8n", "registros")   or get_secret("chat", "registro")
+
 WEBHOOK_STATE_DUMP = get_secret("webhook", "test_state")
+
+def post_n8n(url: str, payload: dict) -> bool:
+    """Envia evento para n8n (silencioso). Retorna True/False."""
+    if not url:
+        return False
+    try:
+        requests.post(url, json=payload, timeout=4)
+        return True
+    except Exception:
+        return False
 
 # ============================================
 # 2. OTIMIZAÇÃO E CONEXÃO
@@ -687,11 +630,19 @@ def gerar_docx_certidao_internal(tipo, numero, data, consultor, motivo, chamado=
 
 # Webhooks
 def send_chat_notification_internal(consultor, status):
-    if CHAT_WEBHOOK_BASTAO and status == 'Bastão':
-        msg = f"🎉 **BASTÃO GIRADO!** 🎉 \n\n- **Novo(a) Responsável:** {consultor}\n- **Acesse o Painel:** {APP_URL_CLOUD}"
-        try: send_to_chat("bastao", msg); return True
-        except: return False
-    return False
+    """Notificação interna de giro (compat). Agora envia via n8n, se configurado."""
+    if status != 'Bastão':
+        return False
+    payload = {
+        'evento': 'bastao_giro',
+        'timestamp': get_brazil_time().isoformat(),
+        'team_id': st.session_state.get('team_id'),
+        'team_name': st.session_state.get('team_name'),
+        'com_bastao_agora': consultor,
+        'proximos': [],
+    }
+    return post_n8n(N8N_WEBHOOK_BASTAO_GIRO, payload)
+
 
 def send_state_dump_webhook(state_data):
     if not WEBHOOK_STATE_DUMP: return False
@@ -704,29 +655,23 @@ def send_state_dump_webhook(state_data):
 
 def send_horas_extras_to_chat(consultor, data, inicio, tempo, motivo):
     msg = f"⏰ **Registro de Horas Extras**\n\n👤 **Consultor:** {consultor}\n📅 **Data:** {data.strftime('%d/%m/%Y')}\n🕐 **Início:** {inicio.strftime('%H:%M')}\n⏱️ **Tempo Total:** {tempo}\n📝 **Motivo:** {motivo}"
-    try: send_to_chat("extras", msg); return True
-    except: return False
+    return notify_registro_ferramenta("H_EXTRAS", consultor, dados={"data": data.strftime("%d/%m/%Y"), "inicio": inicio.strftime("%H:%M"), "tempo": tempo, "motivo": motivo}, mensagem=msg)
 
 def send_atendimento_to_chat(consultor, data, usuario, nome_setor, sistema, descricao, canal, desfecho, jira_opcional=""):
     jira_str = f"\n🔢 **Jira:** CESUPE-{jira_opcional}" if jira_opcional else ""
     msg = f"📋 **Novo Registro de Atendimento**\n\n👤 **Consultor:** {consultor}\n📅 **Data:** {data.strftime('%d/%m/%Y')}\n👥 **Usuário:** {usuario}\n🏢 **Nome/Setor:** {nome_setor}\n💻 **Sistema:** {sistema}\n📝 **Descrição:** {descricao}\n📞 **Canal:** {canal}\n✅ **Desfecho:** {desfecho}{jira_str}"
-    try: send_to_chat("registro", msg); return True
-    except: return False
+    return notify_registro_ferramenta("ATENDIMENTOS", consultor, dados={"data": data.strftime("%d/%m/%Y"), "usuario": usuario, "setor": nome_setor, "sistema": sistema, "canal": canal, "desfecho": desfecho, "jira": jira_opcional}, mensagem=msg)
 
 def send_chamado_to_chat(consultor, texto):
     if not consultor or consultor == 'Selecione um nome' or not texto.strip(): return False
     data_envio = get_brazil_time().strftime('%d/%m/%Y %H:%M')
     msg = f"🆘 **Rascunho de Chamado/Jira**\n📅 **Data:** {data_envio}\n\n👤 **Autor:** {consultor}\n\n📝 **Texto:**\n{texto}"
-    try: send_to_chat('chamado', msg); return True
-    except:
-        try: send_to_chat('registro', msg); return True
-        except: return False
+    return notify_registro_ferramenta('CHAMADOS', consultor, dados={'texto': texto}, mensagem=msg)
 
 def handle_erro_novidade_submission(consultor, titulo, objetivo, relato, resultado):
     data_envio = get_brazil_time().strftime("%d/%m/%Y %H:%M")
     msg = f"🐛 **Novo Relato de Erro/Novidade**\n📅 **Data:** {data_envio}\n\n👤 **Autor:** {consultor}\n📌 **Título:** {titulo}\n\n🎯 **Objetivo:**\n{objetivo}\n\n🧪 **Relato:**\n{relato}\n\n🏁 **Resultado:**\n{resultado}"
-    try: send_to_chat("erro", msg); return True
-    except: return False
+    return notify_registro_ferramenta("ERRO_NOVIDADE", consultor, dados={"titulo": titulo, "objetivo": objetivo, "relato": relato, "resultado": resultado}, mensagem=msg)
 
 def send_sessao_to_chat_fn(consultor, texto_mensagem):
     return True
@@ -735,8 +680,7 @@ def handle_sugestao_submission(consultor, texto):
     data_envio = get_brazil_time().strftime("%d/%m/%Y %H:%M")
     ip_usuario = get_remote_ip()
     msg = f"💡 **Nova Sugestão**\n📅 **Data:** {data_envio}\n👤 **Autor:** {consultor}\n🌐 **IP:** {ip_usuario}\n\n📝 **Sugestão:**\n{texto}"
-    try: send_to_chat("extras", msg); return True
-    except: return False
+    return notify_registro_ferramenta("H_EXTRAS", consultor, dados={"data": data.strftime("%d/%m/%Y"), "inicio": inicio.strftime("%H:%M"), "tempo": tempo, "motivo": motivo}, mensagem=msg)
 
 # ============================================
 # 7. FUNÇÕES DE ESTADO E LÓGICA
@@ -953,6 +897,73 @@ def update_status(novo_status: str, marcar_indisponivel: bool = False, manter_fi
     check_and_assume_baton(forced_successor)
     save_state()
 
+
+def get_bastao_holder_atual():
+    """Retorna quem está com o Bastão (texto contém 'Bastão')."""
+    return next((c for c, s in st.session_state.status_texto.items() if isinstance(s, str) and 'Bastão' in s), None)
+
+def get_proximos_bastao(holder, n=3):
+    """Retorna lista de próximos considerando skips."""
+    queue = st.session_state.bastao_queue
+    skips = st.session_state.skip_flags
+    if not queue:
+        return []
+    if holder not in queue:
+        # fallback: usa o primeiro da fila
+        holder = queue[0]
+    idx = queue.index(holder)
+    proximos = []
+    cursor = idx
+    while len(proximos) < n:
+        nxt = find_next_holder_index(cursor, queue, skips)
+        if nxt == -1:
+            break
+        nxt_name = queue[nxt]
+        # evita loop infinito
+        if nxt_name == holder or nxt_name in proximos:
+            break
+        proximos.append(nxt_name)
+        cursor = nxt
+    return proximos
+
+def notify_bastao_giro(reason='update', actor=None):
+    """Envia para n8n quem está com o bastão e os próximos (silencioso)."""
+    try:
+        holder = get_bastao_holder_atual()
+        if not holder and st.session_state.bastao_queue:
+            holder = st.session_state.bastao_queue[0]
+        payload = {
+            'evento': 'bastao_giro',
+            'motivo': reason,
+            'timestamp': get_brazil_time().isoformat(),
+            'team_id': st.session_state.get('team_id'),
+            'team_name': st.session_state.get('team_name'),
+            'actor': actor,
+            'com_bastao_agora': holder,
+            'proximos': get_proximos_bastao(holder, n=5),
+            'tamanho_fila': len(st.session_state.bastao_queue),
+        }
+        post_n8n(N8N_WEBHOOK_BASTAO_GIRO, payload)
+        return True
+    except Exception:
+        return False
+
+
+def notify_registro_ferramenta(tipo: str, actor: str, dados: dict = None, mensagem: str = None) -> bool:
+    """Envia evento de registro (Ferramentas) para n8n (silencioso)."""
+    payload = {
+        'evento': 'registro_ferramenta',
+        'tipo': tipo,
+        'timestamp': get_brazil_time().isoformat(),
+        'team_id': st.session_state.get('team_id'),
+        'team_name': st.session_state.get('team_name'),
+        'actor': actor,
+        'dados': dados or {},
+        'mensagem': mensagem,
+    }
+    return post_n8n(N8N_WEBHOOK_REGISTROS, payload)
+
+
 def toggle_queue(consultor):
     ensure_daily_reset(); st.session_state.gif_warning = False; now_br = get_brazil_time()
     if consultor in st.session_state.bastao_queue:
@@ -971,6 +982,7 @@ def toggle_queue(consultor):
         if consultor in st.session_state.priority_return_queue: st.session_state.priority_return_queue.remove(consultor)
         st.session_state.status_texto[consultor] = ''
         check_and_assume_baton()
+        notify_bastao_giro(reason='enter_bastao', actor=consultor)
     save_state()
 
 def rotate_bastao():
@@ -1390,9 +1402,6 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
                 st.session_state['consultor_selectbox'] = 'Selecione um nome'
                 st.rerun()
 
-            # Diagnóstico rápido
-            st.caption(f"📡 Webhook bastão: {'✅' if CHAT_WEBHOOK_BASTAO else '⚠️ não configurado'}")
-
             # Fila da outra equipe (somente visualização cruzada)
             if other_id:
                 try:
@@ -1737,7 +1746,7 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
         if st.session_state.active_view == "checklist":
             with st.container(border=True):
                 st.header("Gerador de Checklist"); data_eproc = st.date_input("Data:", value=get_brazil_time().date()); camara_eproc = st.text_input("Câmara:")
-                if st.button("Gerar HTML"): send_to_chat("sessao", f"Consultor {st.session_state.consultor_selectbox} acompanhando sessão {camara_eproc}"); st.success("Registrado no chat!")
+                if st.button("Gerar HTML"): st.success("Checklist gerado!")
                 if st.button("❌ Cancelar"): st.session_state.active_view = None; st.rerun()
 
         if st.session_state.active_view == "chamados":
@@ -1833,8 +1842,7 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
                             }
                             if salvar_certidao_db(payload):
                                 msg_cert = f"🖨️ **Nova Certidão Registrada**\n👤 **Autor:** {c_cons}\n📅 **Data:** {c_data.strftime('%d/%m/%Y')}\n📄 **Tipo:** {tipo_cert}\n📂 **Proc:** {c_proc}"
-                                try: send_to_chat("certidao", msg_cert)
-                                except Exception as e: st.error(f"Erro Webhook: {e}")
+                                notify_registro_ferramenta("CERTIDAO", st.session_state.consultor_selectbox, dados={"data": c_data.strftime("%d/%m/%Y"), "tipo": tipo_cert, "processo": c_proc}, mensagem=msg_cert)
                                 st.success("Salvo!"); time.sleep(1); st.session_state.active_view = None; st.session_state.word_buffer = None; st.rerun()
                             else: st.error("Erro ao salvar no banco.")
             
