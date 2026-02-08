@@ -1,5 +1,12 @@
 import streamlit as st
 
+# Força retorno à tela de nomes quando solicitado pelo dashboard
+if st.session_state.get('_force_back_to_names'):
+    st.session_state['time_selecionado'] = None
+    st.session_state['consultor_logado'] = None
+    st.session_state['_force_back_to_names'] = False
+
+
 # ============================================
 # CONFIGURAÇÃO DAS EQUIPES E MEMBROS
 # ============================================
