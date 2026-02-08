@@ -4,7 +4,6 @@ import streamlit as st
 if st.session_state.get('_force_back_to_names'):
     st.session_state['time_selecionado'] = None
     st.session_state['consultor_logado'] = None
-    st.session_state['consultor_selectbox'] = 'Selecione um nome'
     st.session_state['_force_back_to_names'] = False
 
 
