@@ -200,6 +200,11 @@ def save_state_to_db(app_id, state_data):
     try:
         sanitized_data = clean_data_for_db(state_data)
         sb.table("app_state").upsert({"id": app_id, "data": sanitized_data}).execute()
+        # Feedback visual pós-salvar (mostra no próximo rerun)
+        try:
+            st.session_state['_toast_msg'] = '✅ Registro salvo.'
+        except Exception:
+            pass
     except Exception as e:
         st.error(f"🔥 ERRO DE ESCRITA NO BANCO: {e}")
 
@@ -649,15 +654,35 @@ def update_status(novo_status: str, marcar_indisponivel: bool = False, manter_fi
             st.session_state.bastao_queue.remove(selected)
             if selected not in st.session_state.priority_return_queue: st.session_state.priority_return_queue.append(selected)
     
-    if novo_status == 'Indisponível':
-        if selected in st.session_state.bastao_queue:
-            st.session_state.bastao_queue.remove(selected)
+    if not marcar_indisponivel:
+        if novo_status == 'Indisponível':
+            # Indisponível sempre fora da fila
+            st.session_state[f'check_{selected}'] = False
+            st.session_state.skip_flags[selected] = True
+            if selected in st.session_state.bastao_queue:
+                if selected == current_holder:
+                    idx = st.session_state.bastao_queue.index(selected)
+                    nxt = find_next_holder_index(idx, st.session_state.bastao_queue, st.session_state.skip_flags)
+                    if nxt != -1: forced_successor = st.session_state.bastao_queue[nxt]
+                st.session_state.bastao_queue.remove(selected)
 
-    elif not manter_fila_atual:
-        if selected not in st.session_state.bastao_queue: st.session_state.bastao_queue.append(selected)
-        st.session_state[f'check_{selected}'] = True
-        st.session_state.skip_flags[selected] = False
-    
+        elif manter_fila_atual:
+            # Manter na fila do bastão (somente Atividades/Projetos quando marcado)
+            if selected not in st.session_state.bastao_queue: st.session_state.bastao_queue.append(selected)
+            st.session_state[f'check_{selected}'] = True
+            st.session_state.skip_flags[selected] = False
+
+        else:
+            # Por padrão, status remove da fila do bastão
+            st.session_state[f'check_{selected}'] = False
+            if selected in st.session_state.bastao_queue:
+                if selected == current_holder:
+                    idx = st.session_state.bastao_queue.index(selected)
+                    nxt = find_next_holder_index(idx, st.session_state.bastao_queue, st.session_state.skip_flags)
+                    if nxt != -1: forced_successor = st.session_state.bastao_queue[nxt]
+                st.session_state.bastao_queue.remove(selected)
+                if selected not in st.session_state.priority_return_queue: st.session_state.priority_return_queue.append(selected)
+            st.session_state.skip_flags[selected] = True
     final_status = (novo_status or '').strip()
     if selected == current_holder and selected in st.session_state.bastao_queue:
           final_status = ('Bastão | ' + final_status).strip(' |') if final_status else 'Bastão'
@@ -952,6 +977,14 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
     if consultores_list:
         # Mantém a lista recebida do app.py (duas equipes).
         CONSULTORES = list(consultores_list)
+    # Mostra feedback de salvamento pendente
+    try:
+        if st.session_state.get('_toast_msg'):
+            st.toast(st.session_state.get('_toast_msg'))
+            st.session_state['_toast_msg'] = None
+    except Exception:
+        pass
+
     # Infos para o painel lateral (visualização cruzada).
     st.session_state['team_name'] = team_name
     st.session_state['other_team_id'] = other_team_id
@@ -1027,9 +1060,8 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
         demais_na_fila = [n for n in raw_ordered if n != proximo and not skips.get(n, False)]
     
         if proximo:
-            rb = ""  # Ramal exibido apenas na fila da outra equipe
             ic = _icons_telefone_cafe(st.session_state.get('quick_indicators', {}).get(proximo, {}))
-            st.markdown(f"**Próximo Bastão:** {proximo}{rb}{ic}", unsafe_allow_html=True)
+            st.markdown(f"**Próximo Bastão:** {proximo}{ic}", unsafe_allow_html=True)
         else:
             st.markdown("**Próximo Bastão:** _Ninguém elegível_")
 
@@ -1055,26 +1087,7 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
         other_name = st.session_state.get('other_team_name', 'Outra Equipe')
         team_name = st.session_state.get('team_name', '')
 
-        if 'quick_panel_open' not in st.session_state:
-            st.session_state['quick_panel_open'] = False
-
-        # Menu suspenso no canto esquerdo: abre/fecha sob demanda
-        if not st.session_state.get('quick_panel_open', False):
-            c_menu_btn, c_menu_space = st.columns([0.25, 3.75], vertical_alignment="center")
-            with c_menu_btn:
-                if st.button("☰", key="btn_quick_panel_open"):
-                    st.session_state['quick_panel_open'] = True
-                    st.rerun()
-            with c_menu_space:
-                st.caption("")
-            return
-
-        with st.expander('🧭 Painel (outra equipe / LogMeIn / trocar consultor)', expanded=True):
-            c_close1, c_close2 = st.columns([0.85, 0.15], vertical_alignment="center")
-            with c_close2:
-                if st.button("✖ Fechar", key="btn_quick_panel_close"):
-                    st.session_state['quick_panel_open'] = False
-                    st.rerun()
+        with st.expander('🧭 Painel (outra equipe / LogMeIn / trocar consultor)', expanded=False):
             # Voltar para tela de seleção (app.py)
             if st.button('🔙 Voltar à tela de nomes', use_container_width=True, key='btn_voltar_nomes'):
                 st.session_state['time_selecionado'] = None
@@ -1115,6 +1128,18 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
                     return f"{nome}{rb}{ic}"
 
                 st.markdown(f"### 👥 Fila {other_name}")
+
+
+                if other_responsavel:
+
+
+                    st.markdown(f"**Com o Bastão agora:** {_fmt_other(other_responsavel)}", unsafe_allow_html=True)
+
+
+                else:
+
+
+                    st.markdown("**Com o Bastão agora:** _Ninguém_", unsafe_allow_html=True)
                 if proximo_outro:
                     st.markdown(f"**Próximo Bastão:** {_fmt_other(proximo_outro)}", unsafe_allow_html=True)
                 else:
@@ -1201,13 +1226,12 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
                 col_nome, col_check = st.columns([0.85, 0.15], vertical_alignment='center')
                 col_check.checkbox(' ', key=f'chk_fila_{nome}_frag', value=True, disabled=True, label_visibility='collapsed')
                 skip_flag = skips.get(nome, False); status_atual = st.session_state.status_texto.get(nome, '') or ''; extra = ''
-                ramal_badge = ""  # Ramal não é exibido no status interno; apenas na fila da outra equipe
                 indic_icons = _icons_telefone_cafe(st.session_state.get('quick_indicators', {}).get(nome, {}))
                 if 'Atividade' in status_atual: extra += ' 📋'
                 if 'Projeto' in status_atual: extra += ' 🏗️'
-                if nome == responsavel: display = f'<span style="background-color: #FF8C00; color: #FFF; padding: 2px 6px; border-radius: 5px; font-weight: 800;">🎭 {nome}{ramal_badge}{indic_icons}</span>'
-                elif skip_flag: display = f'<strong>{i}º {nome}{ramal_badge}{indic_icons}</strong>{extra} <span style="background-color: #FFECB3; padding: 2px 8px; border-radius: 10px;">Pulando ⏭️</span>'
-                else: display = f'<strong>{i}º {nome}{ramal_badge}{indic_icons}</strong>{extra} <span style="background-color: #FFE0B2; padding: 2px 8px; border-radius: 10px;">Aguardando</span>'
+                if nome == responsavel: display = f'<span style="background-color: #FF8C00; color: #FFF; padding: 2px 6px; border-radius: 5px; font-weight: 800;">🎭 {nome}{indic_icons}</span>'
+                elif skip_flag: display = f'<strong>{i}º {nome}{indic_icons}</strong>{extra} <span style="background-color: #FFECB3; padding: 2px 8px; border-radius: 10px;">Pulando ⏭️</span>'
+                else: display = f'<strong>{i}º {nome}{indic_icons}</strong>{extra} <span style="background-color: #FFE0B2; padding: 2px 8px; border-radius: 10px;">Aguardando</span>'
                 col_nome.markdown(display, unsafe_allow_html=True)
         st.markdown('---')
 
@@ -1223,9 +1247,8 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
                     if titulo == 'Indisponível': 
                         if col_c.checkbox(' ', key=f'chk_{titulo}_{nome}_frag', value=False, label_visibility='collapsed'):
                             enter_from_indisponivel(nome); st.rerun()
-                ramal_badge = ""  # Ramal não é exibido no status interno; apenas na fila da outra equipe
                 indic_icons = _icons_telefone_cafe(st.session_state.get('quick_indicators', {}).get(nome, {}))
-                col_n.markdown(f"<div style='font-size: 16px; margin: 2px 0;'><strong>{nome}{ramal_badge}{indic_icons}</strong><span style='background-color: {bg_hex}; color: #333; padding: 2px 8px; border-radius: 12px; font-size: 14px; margin-left: 8px;'>{desc}</span></div>", unsafe_allow_html=True)
+                col_n.markdown(f"<div style='font-size: 16px; margin: 2px 0;'><strong>{nome}{indic_icons}</strong><span style='background-color: {bg_hex}; color: #333; padding: 2px 8px; border-radius: 12px; font-size: 14px; margin-left: 8px;'>{desc}</span></div>", unsafe_allow_html=True)
             st.markdown('---')
         
         _render_section('Atend. Presencial', '🤝', ui_lists['presencial_especifico'], 'yellow', 'Atendimento Presencial')
@@ -1243,16 +1266,16 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
     # =========================================================================
 
     # Criamos as colunas FORA dos fragmentos para poder injetar conteúdo nelas
-    col_principal = st.container()  # Layout sem coluna lateral direita (como era antes)
+    col_principal, col_disponibilidade = st.columns([1.5, 1])
 
     # 1. Renderiza o conteúdo que se atualiza sozinho
     with col_principal:
-        # Menu suspenso no canto esquerdo (painel opcional)
-        render_right_sidebar()
-        # Renderiza o topo automático
+        # Apenas se não houver menu ativo, renderiza o topo automático
         render_header_info_left()
 
-    render_status_list()
+    with col_disponibilidade:
+        render_right_sidebar()
+        render_status_list()
 
     # 2. Renderiza os Botões de Ação na Coluna Esquerda (FORA do fragmento para funcionar sempre)
     with col_principal:
@@ -1298,15 +1321,21 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
         if st.session_state.active_view == 'menu_atividades':
             with st.container(border=True):
                 at_t = st.multiselect("Tipo:", OPCOES_ATIVIDADES_STATUS); at_e = st.text_input("Detalhe:")
+                manter_bastao_ativ = st.checkbox("Continuar recebendo bastão? (Atividade)", value=False, key="keep_bastao_ativ")
                 c1, c2, c3 = st.columns([1, 1, 1])
                 with c1:
                     if st.button("Confirmar", type="primary", use_container_width=True): 
                         st.session_state.active_view = None
-                        update_status(f"Atividade: {', '.join(at_t)} - {at_e}", manter_fila_atual=True) # MANTÉM FILA
+                        status_msg = f"Atividade: {', '.join(at_t)} - {at_e}"
+                        if manter_bastao_ativ:
+                            update_status(status_msg, manter_fila_atual=True)
+                        else:
+                            update_status(status_msg, marcar_indisponivel=True)
                 with c2:
                     if st.button("Sair de atividades", use_container_width=True):
                         st.session_state.active_view = None
-                        update_status("", manter_fila_atual=True) 
+                        handle_sair()
+                        st.rerun()
                 with c3:
                     if st.button("Cancelar", use_container_width=True): st.session_state.active_view = None; st.rerun()
 
