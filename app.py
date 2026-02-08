@@ -82,7 +82,7 @@ st.markdown("""
         border: 1px solid #ddd;
         background-color: #f8f9fa;
         color: #333;
-        transition: all 0.3s;
+        transition: all 0.25s ease; cursor: pointer;
         text-align: left;
         display: flex;
         align-items: center;
@@ -92,8 +92,8 @@ st.markdown("""
     div.stButton > button:hover {
         border-color: #FF8C00;
         background-color: #FFF3E0;
-        transform: translateY(-2px);
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        transform: translateY(-3px) scale(1.02);
+        box-shadow: 0 10px 18px rgba(0,0,0,0.12);
     }
     div.stButton > button p {
         font-size: 16px;
@@ -115,26 +115,42 @@ if st.session_state["time_selecionado"] is None:
 
     st.divider()
 
-    # Prepara lista unificada de todos os consultores
-    todos_consultores = []
-    for nome_eq, dados in EQUIPES.items():
-        for c in dados["consultores"]:
-            todos_consultores.append({"nome": c, "equipe": nome_eq, "dados": dados})
+    tab_legados, tab_eproc = st.tabs(["🏛️ Equipe Legados", "⚖️ Equipe Eproc"])
 
-    # Ordena alfabeticamente
-    todos_consultores.sort(key=lambda x: x["nome"])
+    # -------------------------------
+    # ABA: LEGADOS
+    # -------------------------------
+    with tab_legados:
+        st.markdown("<h3 style='margin-top:0;'>🏛️ Equipe Legados</h3>", unsafe_allow_html=True)
+        legados = EQUIPES["Equipe Legados"]["consultores"]
+        legados = sorted(legados)
 
-    # Renderiza Grade (5 colunas)
-    cols = st.columns(5)
-    for i, user in enumerate(todos_consultores):
-        col = cols[i % 5]
-        with col:
-            # Label com Ícone e Nome
-            label = f"{user['dados']['icone']} {user['nome']}"
-            if st.button(label, key=f"btn_{user['nome']}", use_container_width=True):
-                st.session_state["time_selecionado"] = user["equipe"]
-                st.session_state["consultor_logado"] = user["nome"]
-                st.rerun()
+        cols = st.columns(5)
+        for i, nome in enumerate(legados):
+            with cols[i % 5]:
+                label = f"{EQUIPES['Equipe Legados']['icone']} {nome}"
+                if st.button(label, key=f"btn_legados_{nome}", use_container_width=True):
+                    st.session_state["time_selecionado"] = "Equipe Legados"
+                    st.session_state["consultor_logado"] = nome
+                    st.rerun()
+
+    # -------------------------------
+    # ABA: EPROC
+    # -------------------------------
+    with tab_eproc:
+        st.markdown("<h3 style='margin-top:0;'>⚖️ Equipe Eproc</h3>", unsafe_allow_html=True)
+        eproc = EQUIPES["Equipe Eproc"]["consultores"]
+        eproc = sorted(eproc)
+
+        cols = st.columns(5)
+        for i, nome in enumerate(eproc):
+            with cols[i % 5]:
+                label = f"{EQUIPES['Equipe Eproc']['icone']} {nome}"
+                if st.button(label, key=f"btn_eproc_{nome}", use_container_width=True):
+                    st.session_state["time_selecionado"] = "Equipe Eproc"
+                    st.session_state["consultor_logado"] = nome
+                    st.rerun()
+
 
 # DASHBOARD CARREGADO (Se já logado)
 else:
