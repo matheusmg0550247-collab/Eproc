@@ -1027,14 +1027,14 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
         demais_na_fila = [n for n in raw_ordered if n != proximo and not skips.get(n, False)]
     
         if proximo:
-            rb = _badge_ramal_html(get_ramal_nome(proximo))
+            rb = ""  # Ramal exibido apenas na fila da outra equipe
             ic = _icons_telefone_cafe(st.session_state.get('quick_indicators', {}).get(proximo, {}))
             st.markdown(f"**Próximo Bastão:** {proximo}{rb}{ic}", unsafe_allow_html=True)
         else:
             st.markdown("**Próximo Bastão:** _Ninguém elegível_")
 
         if demais_na_fila:
-            demais_fmt = [f"{n}{_badge_ramal_html(get_ramal_nome(n))}{_icons_telefone_cafe(st.session_state.get('quick_indicators', {}).get(n, {}))}" for n in demais_na_fila]
+            demais_fmt = [f"{n}{_icons_telefone_cafe(st.session_state.get('quick_indicators', {}).get(n, {}))}" for n in demais_na_fila]
             st.markdown("**Demais na fila:** " + ", ".join(demais_fmt), unsafe_allow_html=True)
         else:
             st.markdown("**Demais na fila:** _Vazio_")
@@ -1055,7 +1055,26 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
         other_name = st.session_state.get('other_team_name', 'Outra Equipe')
         team_name = st.session_state.get('team_name', '')
 
-        with st.expander('🧭 Painel (outra equipe / LogMeIn / trocar consultor)', expanded=False):
+        if 'quick_panel_open' not in st.session_state:
+            st.session_state['quick_panel_open'] = False
+
+        # Menu suspenso no canto esquerdo: abre/fecha sob demanda
+        if not st.session_state.get('quick_panel_open', False):
+            c_menu_btn, c_menu_space = st.columns([0.25, 3.75], vertical_alignment="center")
+            with c_menu_btn:
+                if st.button("☰", key="btn_quick_panel_open"):
+                    st.session_state['quick_panel_open'] = True
+                    st.rerun()
+            with c_menu_space:
+                st.caption("")
+            return
+
+        with st.expander('🧭 Painel (outra equipe / LogMeIn / trocar consultor)', expanded=True):
+            c_close1, c_close2 = st.columns([0.85, 0.15], vertical_alignment="center")
+            with c_close2:
+                if st.button("✖ Fechar", key="btn_quick_panel_close"):
+                    st.session_state['quick_panel_open'] = False
+                    st.rerun()
             # Voltar para tela de seleção (app.py)
             if st.button('🔙 Voltar à tela de nomes', use_container_width=True, key='btn_voltar_nomes'):
                 st.session_state['time_selecionado'] = None
@@ -1182,7 +1201,7 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
                 col_nome, col_check = st.columns([0.85, 0.15], vertical_alignment='center')
                 col_check.checkbox(' ', key=f'chk_fila_{nome}_frag', value=True, disabled=True, label_visibility='collapsed')
                 skip_flag = skips.get(nome, False); status_atual = st.session_state.status_texto.get(nome, '') or ''; extra = ''
-                ramal_badge = _badge_ramal_html(get_ramal_nome(nome))
+                ramal_badge = ""  # Ramal não é exibido no status interno; apenas na fila da outra equipe
                 indic_icons = _icons_telefone_cafe(st.session_state.get('quick_indicators', {}).get(nome, {}))
                 if 'Atividade' in status_atual: extra += ' 📋'
                 if 'Projeto' in status_atual: extra += ' 🏗️'
@@ -1204,7 +1223,7 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
                     if titulo == 'Indisponível': 
                         if col_c.checkbox(' ', key=f'chk_{titulo}_{nome}_frag', value=False, label_visibility='collapsed'):
                             enter_from_indisponivel(nome); st.rerun()
-                ramal_badge = _badge_ramal_html(get_ramal_nome(nome))
+                ramal_badge = ""  # Ramal não é exibido no status interno; apenas na fila da outra equipe
                 indic_icons = _icons_telefone_cafe(st.session_state.get('quick_indicators', {}).get(nome, {}))
                 col_n.markdown(f"<div style='font-size: 16px; margin: 2px 0;'><strong>{nome}{ramal_badge}{indic_icons}</strong><span style='background-color: {bg_hex}; color: #333; padding: 2px 8px; border-radius: 12px; font-size: 14px; margin-left: 8px;'>{desc}</span></div>", unsafe_allow_html=True)
             st.markdown('---')
@@ -1224,15 +1243,15 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
     # =========================================================================
 
     # Criamos as colunas FORA dos fragmentos para poder injetar conteúdo nelas
-    col_principal, col_disponibilidade = st.columns([1.5, 1])
+    col_principal = st.container()  # Layout sem coluna lateral direita (como era antes)
 
     # 1. Renderiza o conteúdo que se atualiza sozinho
     with col_principal:
-        # Apenas se não houver menu ativo, renderiza o topo automático
+        # Menu suspenso no canto esquerdo (painel opcional)
+        render_right_sidebar()
+        # Renderiza o topo automático
         render_header_info_left()
 
-    with col_disponibilidade:
-        render_right_sidebar()
     render_status_list()
 
     # 2. Renderiza os Botões de Ação na Coluna Esquerda (FORA do fragmento para funcionar sempre)
