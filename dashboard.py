@@ -90,6 +90,83 @@ RAMAIS_CESUPE = {
     'victória': '2660',  # caso venha com acento
 }
 
+
+# ============================================
+# AGENDA EPROC (VISÃO SEMANAL CONSOLIDADA)
+# Fonte: "Distribuição das Atividades da Equipe EPROC" (anexo do usuário)
+# ============================================
+EPROC_VISAO_SEMANAL = [
+    {
+        "dia": "Segunda-feira",
+        "manha": "Fábio, Leonardo, Glayce, Pablo",
+        "tarde": "Fábio, Leonardo, Glayce, Isabela (Bruno, Cláudia, Douglas – Cond.)",
+        "sessao": "Consultores sem projeto fixo e Configuração EPROC",
+        "obs": ""
+    },
+    {
+        "dia": "Terça-feira",
+        "manha": "Fábio, Leonardo, Glayce, Pablo",
+        "tarde": "Fábio, Leonardo, Glayce, Isabela (IA / SOMA / Manuais – Cond.)",
+        "sessao": "Prioridade: Isac e Ranyer (SOMA)",
+        "obs": ""
+    },
+    {
+        "dia": "Quarta-feira",
+        "manha": "Fábio, Leonardo, Glayce, Pablo",
+        "tarde": "Fábio, Leonardo, Glayce, Isabela (IA / Manuais / Cartórios – Cond.)",
+        "sessao": "Distribuição geral, sem prioridade específica",
+        "obs": ""
+    },
+    {
+        "dia": "Quinta-feira",
+        "manha": "Fábio, Leonardo, Glayce, Pablo",
+        "tarde": "Fábio, Leonardo, Glayce, Isabela (IA / SOMA / Manuais – Cond.)",
+        "sessao": "Prioridade: Isac e Ranyer (SOMA)",
+        "obs": "Obs.: Bárbara não pode."
+    },
+    {
+        "dia": "Sexta-feira",
+        "manha": "Fábio, Leonardo, Glayce (Demais – Cond.)",
+        "tarde": "Fábio, Leonardo, Glayce (Demais – Cond.)",
+        "sessao": "Preferencialmente consultores sem projeto crítico",
+        "obs": ""
+    },
+]
+
+DIA_SEMANA_PT = {
+    0: "Segunda-feira",
+    1: "Terça-feira",
+    2: "Quarta-feira",
+    3: "Quinta-feira",
+    4: "Sexta-feira",
+    5: "Sábado",
+    6: "Domingo",
+}
+
+def render_agenda_eproc_sidebar():
+    """Renderiza a agenda EPROC (visão semanal) no painel lateral."""
+    now_br = get_brazil_time()
+    dia_pt = DIA_SEMANA_PT.get(now_br.weekday(), "")
+    st.markdown(f"### 📅 Agenda EPROC")
+    st.caption(f"Hoje: **{dia_pt}** — {now_br.strftime('%d/%m/%Y')}")
+
+    with st.expander("Ver visão semanal consolidada", expanded=False):
+        for row in EPROC_VISAO_SEMANAL:
+            is_today = (row.get("dia") == dia_pt)
+            bg = "#E7F1FF" if is_today else "#FFFFFF"
+            border = "1px solid #cbd5e1" if is_today else "1px solid #eee"
+            st.markdown(
+                f"""
+<div style='border:{border}; background:{bg}; padding:10px 12px; border-radius:12px; margin:8px 0;'>
+  <div style='font-weight:800; font-size:15px; margin-bottom:6px;'>🗓️ {row.get('dia','')}</div>
+  <div style='font-size:14px; margin:2px 0;'><b>🕘 Manhã:</b> {row.get('manha','')}</div>
+  <div style='font-size:14px; margin:2px 0;'><b>🕜 Tarde:</b> {row.get('tarde','')}</div>
+  <div style='font-size:14px; margin:2px 0;'><b>🎙️ Sessões:</b> {row.get('sessao','')}</div>
+  {f"<div style='font-size:13px; margin-top:6px; color:#6b7280;'><i>{row.get('obs')}</i></div>" if row.get('obs') else ''}
+</div>
+""", unsafe_allow_html=True
+            )
+
 def _normalize_nome(txt: str) -> str:
     if not isinstance(txt, str):
         return ''
@@ -190,29 +267,62 @@ def carregar_dados_grafico(app_id):
 
 def render_operational_summary():
     """Renderiza o Resumo Operacional (gráficos)"""
-    st.markdown("---")
     st.subheader("📊 Resumo Operacional")
 
     df_chart, gerado_em = carregar_dados_grafico(DB_APP_ID)
 
     if df_chart is not None:
         try:
-            df_long = df_chart.melt(id_vars=['relatorio'], value_vars=['Eproc', 'Legados'], var_name='Sistema', value_name='Qtd')
+            # ---------------------------
+            # CARDS (TOTALIZADORES)
+            # ---------------------------
+            total_eproc = int(df_chart.get("Eproc", 0).fillna(0).sum()) if hasattr(df_chart.get("Eproc", 0), "fillna") else 0
+            total_legados = int(df_chart.get("Legados", 0).fillna(0).sum()) if hasattr(df_chart.get("Legados", 0), "fillna") else 0
+            total_geral = int(total_eproc + total_legados)
+
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.metric("⚖️ Eproc", f"{total_eproc}")
+            with c2:
+                st.metric("🏛️ Legados", f"{total_legados}")
+            with c3:
+                st.metric("📌 Total", f"{total_geral}")
+
+            st.caption(f"Dados do dia: {gerado_em} (Atualização diária)")
+
+            # ---------------------------
+            # GRÁFICO (AGRUPADO POR RELATÓRIO)
+            # ---------------------------
+            df_long = df_chart.melt(
+                id_vars=['relatorio'],
+                value_vars=['Eproc', 'Legados'],
+                var_name='Sistema',
+                value_name='Qtd'
+            )
+
             base = alt.Chart(df_long).encode(
                 x=alt.X('relatorio', title=None, axis=alt.Axis(labels=True, labelAngle=0)),
                 y=alt.Y('Qtd', title='Quantidade'),
                 color=alt.Color('Sistema', legend=alt.Legend(title="Sistema")),
                 xOffset='Sistema'
             )
+
             bars = base.mark_bar()
             text = base.mark_text(dy=-5, color='black').encode(text='Qtd')
-            final_chart = (bars + text).properties(height=300)
+            final_chart = (bars + text).properties(height=320)
+
             st.altair_chart(final_chart, use_container_width=True)
-            st.caption(f"Dados do dia: {gerado_em} (Atualização diária)")
-            st.markdown("### Dados Detalhados")
-            st.dataframe(df_chart, use_container_width=True)
-        except Exception as e: st.error(f"Erro gráfico: {e}")
-    else: st.info("Sem dados de resumo disponíveis.")
+
+            # ---------------------------
+            # DETALHADO (EXPANDER)
+            # ---------------------------
+            with st.expander("📄 Dados detalhados", expanded=False):
+                st.dataframe(df_chart, use_container_width=True)
+
+        except Exception as e:
+            st.error(f"Erro gráfico: {e}")
+    else:
+        st.info("Sem dados de resumo disponíveis.")
 
 @st.cache_data
 
@@ -1091,6 +1201,7 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
         pass
 
     # Infos para o painel lateral (visualização cruzada).
+    st.session_state['team_id'] = team_id
     st.session_state['team_name'] = team_name
     st.session_state['other_team_id'] = other_team_id
     st.session_state['other_team_name'] = other_team_name
@@ -1299,6 +1410,12 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
                                 st.rerun()
                         else:
                             st.warning('Selecione seu nome no topo para assumir.')
+
+            st.divider()
+            # Agenda / distribuição de atividades (somente Equipe EPROC)
+            if isinstance(team_name, str) and 'eproc' in team_name.lower():
+                render_agenda_eproc_sidebar()
+
     def render_status_list():
         sync_state_from_db()
         queue = st.session_state.bastao_queue
@@ -1336,13 +1453,13 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
                 if 'Atividade' in status_atual: extra += ' 📋'
                 if 'Projeto' in status_atual: extra += ' 🏗️'
                 if nome == responsavel: display = f'<span style="background-color: #FF8C00; color: #FFF; padding: 2px 6px; border-radius: 5px; font-weight: 800;">🎭 {nome}{indic_icons}</span>'
-                elif skip_flag: display = f'<strong>{i}º {nome}{indic_icons}</strong>{extra} <span style="background-color: #FFECB3; padding: 2px 8px; border-radius: 10px;">Pulando ⏭️</span>'
-                else: display = f'<strong>{i}º {nome}{indic_icons}</strong>{extra} <span style="background-color: #FFE0B2; padding: 2px 8px; border-radius: 10px;">Aguardando</span>'
+                elif skip_flag: display = f'<strong>{i}º {nome}{indic_icons}</strong>{extra} <span style="background-color: #FEF3C7; padding: 2px 8px; border-radius: 10px;">Pulando ⏭️</span>'
+                else: display = f'<strong>{i}º {nome}{indic_icons}</strong>{extra} <span style="background-color: #FFEDD5; padding: 2px 8px; border-radius: 10px;">Aguardando</span>'
                 col_nome.markdown(display, unsafe_allow_html=True)
         st.markdown('---')
 
         def _render_section(titulo, icon, itens, cor, key_rm):
-            colors = {'orange': '#FFECB3', 'blue': '#BBDEFB', 'teal': '#B2DFDB', 'violet': '#E1BEE7', 'green': '#C8E6C9', 'red': '#FFCDD2', 'grey': '#EEEEEE', 'yellow': '#FFF9C4'}
+            colors = {'orange': '#FFF1E6', 'blue': '#E7F1FF', 'teal': '#E6FFFB', 'violet': '#F3E8FF', 'green': '#ECFDF3', 'red': '#FFE4E6', 'grey': '#F3F4F6', 'yellow': '#FEF9C3'}
             bg_hex = colors.get(cor, '#EEEEEE'); st.subheader(f'{icon} {titulo} ({len(itens)})')
             if not itens: st.markdown(f'_Nenhum._')
             else:
@@ -1382,8 +1499,6 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
     with col_disponibilidade:
         render_right_sidebar()
         render_status_list()
-        render_operational_summary()
-
     # 2. Renderiza os Botões de Ação na Coluna Esquerda (FORA do fragmento para funcionar sempre)
     with col_principal:
         st.markdown("### 🎮 Painel de Ação")
@@ -1428,7 +1543,13 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
         if r3c3.button('🏃 Sair', use_container_width=True): handle_sair(); st.rerun()
         if r3c4.button("🤝 Atend. Presencial", use_container_width=True): toggle_view('menu_presencial'); st.rerun()
     
-        # --- MENUS DE AÇÃO ---
+        
+        # --- RESUMO OPERACIONAL (GRÁFICOS) ---
+        # Fica no lado esquerdo, logo abaixo do painel de botões.
+        with st.container(border=True):
+            render_operational_summary()
+
+# --- MENUS DE AÇÃO ---
         if st.session_state.active_view == 'menu_atividades':
             with st.container(border=True):
                 at_t = st.multiselect("Tipo:", OPCOES_ATIVIDADES_STATUS); at_e = st.text_input("Detalhe:")
