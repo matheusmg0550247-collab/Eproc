@@ -28,6 +28,84 @@ except ImportError:
 from utils import (get_brazil_time, get_secret, send_to_chat)
 
 # ============================================
+# COMPATIBILIDADE DE SECRETS/WEBHOOKS (DigitalOcean / Streamlit)
+# - Prioriza st.secrets (secrets.toml) e variáveis de ambiente
+# - Mantém fallback para implementações existentes em utils
+# ============================================
+_utils_get_secret = get_secret
+_utils_send_to_chat = send_to_chat
+
+def get_secret(section, key, default=None):
+    """Obtém um segredo com fallback: st.secrets -> env vars -> utils.get_secret."""
+    # 1) st.secrets
+    try:
+        sec = st.secrets.get(section, {})
+        if isinstance(sec, dict) and key in sec and sec.get(key) not in (None, ''):
+            return sec.get(key)
+    except Exception:
+        pass
+
+    # 2) Variáveis de ambiente (ex.: CHAT_BASTAO, CHAT_BASTAO_WEBHOOK, STREAMLIT_CHAT_BASTAO)
+    import os
+    cand = [
+        f"{section}_{key}".upper(),
+        f"{section}_{key}_WEBHOOK".upper(),
+        f"STREAMLIT_{section}_{key}".upper(),
+        f"STREAMLIT_{section}_{key}_WEBHOOK".upper(),
+    ]
+    for env_key in cand:
+        val = os.getenv(env_key)
+        if val:
+            return val
+
+    # 3) Fallback para utils.get_secret (caso exista e esteja funcional)
+    try:
+        val = _utils_get_secret(section, key)
+        if val not in (None, ''):
+            return val
+    except Exception:
+        pass
+
+    return default
+
+def send_to_chat(tipo, mensagem):
+    """Envia mensagem ao chat via webhook. Tenta utils.send_to_chat e faz fallback por requests.post."""
+    # 1) Tenta implementação original (se existir e estiver ok)
+    try:
+        ok = _utils_send_to_chat(tipo, mensagem)
+        if ok:
+            return True
+    except Exception:
+        pass
+
+    # 2) Fallback: resolve URL e envia via HTTP
+    url = get_secret('chat', tipo) or (get_secret('chat', 'bastao') if tipo == 'bastao' else None)
+    if not url:
+        return False
+
+    # Tenta payloads comuns (n8n/Slack/Discord/serviços genéricos)
+    payloads = [
+        {'text': mensagem, 'tipo': tipo},
+        {'message': mensagem, 'type': tipo},
+        {'content': mensagem, 'channel': tipo},
+    ]
+    for payload in payloads:
+        try:
+            r = requests.post(url, json=payload, timeout=8)
+            if 200 <= getattr(r, 'status_code', 0) < 300:
+                return True
+        except Exception:
+            continue
+
+    # Último fallback: texto puro
+    try:
+        r = requests.post(url, data=mensagem.encode('utf-8'), headers={'Content-Type': 'text/plain; charset=utf-8'}, timeout=8)
+        return bool(getattr(r, 'ok', False))
+    except Exception:
+        return False
+
+
+# ============================================
 # 1. CONFIGURAÇÕES E CONSTANTES (EQUIPE ID 2 - CESUPE)
 # ============================================
 DB_APP_ID = 2        # ID da Fila desta equipe
@@ -1311,6 +1389,9 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
                 st.session_state['consultor_logado'] = None
                 st.session_state['consultor_selectbox'] = 'Selecione um nome'
                 st.rerun()
+
+            # Diagnóstico rápido
+            st.caption(f"📡 Webhook bastão: {'✅' if CHAT_WEBHOOK_BASTAO else '⚠️ não configurado'}")
 
             # Fila da outra equipe (somente visualização cruzada)
             if other_id:
