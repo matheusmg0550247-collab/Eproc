@@ -145,7 +145,38 @@ def get_supabase():
 @st.cache_data(ttl=3600, show_spinner=False)
 def carregar_dados_grafico(app_id):
     sb = get_supabase()
-    if not sb: return None, None
+    if not sb:
+        return None, None
+
+    # Em algumas bases o resumo diário fica fixo no id=1 (único), então fazemos fallback.
+    ids_tentar = [app_id]
+    if app_id != 1:
+        ids_tentar.append(1)
+
+    try:
+        for _id in ids_tentar:
+            res = sb.table("atendimentos_resumo").select("data").eq("id", _id).execute()
+            if res.data:
+                json_data = res.data[0].get('data') or {}
+                if isinstance(json_data, str):
+                    try:
+                        json_data = json.loads(json_data)
+                    except Exception:
+                        json_data = {}
+                if isinstance(json_data, dict) and 'totais_por_relatorio' in json_data:
+                    df = pd.DataFrame(json_data.get('totais_por_relatorio', []))
+
+                    if df is None or df.empty:
+                        return None, json_data.get('gerado_em', '-')
+
+                    if 'relatorio' not in df.columns and len(df.columns) > 0:
+                        df = df.rename(columns={df.columns[0]: 'relatorio'})
+
+                    return df, json_data.get('gerado_em', '-')
+    except Exception as e:
+        st.error(f"Erro gráfico: {e}")
+
+    return None, None
     try:
         res = sb.table("atendimentos_resumo").select("data").eq("id", app_id).execute()
         if res.data:
@@ -157,7 +188,34 @@ def carregar_dados_grafico(app_id):
         st.error(f"Erro gráfico: {e}")
     return None, None
 
+def render_operational_summary():
+    """Renderiza o Resumo Operacional (gráficos)"""
+    st.markdown("---")
+    st.subheader("📊 Resumo Operacional")
+
+    df_chart, gerado_em = carregar_dados_grafico(DB_APP_ID)
+
+    if df_chart is not None:
+        try:
+            df_long = df_chart.melt(id_vars=['relatorio'], value_vars=['Eproc', 'Legados'], var_name='Sistema', value_name='Qtd')
+            base = alt.Chart(df_long).encode(
+                x=alt.X('relatorio', title=None, axis=alt.Axis(labels=True, labelAngle=0)),
+                y=alt.Y('Qtd', title='Quantidade'),
+                color=alt.Color('Sistema', legend=alt.Legend(title="Sistema")),
+                xOffset='Sistema'
+            )
+            bars = base.mark_bar()
+            text = base.mark_text(dy=-5, color='black').encode(text='Qtd')
+            final_chart = (bars + text).properties(height=300)
+            st.altair_chart(final_chart, use_container_width=True)
+            st.caption(f"Dados do dia: {gerado_em} (Atualização diária)")
+            st.markdown("### Dados Detalhados")
+            st.dataframe(df_chart, use_container_width=True)
+        except Exception as e: st.error(f"Erro gráfico: {e}")
+    else: st.info("Sem dados de resumo disponíveis.")
+
 @st.cache_data
+
 def get_img_as_base64_cached(file_path):
     try:
         with open(file_path, "rb") as f:
@@ -520,6 +578,13 @@ def save_state():
         
         # INVALIDAÇÃO DE CACHE (CRÍTICO)
         load_state_from_db.clear()
+
+        # Feedback visual de salvamento + janela curta para evitar sync prematuro do DB
+        try:
+            st.session_state['_toast_msg'] = '✅ Registro salvo.'
+            st.session_state['_skip_db_sync_until'] = time.time() + 2.0
+        except Exception:
+            pass
         
     except Exception as e: print(f"Erro save: {e}")
 
@@ -530,6 +595,10 @@ def format_time_duration(duration):
 
 def sync_state_from_db():
     try:
+        # Evita sobrescrever estado local imediatamente após uma ação (mitiga necessidade de duplo clique)
+        until = st.session_state.get('_skip_db_sync_until', 0)
+        if until and time.time() < float(until):
+            return
         # Usa a função com cache
         db_data = load_state_from_db(DB_APP_ID)
         if not db_data: return
@@ -990,6 +1059,37 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
     except Exception:
         pass
 
+    # Cabeçalho fixo (contexto rápido)
+    st.markdown("""
+<style>
+.sticky-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 999;
+  background: rgba(255,255,255,0.98);
+  border-bottom: 1px solid #eee;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+}
+.sticky-topbar .muted { color: #666; font-size: 0.85rem; }
+</style>
+""", unsafe_allow_html=True)
+
+    try:
+        _user_top = st.session_state.get('consultor_logado') or st.session_state.get('consultor_selectbox') or '-'
+        _team_top = st.session_state.get('team_name') or team_name or '-'
+        _now_top = get_brazil_time().strftime('%d/%m/%Y %H:%M:%S')
+        st.markdown(f"""
+<div class='sticky-topbar'>
+  <div style='display:flex; justify-content:space-between; align-items:center; gap:12px;'>
+    <div><b>👤 Logado como:</b> {_user_top} &nbsp; <span class='muted'>|</span> &nbsp; <b>👥 Equipe:</b> {_team_top}</div>
+    <div class='muted'>🕒 {_now_top}</div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+    except Exception:
+        pass
+
     # Infos para o painel lateral (visualização cruzada).
     st.session_state['team_name'] = team_name
     st.session_state['other_team_id'] = other_team_id
@@ -1095,6 +1195,7 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
         with st.expander('🧭 Painel (outra equipe / LogMeIn / trocar consultor)', expanded=False):
             # Voltar para tela de seleção (app.py)
             if st.button('🔙 Voltar à tela de nomes', use_container_width=True, key=f'btn_voltar_nomes_{uuid.uuid4().hex}'):
+                st.session_state['_force_back_to_names'] = True
                 st.session_state['time_selecionado'] = None
                 st.session_state['consultor_logado'] = None
                 st.session_state['consultor_selectbox'] = 'Selecione um nome'
@@ -1281,10 +1382,14 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
     with col_disponibilidade:
         render_right_sidebar()
         render_status_list()
+        render_operational_summary()
 
     # 2. Renderiza os Botões de Ação na Coluna Esquerda (FORA do fragmento para funcionar sempre)
     with col_principal:
         st.markdown("### 🎮 Painel de Ação")
+
+        # Separação visual: Bastão x Status
+        st.markdown("**🎭 Ações do Bastão**")
         c_nome, c_act1, c_act2, c_act3 = st.columns([2, 1, 1, 1], vertical_alignment="bottom")
         with c_nome:
             st.caption(f"Logado como: **{st.session_state.get('consultor_logado', st.session_state.get('consultor_selectbox', ''))}**")
@@ -1305,6 +1410,7 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
             if st.button('⏭️ Pular', use_container_width=True): 
                  toggle_skip(); st.rerun()
     
+        st.markdown("**📌 Status**")
         r2c1, r2c2, r2c3, r2c4, r2c5 = st.columns(5)
         if r2c1.button('📋 Atividades', use_container_width=True): toggle_view('menu_atividades'); st.rerun()
         if r2c2.button('🏗️ Projeto', use_container_width=True): toggle_view('menu_projetos'); st.rerun()
@@ -1547,27 +1653,4 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
                 with c2:
                     if st.button("Cancelar", use_container_width=True): st.session_state.active_view = None; st.rerun()
     
-        # --- GRÁFICO OPERACIONAL (DENTRO DA COLUNA ESQUERDA, NO FIM) ---
-        st.markdown("---")
-        st.subheader("📊 Resumo Operacional")
-    
-        df_chart, gerado_em = carregar_dados_grafico(DB_APP_ID)
-    
-        if df_chart is not None:
-            try:
-                df_long = df_chart.melt(id_vars=['relatorio'], value_vars=['Eproc', 'Legados'], var_name='Sistema', value_name='Qtd')
-                base = alt.Chart(df_long).encode(
-                    x=alt.X('relatorio', title=None, axis=alt.Axis(labels=True, labelAngle=0)),
-                    y=alt.Y('Qtd', title='Quantidade'),
-                    color=alt.Color('Sistema', legend=alt.Legend(title="Sistema")),
-                    xOffset='Sistema'
-                )
-                bars = base.mark_bar()
-                text = base.mark_text(dy=-5, color='black').encode(text='Qtd')
-                final_chart = (bars + text).properties(height=300)
-                st.altair_chart(final_chart, use_container_width=True)
-                st.caption(f"Dados do dia: {gerado_em} (Atualização diária)")
-                st.markdown("### Dados Detalhados")
-                st.dataframe(df_chart, use_container_width=True)
-            except Exception as e: st.error(f"Erro gráfico: {e}")
-        else: st.info("Sem dados de resumo disponíveis.")
+        # (Resumo Operacional foi movido para a coluna da direita junto do Status)
