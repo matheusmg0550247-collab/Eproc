@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, date
 from operator import itemgetter
 import json
 import re
+import unicodedata
 import base64
 import io
 import altair as alt
@@ -50,6 +51,78 @@ GIF_BASTAO_HOLDER = "https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExa3Uwazd5c
 GIF_LOGMEIN_TARGET = "https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExZjFvczlzd3ExMWc2cWJrZ3EwNmplM285OGFqOHE1MXlzdnd4cndibiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/mcsPU3SkKrYDdW3aAU/giphy.gif"
 BASTAO_EMOJI = "🎭" 
 PUG2026_FILENAME = "Carnaval.gif" 
+
+# ============================================
+# RAMAIS CESUPE (BADGE AO LADO DO NOME)
+# ============================================
+RAMAIS_CESUPE = {
+    # Chave normalizada (sem acento, minúscula). Priorize combinações específicas antes do primeiro nome.
+    'douglas paiva': '2663',
+    'alex': '2510',
+    'barbara': '2517',
+    'bruno': '2644',
+    'claudio': '2667',
+    'claudia': '2667',  # variação comum
+    'dirceu': '2666',
+    'douglas': '2659',
+    'fabio': '2665',
+    'farley': '2651',
+    'gilberto': '2654',
+    'gleis': '2536',
+    'gleissiane': '2536',
+    'gleyce': '2647',
+    'glayce': '2647',  # variação comum
+    'hugo': '2650',
+    'jerry': '2654',
+    'jonatas': '2656',
+    'leandro': '2652',
+    'leonardo': '2655',
+    'ivana': '2653',
+    'marcelo': '2655',
+    'matheus': '2664',
+    'michael': '2638',
+    'pablo': '2643',
+    'ranier': '2669',
+    'ranyer': '2669',  # variação comum
+    'vanessa': '2607',
+    'victoria': '2660',
+    'victória': '2660',  # caso venha com acento
+}
+
+def _normalize_nome(txt: str) -> str:
+    if not isinstance(txt, str):
+        return ''
+    # remove acentos + normaliza espaços
+    txt = ''.join(ch for ch in unicodedata.normalize('NFKD', txt) if not unicodedata.combining(ch))
+    txt = re.sub(r'\s+', ' ', txt).strip().lower()
+    return txt
+
+def get_ramal_nome(nome: str):
+    n = _normalize_nome(nome)
+    if not n:
+        return None
+    # Regra específica: Douglas Paiva
+    if 'douglas' in n and 'paiva' in n:
+        return RAMAIS_CESUPE.get('douglas paiva')
+    # Primeira tentativa: match completo
+    if n in RAMAIS_CESUPE:
+        return RAMAIS_CESUPE[n]
+    # Segunda tentativa: primeiro nome
+    first = n.split(' ')[0]
+    return RAMAIS_CESUPE.get(first)
+
+def _badge_ramal_html(ramal):
+    if not ramal:
+        return ''
+    return f"<span style='margin-left:8px; padding:2px 8px; border-radius:999px; border:1px solid #ddd; font-size:12px; background:#f7f7f7;'>☎ {ramal}</span>"
+
+def _icons_telefone_cafe(indic: dict):
+    if not isinstance(indic, dict):
+        return ''
+    parts = []
+    if indic.get('telefone'): parts.append('📞')
+    if indic.get('cafe'): parts.append('☕')
+    return (' ' + ' '.join(parts)) if parts else ''
 APP_URL_CLOUD = 'https://controle-bastao-cesupe.streamlit.app'
 
 # Secrets
@@ -69,11 +142,11 @@ def get_supabase():
         return None
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def carregar_dados_grafico():
+def carregar_dados_grafico(app_id):
     sb = get_supabase()
     if not sb: return None, None
     try:
-        res = sb.table("atendimentos_resumo").select("data").eq("id", DB_APP_ID).execute()
+        res = sb.table("atendimentos_resumo").select("data").eq("id", app_id).execute()
         if res.data:
             json_data = res.data[0]['data']
             if 'totais_por_relatorio' in json_data:
@@ -108,25 +181,25 @@ def clean_data_for_db(obj):
         return obj
 
 @st.cache_data(ttl=5, show_spinner=False)
-def load_state_from_db():
+def load_state_from_db(app_id):
     sb = get_supabase()
     if not sb: return {}
     try:
-        response = sb.table("app_state").select("data").eq("id", DB_APP_ID).execute()
+        response = sb.table("app_state").select("data").eq("id", app_id).execute()
         if response.data and len(response.data) > 0:
             return response.data[0].get("data", {})
         return {}
     except Exception as e:
         return {}
 
-def save_state_to_db(state_data):
+def save_state_to_db(app_id, state_data):
     sb = get_supabase()
     if not sb: 
         st.error("Sem conexão para salvar.")
         return
     try:
         sanitized_data = clean_data_for_db(state_data)
-        sb.table("app_state").upsert({"id": DB_APP_ID, "data": sanitized_data}).execute()
+        sb.table("app_state").upsert({"id": app_id, "data": sanitized_data}).execute()
     except Exception as e:
         st.error(f"🔥 ERRO DE ESCRITA NO BANCO: {e}")
 
@@ -202,32 +275,6 @@ def memory_sweeper():
         st.cache_data.clear()
         gc.collect()
         st.session_state.last_hard_cleanup = time.time()
-
-# --- FEEDBACK VISUAL (TOAST) ---
-def set_ui_feedback_toast(msg: str = "Salvo!"):
-    try:
-        st.session_state['_ui_toast_msg'] = msg
-        st.session_state['_ui_toast_ts'] = time.time()
-    except Exception:
-        pass
-
-def render_ui_feedback_toast_once():
-    msg = st.session_state.get('_ui_toast_msg')
-    if msg:
-        try:
-            if hasattr(st, "toast"):
-                try:
-                    st.toast(msg, icon="✅")
-                except TypeError:
-                    st.toast(msg)
-            else:
-                st.success(f"✅ {msg}")
-        except Exception:
-            try:
-                st.success(f"✅ {msg}")
-            except Exception:
-                pass
-        st.session_state['_ui_toast_msg'] = None
 
 # --- LÓGICA DE FILA VISUAL ---
 def get_ordered_visual_queue(queue, status_dict):
@@ -459,10 +506,11 @@ def save_state():
             'auxilio_ativo': st.session_state.get('auxilio_ativo', False), 
             'daily_logs': st.session_state.daily_logs, 
             'simon_ranking': st.session_state.get('simon_ranking', []),
-            'previous_states': st.session_state.get('previous_states', {})
+            'previous_states': st.session_state.get('previous_states', {}),
+            'quick_indicators': st.session_state.get('quick_indicators', {})
         }
         # Limpeza é feita dentro de save_state_to_db agora, mas podemos chamar aqui também para garantir
-        save_state_to_db(state_to_save)
+        save_state_to_db(DB_APP_ID, state_to_save)
         
         # INVALIDAÇÃO DE CACHE (CRÍTICO)
         load_state_from_db.clear()
@@ -477,9 +525,9 @@ def format_time_duration(duration):
 def sync_state_from_db():
     try:
         # Usa a função com cache
-        db_data = load_state_from_db()
+        db_data = load_state_from_db(DB_APP_ID)
         if not db_data: return
-        keys = ['status_texto', 'bastao_queue', 'skip_flags', 'bastao_counts', 'priority_return_queue', 'daily_logs', 'simon_ranking', 'previous_states']
+        keys = ['status_texto', 'bastao_queue', 'skip_flags', 'bastao_counts', 'priority_return_queue', 'daily_logs', 'simon_ranking', 'previous_states', 'quick_indicators']
         for k in keys:
             if k in db_data: 
                 # Paginação
@@ -621,7 +669,6 @@ def update_status(novo_status: str, marcar_indisponivel: bool = False, manter_fi
     st.session_state.status_texto[selected] = final_status
     check_and_assume_baton(forced_successor)
     save_state()
-    set_ui_feedback_toast("Salvo!")
 
 def toggle_queue(consultor):
     ensure_daily_reset(); st.session_state.gif_warning = False; now_br = get_brazil_time()
@@ -642,7 +689,6 @@ def toggle_queue(consultor):
         st.session_state.status_texto[consultor] = ''
         check_and_assume_baton()
     save_state()
-    set_ui_feedback_toast("Salvo!")
 
 def rotate_bastao():
     ensure_daily_reset(); selected = st.session_state.consultor_selectbox
@@ -679,7 +725,6 @@ def rotate_bastao():
         st.session_state.bastao_counts[current_holder] = st.session_state.bastao_counts.get(current_holder, 0) + 1
         st.session_state.play_sound = True; send_chat_notification_internal(next_holder, 'Bastão')
         save_state()
-        set_ui_feedback_toast("Salvo!")
     else: st.warning('Ninguém elegível.'); check_and_assume_baton()
 
 def toggle_skip():
@@ -689,12 +734,145 @@ def toggle_skip():
     novo = not st.session_state.skip_flags.get(selected, False)
     st.session_state.skip_flags[selected] = novo
     save_state()
-    set_ui_feedback_toast("Salvo!")
 
 def toggle_presence_btn():
     selected = st.session_state.consultor_selectbox
     if not selected or selected == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
     toggle_queue(selected)
+
+# --- INDICADORES RÁPIDOS (📞 / ☕) - SINCRONIZADOS VIA SUPABASE (app_state) ---
+def _get_quick_indic(nome: str) -> dict:
+    if 'quick_indicators' not in st.session_state or not isinstance(st.session_state.quick_indicators, dict):
+        st.session_state.quick_indicators = {}
+    return st.session_state.quick_indicators.get(nome, {'telefone': False, 'cafe': False})
+
+def _set_quick_indic(nome: str, telefone=None, cafe=None):
+    if 'quick_indicators' not in st.session_state or not isinstance(st.session_state.quick_indicators, dict):
+        st.session_state.quick_indicators = {}
+    cur = _get_quick_indic(nome).copy()
+    if telefone is not None: cur['telefone'] = bool(telefone)
+    if cafe is not None: cur['cafe'] = bool(cafe)
+    # Se ligou um, desliga o outro (evita ambiguidade na transferência)
+    if cur.get('telefone') and cur.get('cafe'):
+        # Prioriza o último alterado (se ambos True, mantém o mais recente setado acima)
+        pass
+    st.session_state.quick_indicators[nome] = cur
+    save_state()
+
+def toggle_quick_telefone():
+    nome = st.session_state.get('consultor_selectbox')
+    if not nome or nome == 'Selecione um nome':
+        st.warning('Selecione um(a) consultor(a).')
+        return
+    cur = _get_quick_indic(nome)
+    novo = not cur.get('telefone', False)
+    # Ativar telefone desativa café
+    _set_quick_indic(nome, telefone=novo, cafe=False if novo else cur.get('cafe', False))
+
+def toggle_quick_cafe():
+    nome = st.session_state.get('consultor_selectbox')
+    if not nome or nome == 'Selecione um nome':
+        st.warning('Selecione um(a) consultor(a).')
+        return
+    cur = _get_quick_indic(nome)
+    novo = not cur.get('cafe', False)
+    # Ativar café desativa telefone
+    _set_quick_indic(nome, cafe=novo, telefone=False if novo else cur.get('telefone', False))
+
+def render_quick_toggle_btn(tipo: str):
+    nome = st.session_state.get('consultor_selectbox')
+    if not nome or nome == 'Selecione um nome':
+        st.button('📞', disabled=True, use_container_width=True) if tipo == 'telefone' else st.button('☕', disabled=True, use_container_width=True)
+        return
+    indic = _get_quick_indic(nome)
+    if tipo == 'telefone':
+        ativo = bool(indic.get('telefone'))
+        label = '📞✅' if ativo else '📞'
+        if st.button(label, key=f'btn_tel_{nome}', use_container_width=True):
+            toggle_quick_telefone(); st.rerun()
+    elif tipo == 'cafe':
+        ativo = bool(indic.get('cafe'))
+        label = '☕✅' if ativo else '☕'
+        if st.button(label, key=f'btn_cafe_{nome}', use_container_width=True):
+            toggle_quick_cafe(); st.rerun()
+
+def sync_logged_user():
+    # Mantém a ideia de 'logado', mas permite trocar para outro consultor (auditoria via logs)
+    val = st.session_state.get('consultor_selectbox')
+    if val and val != 'Selecione um nome':
+        st.session_state['consultor_logado'] = val
+
+def handle_sair():
+    selected = st.session_state.get('consultor_selectbox')
+    if not selected or selected == 'Selecione um nome':
+        st.warning('Selecione um(a) consultor(a).')
+        return
+    ensure_daily_reset()
+    current = st.session_state.status_texto.get(selected, '') or ''
+    # Se estiver em um status (exceto Bastão/Indisponível), volta para o Bastão (fila)
+    if current and current != 'Indisponível' and 'Bastão' not in current and current.strip() != '':
+        if selected not in st.session_state.bastao_queue:
+            st.session_state.bastao_queue.append(selected)
+        st.session_state.status_texto[selected] = ''
+        st.session_state.skip_flags[selected] = False
+        if selected in st.session_state.priority_return_queue:
+            st.session_state.priority_return_queue.remove(selected)
+        check_and_assume_baton()
+        save_state()
+        return
+    # Caso contrário: sair do bastão => Indisponível
+    if selected in st.session_state.bastao_queue:
+        toggle_queue(selected)
+    else:
+        st.session_state.status_texto[selected] = 'Indisponível'
+        save_state()
+
+def restore_from_lunch(nome: str):
+    prev = st.session_state.get('previous_states', {}).get(nome)
+    if not prev:
+        # fallback: apenas limpa almoço e tenta voltar pra fila
+        st.session_state.status_texto[nome] = ''
+        if nome not in st.session_state.bastao_queue:
+            st.session_state.bastao_queue.append(nome)
+        st.session_state.skip_flags[nome] = False
+        check_and_assume_baton()
+        save_state()
+        return
+    prev_status = prev.get('status', '') or ''
+    prev_in_queue = bool(prev.get('in_queue', False))
+    # Se o status anterior tinha 'Bastão', ao voltar do almoço entra na fila, mas NÃO reassume automaticamente o bastão
+    if isinstance(prev_status, str) and 'Bastão' in prev_status:
+        prev_status = ''
+        prev_in_queue = True
+    st.session_state.status_texto[nome] = prev_status if prev_status != 'Indisponível' else ''
+    if prev_in_queue:
+        if nome not in st.session_state.bastao_queue:
+            st.session_state.bastao_queue.append(nome)
+        st.session_state.skip_flags[nome] = False
+        if nome in st.session_state.priority_return_queue:
+            st.session_state.priority_return_queue.remove(nome)
+        check_and_assume_baton()
+    else:
+        if nome in st.session_state.bastao_queue:
+            st.session_state.bastao_queue.remove(nome)
+    # limpa histórico do almoço
+    try:
+        del st.session_state.previous_states[nome]
+    except Exception:
+        pass
+    save_state()
+
+def handle_almoco_toggle():
+    selected = st.session_state.get('consultor_selectbox')
+    if not selected or selected == 'Selecione um nome':
+        st.warning('Selecione um(a) consultor(a).')
+        return
+    current = st.session_state.status_texto.get(selected, '') or ''
+    if current == 'Almoço':
+        restore_from_lunch(selected)
+        return
+    # Entrar em almoço remove da fila automaticamente
+    update_status('Almoço', True)
 
 def enter_from_indisponivel(c):
     if c not in st.session_state.bastao_queue: st.session_state.bastao_queue.append(c)
@@ -737,7 +915,7 @@ def init_session_state():
     dev = get_browser_id(); 
     if dev: st.session_state['device_id_val'] = dev
     if 'db_loaded' not in st.session_state:
-        db = load_state_from_db()
+        db = load_state_from_db(DB_APP_ID)
         if 'report_last_run_date' in db and isinstance(db['report_last_run_date'], str):
             try: db['report_last_run_date'] = datetime.fromisoformat(db['report_last_run_date'])
             except: db['report_last_run_date'] = datetime.min
@@ -750,7 +928,7 @@ def init_session_state():
         'consultor_selectbox': "Selecione um nome", 'status_texto': {n: 'Indisponível' for n in CONSULTORES},
         'bastao_queue': [], 'skip_flags': {}, 'current_status_starts': {n: get_brazil_time() for n in CONSULTORES},
         'bastao_counts': {n: 0 for n in CONSULTORES}, 'priority_return_queue': [], 'daily_logs': [], 'simon_ranking': [],
-        'word_buffer': None, 'aviso_duplicidade': False, 'previous_states': {}, 'view_logmein_ui': False,
+        'word_buffer': None, 'aviso_duplicidade': False, 'previous_states': {}, 'quick_indicators': {}, 'view_logmein_ui': False,
         'last_cleanup': time.time(), 'last_hard_cleanup': time.time()
     }
     for k, v in defaults.items():
@@ -762,77 +940,40 @@ def open_logmein_ui(): st.session_state.view_logmein_ui = True
 def close_logmein_ui(): st.session_state.view_logmein_ui = False
 
 # ============================================
-# 8. INTERFACE
-# ============================================
-
 
 # ============================================
-# ENTRYPOINT (IMPORTADO PELO app.py)
+# PONTO DE ENTRADA (IMPORTADO PELO app.py)
 # ============================================
-def render_dashboard(
-    team_id,
-    team_name,
-    consultores_list,
-    webhook_key,
-    app_url,
-    other_team_id=None,
-    other_team_name=None,
-    usuario_logado=None,
-):
-    """Renderiza o dashboard. Mantém a estrutura original e apenas expõe um ponto de entrada para o app.py."""
+def render_dashboard(team_id: int, team_name: str, consultores_list: list, webhook_key: str, app_url: str, other_team_id: int, other_team_name: str, usuario_logado: str):
+    """Renderiza o dashboard. Mantém a estrutura do Equipe1.txt, apenas com as evoluções combinadas."""
     global DB_APP_ID, CONSULTORES, APP_URL_CLOUD
-    # Aplica configuração recebida (sem chamadas de UI antes do st.* do corpo)
-    try:
-        if team_id is not None:
-            DB_APP_ID = int(team_id)
-    except Exception:
-        pass
-    try:
-        if consultores_list:
-            CONSULTORES = sorted(list(consultores_list))
-    except Exception:
-        pass
-    try:
-        if app_url:
-            APP_URL_CLOUD = app_url
-    except Exception:
-        pass
+    DB_APP_ID = int(team_id) if team_id is not None else DB_APP_ID
+    APP_URL_CLOUD = app_url or APP_URL_CLOUD
+    if consultores_list:
+        # Mantém a lista recebida do app.py (duas equipes).
+        CONSULTORES = list(consultores_list)
+    # Infos para o painel lateral (visualização cruzada).
+    st.session_state['team_name'] = team_name
+    st.session_state['other_team_id'] = other_team_id
+    st.session_state['other_team_name'] = other_team_name
+    st.session_state['webhook_key'] = webhook_key
 
-    # (team_name/other_team_* são usados no corpo via session_state)
-
-    st.markdown("""<style>div.stButton > button {width: 100%; height: 3rem;}</style>""", unsafe_allow_html=True)
-
-    # --- CONFIG RECEBIDA DO app.py (render_dashboard) ---
-    st.session_state['__dashboard_team_name'] = team_name
-    st.session_state['__dashboard_other_team_id'] = other_team_id
-    st.session_state['__dashboard_other_team_name'] = other_team_name
-    st.session_state['__dashboard_app_url'] = app_url
-
-    # Webhook do bastão por equipe (fallback para 'bastao')
-    global CHAT_WEBHOOK_BASTAO
-    try:
-        if webhook_key:
-            CHAT_WEBHOOK_BASTAO = get_secret('chat', webhook_key)
-        else:
-            CHAT_WEBHOOK_BASTAO = get_secret('chat', 'bastao')
-    except Exception:
-        pass
-
+    # Mantém 'logado', mas NÃO trava: pode trocar depois (auditável por logs).
     if usuario_logado:
-        st.session_state['_login_lock'] = True
-        st.session_state['_usuario_logado'] = usuario_logado
-        # Garante que o nome já esteja definido antes do init_session_state (ele respeita valores existentes)
-        st.session_state['consultor_selectbox'] = usuario_logado
-    else:
-        st.session_state['_login_lock'] = False
-        if '_usuario_logado' in st.session_state: del st.session_state['_usuario_logado']
+        st.session_state['consultor_logado'] = usuario_logado
+        if st.session_state.get('consultor_selectbox') in (None, '', 'Selecione um nome'):
+            st.session_state['consultor_selectbox'] = usuario_logado
+
+    # Garantia: se ainda não inicializou, inicializa agora (com CONSULTORES já ajustado).
+    init_session_state()
+
+    # ============================================
+    st.markdown("""<style>div.stButton > button {width: 100%; height: 3rem;}</style>""", unsafe_allow_html=True)
 
     init_session_state(); memory_sweeper(); auto_manage_time()
 
     st.components.v1.html("<script>window.scrollTo(0, 0);</script>", height=0)
     st.info("🎗️ Fevereiro Laranja é um convite à consciência e à ação: ele chama atenção para a leucemia e para a importância do diagnóstico precoce, que pode salvar vidas. 💛🧡 Informar, apoiar quem está em tratamento e incentivar a doação de sangue e de medula óssea são atitudes que fazem diferença. Compartilhe, converse e, se puder, cadastre-se como doador — um gesto simples pode ser a esperança de alguém.")
-
-    render_ui_feedback_toast_once()
 
     # ----------------------------------------------------
     # FRAGMENTO DE VISUALIZAÇÃO: HEADER + FILA
@@ -854,11 +995,6 @@ def render_dashboard(
                 if st.button("🚀 Entrar", use_container_width=True, key="btn_entrar_header"):
                     if novo_responsavel != "Selecione": toggle_queue(novo_responsavel); st.rerun()
             st.caption(f"ID: ...{st.session_state.get('device_id_val', '???')[-4:]}")
-            logged_user = st.session_state.get('consultor_selectbox', 'Selecione um nome')
-            if logged_user and logged_user != 'Selecione um nome':
-                st.markdown(f"**Logado como:** {logged_user}")
-            else:
-                st.markdown("**Logado como:** _não selecionado_")
             # Válvula de Escape
             if st.button("🔄 Atualizar Agora", use_container_width=True): 
                  load_state_from_db.clear(); st.rerun()
@@ -890,14 +1026,129 @@ def render_dashboard(
         lista_pularam = [n for n in queue if skips.get(n, False) and n != responsavel]
         demais_na_fila = [n for n in raw_ordered if n != proximo and not skips.get(n, False)]
     
-        if proximo: st.markdown(f"**Próximo Bastão:** {proximo}")
-        else: st.markdown("**Próximo Bastão:** _Ninguém elegível_")
-        if demais_na_fila: st.markdown(f"**Demais na fila:** {', '.join(demais_na_fila)}")
-        else: st.markdown("**Demais na fila:** _Vazio_")
+        if proximo:
+            rb = _badge_ramal_html(get_ramal_nome(proximo))
+            ic = _icons_telefone_cafe(st.session_state.get('quick_indicators', {}).get(proximo, {}))
+            st.markdown(f"**Próximo Bastão:** {proximo}{rb}{ic}", unsafe_allow_html=True)
+        else:
+            st.markdown("**Próximo Bastão:** _Ninguém elegível_")
+
+        if demais_na_fila:
+            demais_fmt = [f"{n}{_badge_ramal_html(get_ramal_nome(n))}{_icons_telefone_cafe(st.session_state.get('quick_indicators', {}).get(n, {}))}" for n in demais_na_fila]
+            st.markdown("**Demais na fila:** " + ", ".join(demais_fmt), unsafe_allow_html=True)
+        else:
+            st.markdown("**Demais na fila:** _Vazio_")
         if lista_pularam: st.markdown(f"**Consultor(es) pulou(pularam) o bastão:** {', '.join(lista_pularam)}")
 
     # FRAGMENTO DIREITO: LISTA DE STATUS
     @st.fragment(run_every=15)
+
+    # ----------------------------------------------------
+    # FRAGMENTO: PAINEL LATERAL DIREITO (COLAPSÁVEL)
+    # - Fila da outra equipe com ramal + indicadores 📞/☕
+    # - LogMeIn (NÃO é status)
+    # - Voltar para tela de nomes / trocar consultor
+    # ----------------------------------------------------
+    @st.fragment(run_every=15)
+    def render_right_sidebar():
+        other_id = st.session_state.get('other_team_id')
+        other_name = st.session_state.get('other_team_name', 'Outra Equipe')
+        team_name = st.session_state.get('team_name', '')
+
+        with st.expander('🧭 Painel (outra equipe / LogMeIn / trocar consultor)', expanded=False):
+            # Voltar para tela de seleção (app.py)
+            if st.button('🔙 Voltar à tela de nomes', use_container_width=True, key='btn_voltar_nomes'):
+                st.session_state['time_selecionado'] = None
+                st.session_state['consultor_logado'] = None
+                st.session_state['consultor_selectbox'] = 'Selecione um nome'
+                st.rerun()
+
+            # Fila da outra equipe (somente visualização cruzada)
+            if other_id:
+                try:
+                    other_state = load_state_from_db(other_id) or {}
+                except Exception:
+                    other_state = {}
+                other_queue = other_state.get('bastao_queue', []) or []
+                other_skips = other_state.get('skip_flags', {}) or {}
+                other_status = other_state.get('status_texto', {}) or {}
+                other_quick = other_state.get('quick_indicators', {}) or {}
+
+                other_responsavel = None
+                for c, s in (other_status or {}).items():
+                    if isinstance(s, str) and 'Bastão' in s:
+                        other_responsavel = c
+                        break
+
+                proximo_outro = None
+                if other_queue:
+                    if other_responsavel in other_queue:
+                        idx = other_queue.index(other_responsavel)
+                        nxt = find_next_holder_index(idx, other_queue, other_skips)
+                        proximo_outro = other_queue[nxt] if nxt != -1 else None
+                    if not proximo_outro:
+                        nxt = find_next_holder_index(-1, other_queue, other_skips)
+                        proximo_outro = other_queue[nxt] if nxt != -1 else None
+
+                def _fmt_other(nome):
+                    rb = _badge_ramal_html(get_ramal_nome(nome))
+                    ic = _icons_telefone_cafe(other_quick.get(nome, {}))
+                    return f"{nome}{rb}{ic}"
+
+                st.markdown(f"### 👥 Fila {other_name}")
+                if proximo_outro:
+                    st.markdown(f"**Próximo Bastão:** {_fmt_other(proximo_outro)}", unsafe_allow_html=True)
+                else:
+                    st.markdown("**Próximo Bastão:** _Ninguém na fila_", unsafe_allow_html=True)
+
+                if other_queue:
+                    # Demais na fila (respeita ordem)
+                    demais = [n for n in other_queue if n != other_responsavel and n != proximo_outro]
+                    if demais:
+                        st.markdown("**Demais na fila:**", unsafe_allow_html=True)
+                        for n in demais:
+                            st.markdown(f"- {_fmt_other(n)}", unsafe_allow_html=True)
+                    else:
+                        st.markdown("_Sem demais na fila._")
+            else:
+                st.markdown('_Sem outra equipe configurada._')
+
+            st.divider()
+            st.markdown('### 🔑 LogMeIn')
+            st.caption('LogMeIn **não** é status: é apenas para visualizar quem está usando o programa.')
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button('Abrir', use_container_width=True, key='btn_open_logmein_side'):
+                    open_logmein_ui()
+            with c2:
+                if st.button('Fechar', use_container_width=True, key='btn_close_logmein_side'):
+                    close_logmein_ui()
+
+            if st.session_state.get('view_logmein_ui'):
+                with st.container(border=True):
+                    st.markdown('#### 💻 Acesso LogMeIn')
+                    l_user, l_in_use = get_logmein_status()
+                    st.image(GIF_LOGMEIN_TARGET, width=180)
+                    if l_in_use:
+                        st.error(f"🔴 EM USO POR: **{l_user}**")
+                        meu_nome = st.session_state.get('consultor_selectbox')
+                        if meu_nome == l_user or meu_nome in CONSULTORES:
+                            if st.button('🔓 LIBERAR AGORA', type='primary', use_container_width=True, key='btn_logmein_liberar_side'):
+                                set_logmein_status(None, False)
+                                close_logmein_ui()
+                                st.rerun()
+                        else:
+                            st.info('Aguarde a liberação.')
+                    else:
+                        st.success('✅ LIVRE PARA USO')
+                        meu_nome = st.session_state.get('consultor_selectbox')
+                        if meu_nome and meu_nome != 'Selecione um nome':
+                            if st.button('🚀 ASSUMIR AGORA', use_container_width=True, key='btn_logmein_assumir_side'):
+                                set_logmein_status(meu_nome, True)
+                                close_logmein_ui()
+                                st.rerun()
+                        else:
+                            st.warning('Selecione seu nome no topo para assumir.')
     def render_status_list():
         sync_state_from_db()
         queue = st.session_state.bastao_queue
@@ -931,11 +1182,13 @@ def render_dashboard(
                 col_nome, col_check = st.columns([0.85, 0.15], vertical_alignment='center')
                 col_check.checkbox(' ', key=f'chk_fila_{nome}_frag', value=True, disabled=True, label_visibility='collapsed')
                 skip_flag = skips.get(nome, False); status_atual = st.session_state.status_texto.get(nome, '') or ''; extra = ''
+                ramal_badge = _badge_ramal_html(get_ramal_nome(nome))
+                indic_icons = _icons_telefone_cafe(st.session_state.get('quick_indicators', {}).get(nome, {}))
                 if 'Atividade' in status_atual: extra += ' 📋'
                 if 'Projeto' in status_atual: extra += ' 🏗️'
-                if nome == responsavel: display = f'<span style="background-color: #FF8C00; color: #FFF; padding: 2px 6px; border-radius: 5px; font-weight: 800;">🎭 {nome}</span>'
-                elif skip_flag: display = f'<strong>{i}º {nome}</strong>{extra} <span style="background-color: #FFECB3; padding: 2px 8px; border-radius: 10px;">Pulando ⏭️</span>'
-                else: display = f'<strong>{i}º {nome}</strong>{extra} <span style="background-color: #FFE0B2; padding: 2px 8px; border-radius: 10px;">Aguardando</span>'
+                if nome == responsavel: display = f'<span style="background-color: #FF8C00; color: #FFF; padding: 2px 6px; border-radius: 5px; font-weight: 800;">🎭 {nome}{ramal_badge}{indic_icons}</span>'
+                elif skip_flag: display = f'<strong>{i}º {nome}{ramal_badge}{indic_icons}</strong>{extra} <span style="background-color: #FFECB3; padding: 2px 8px; border-radius: 10px;">Pulando ⏭️</span>'
+                else: display = f'<strong>{i}º {nome}{ramal_badge}{indic_icons}</strong>{extra} <span style="background-color: #FFE0B2; padding: 2px 8px; border-radius: 10px;">Aguardando</span>'
                 col_nome.markdown(display, unsafe_allow_html=True)
         st.markdown('---')
 
@@ -951,7 +1204,9 @@ def render_dashboard(
                     if titulo == 'Indisponível': 
                         if col_c.checkbox(' ', key=f'chk_{titulo}_{nome}_frag', value=False, label_visibility='collapsed'):
                             enter_from_indisponivel(nome); st.rerun()
-                    col_n.markdown(f"<div style='font-size: 16px; margin: 2px 0;'><strong>{nome}</strong><span style='background-color: {bg_hex}; color: #333; padding: 2px 8px; border-radius: 12px; font-size: 14px; margin-left: 8px;'>{desc}</span></div>", unsafe_allow_html=True)
+                ramal_badge = _badge_ramal_html(get_ramal_nome(nome))
+                indic_icons = _icons_telefone_cafe(st.session_state.get('quick_indicators', {}).get(nome, {}))
+                col_n.markdown(f"<div style='font-size: 16px; margin: 2px 0;'><strong>{nome}{ramal_badge}{indic_icons}</strong><span style='background-color: {bg_hex}; color: #333; padding: 2px 8px; border-radius: 12px; font-size: 14px; margin-left: 8px;'>{desc}</span></div>", unsafe_allow_html=True)
             st.markdown('---')
         
         _render_section('Atend. Presencial', '🤝', ui_lists['presencial_especifico'], 'yellow', 'Atendimento Presencial')
@@ -977,23 +1232,22 @@ def render_dashboard(
         render_header_info_left()
 
     with col_disponibilidade:
-        render_status_list()
+        render_right_sidebar()
+    render_status_list()
 
     # 2. Renderiza os Botões de Ação na Coluna Esquerda (FORA do fragmento para funcionar sempre)
     with col_principal:
         st.markdown("### 🎮 Painel de Ação")
         c_nome, c_act1, c_act2, c_act3 = st.columns([2, 1, 1, 1], vertical_alignment="bottom")
         with c_nome:
-            # --- Identidade fixa (login via app.py) ---
-            _login_lock = st.session_state.get('_login_lock', False)
-            _usuario_fix = st.session_state.get('_usuario_logado')
-            if _login_lock and _usuario_fix:
-                try:
-                    st.selectbox('Selecione:', [_usuario_fix], key='consultor_selectbox', label_visibility='collapsed', disabled=True)
-                except TypeError:
-                    st.selectbox('Selecione:', [_usuario_fix], key='consultor_selectbox', label_visibility='collapsed')
-            else:
-                st.selectbox('Selecione:', ['Selecione um nome'] + CONSULTORES, key='consultor_selectbox', label_visibility='collapsed')
+            st.caption(f"Logado como: **{st.session_state.get('consultor_logado', st.session_state.get('consultor_selectbox', ''))}**")
+            sub_nome, sub_tel, sub_cafe = st.columns([6, 1, 1], vertical_alignment='bottom')
+            with sub_nome:
+                st.selectbox('Selecione:', ['Selecione um nome'] + CONSULTORES, key='consultor_selectbox', label_visibility='collapsed', on_change=sync_logged_user)
+            with sub_tel:
+                render_quick_toggle_btn('telefone')
+            with sub_cafe:
+                render_quick_toggle_btn('cafe')
         with c_act1:
             if st.button("🎭 Entrar/Sair Fila", use_container_width=True): 
                  toggle_presence_btn(); st.rerun()
@@ -1011,89 +1265,29 @@ def render_dashboard(
         if r2c4.button('📅 Reunião', use_container_width=True): toggle_view('menu_reuniao'); st.rerun()
     
         # BOTÃO CORRIGIDO
-        if r2c5.button('🍽️ Almoço', use_container_width=True): 
-             update_status('Almoço', True); st.rerun()
+        almoco_label = '🍽️ Voltar' if (st.session_state.get('consultor_selectbox') and st.session_state.status_texto.get(st.session_state.get('consultor_selectbox'), '') == 'Almoço') else '🍽️ Almoço'
+        if r2c5.button(almoco_label, use_container_width=True): handle_almoco_toggle(); st.rerun()
+
     
         r3c1, r3c2, r3c3, r3c4 = st.columns(4)
         if r3c1.button('🎙️ Sessão', use_container_width=True): toggle_view('menu_sessao'); st.rerun()
         if r3c2.button('🚶 Saída', use_container_width=True): update_status('Saída rápida', True); st.rerun()
-        if r3c3.button('🏃 Sair', use_container_width=True):
-            # Regra: se tem algum status (além do Bastão) -> limpa e volta pra fila.
-            # Se está livre (somente Fila/Bastão) -> sai da fila (Indisponível).
-            selected = st.session_state.get('consultor_selectbox')
-            if selected and selected != 'Selecione um nome':
-                curr_status = st.session_state.status_texto.get(selected, '') or ''
-                curr_sem_bastao = str(curr_status).replace('Bastão |', '').replace('Bastão', '').strip()
-                if curr_sem_bastao and curr_sem_bastao != 'Indisponível':
-                    update_status("", manter_fila_atual=False)
-                else:
-                    update_status('Indisponível', True)
-            else:
-                st.warning('Selecione um(a) consultor(a).')
-            st.rerun()
+        if r3c3.button('🏃 Sair', use_container_width=True): handle_sair(); st.rerun()
         if r3c4.button("🤝 Atend. Presencial", use_container_width=True): toggle_view('menu_presencial'); st.rerun()
     
-        st.markdown("####")
-        if st.button('🔑 LogMeIn', use_container_width=True):
-            open_logmein_ui()
-
-        # ============================================
-        # LÓGICA DE MENUS (APARECEM NA COLUNA PRINCIPAL - INLINE)
-        # ============================================
-
-        # LogMeIn UI
-        if st.session_state.view_logmein_ui:
-            with st.container(border=True):
-                st.markdown("### 💻 Acesso LogMeIn")
-                l_user, l_in_use = get_logmein_status()
-            
-                st.image(GIF_LOGMEIN_TARGET, width=180)
-            
-                if l_in_use:
-                    st.error(f"🔴 EM USO POR: **{l_user}**")
-                    meu_nome = st.session_state.get('consultor_selectbox')
-                    # Libera se for o dono ou admin
-                    if meu_nome == l_user or meu_nome in CONSULTORES:
-                        if st.button("🔓 LIBERAR AGORA", type="primary", use_container_width=True):
-                            set_logmein_status(None, False)
-                            close_logmein_ui()
-                            st.rerun()
-                    else:
-                        st.info("Aguarde a liberação.")
-                else:
-                    st.success("✅ LIVRE PARA USO")
-                    meu_nome = st.session_state.get('consultor_selectbox')
-                    if meu_nome and meu_nome != "Selecione um nome":
-                        if st.button("🚀 ASSUMIR AGORA", use_container_width=True):
-                            set_logmein_status(meu_nome, True)
-                            close_logmein_ui()
-                            st.rerun()
-                    else:
-                        st.warning("Selecione seu nome no topo para assumir.")
-            
-                if st.button("Fechar", use_container_width=True):
-                    close_logmein_ui()
-                    st.rerun()
-
         # --- MENUS DE AÇÃO ---
         if st.session_state.active_view == 'menu_atividades':
             with st.container(border=True):
                 at_t = st.multiselect("Tipo:", OPCOES_ATIVIDADES_STATUS); at_e = st.text_input("Detalhe:")
-                manter_bastao_ativ = st.checkbox("Manter na fila do bastão? (Modo Atividade)", value=True, key="ativ_mantem_fila")
                 c1, c2, c3 = st.columns([1, 1, 1])
                 with c1:
                     if st.button("Confirmar", type="primary", use_container_width=True): 
                         st.session_state.active_view = None
-                        status_msg = f"Atividade: {', '.join(at_t)} - {at_e}"
-                        if manter_bastao_ativ:
-                            update_status(status_msg, manter_fila_atual=True) # MANTÉM FILA (CHECK)
-                        else:
-                            update_status(status_msg, marcar_indisponivel=True) # SAI DA FILA (SEM CHECK)
+                        update_status(f"Atividade: {', '.join(at_t)} - {at_e}", manter_fila_atual=True) # MANTÉM FILA
                 with c2:
                     if st.button("Sair de atividades", use_container_width=True):
                         st.session_state.active_view = None
-                        # Ao sair da atividade, volta para a fila do bastão
-                        update_status("", manter_fila_atual=False)
+                        update_status("", manter_fila_atual=True) 
                 with c3:
                     if st.button("Cancelar", use_container_width=True): st.session_state.active_view = None; st.rerun()
 
@@ -1305,7 +1499,7 @@ def render_dashboard(
         st.markdown("---")
         st.subheader("📊 Resumo Operacional")
     
-        df_chart, gerado_em = carregar_dados_grafico()
+        df_chart, gerado_em = carregar_dados_grafico(DB_APP_ID)
     
         if df_chart is not None:
             try:
