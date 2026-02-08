@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, date
 from operator import itemgetter
 import json
 import re
+import uuid
 import unicodedata
 import base64
 import io
@@ -979,8 +980,12 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
         CONSULTORES = list(consultores_list)
     # Mostra feedback de salvamento pendente
     try:
-        if st.session_state.get('_toast_msg'):
-            st.toast(st.session_state.get('_toast_msg'))
+        msg_toast = st.session_state.get('_toast_msg')
+        if msg_toast:
+            try:
+                st.toast(msg_toast)
+            except Exception:
+                st.success(msg_toast)
             st.session_state['_toast_msg'] = None
     except Exception:
         pass
@@ -1089,7 +1094,7 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
 
         with st.expander('🧭 Painel (outra equipe / LogMeIn / trocar consultor)', expanded=False):
             # Voltar para tela de seleção (app.py)
-            if st.button('🔙 Voltar à tela de nomes', use_container_width=True, key='btn_voltar_nomes'):
+            if st.button('🔙 Voltar à tela de nomes', use_container_width=True, key=f'btn_voltar_nomes_{uuid.uuid4().hex}'):
                 st.session_state['time_selecionado'] = None
                 st.session_state['consultor_logado'] = None
                 st.session_state['consultor_selectbox'] = 'Selecione um nome'
@@ -1162,10 +1167,10 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
             st.caption('LogMeIn **não** é status: é apenas para visualizar quem está usando o programa.')
             c1, c2 = st.columns(2)
             with c1:
-                if st.button('Abrir', use_container_width=True, key='btn_open_logmein_side'):
+                if st.button('Abrir', use_container_width=True, key=f'btn_open_logmein_side_{uuid.uuid4().hex}'):
                     open_logmein_ui()
             with c2:
-                if st.button('Fechar', use_container_width=True, key='btn_close_logmein_side'):
+                if st.button('Fechar', use_container_width=True, key=f'btn_close_logmein_side_{uuid.uuid4().hex}'):
                     close_logmein_ui()
 
             if st.session_state.get('view_logmein_ui'):
@@ -1177,7 +1182,7 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
                         st.error(f"🔴 EM USO POR: **{l_user}**")
                         meu_nome = st.session_state.get('consultor_selectbox')
                         if meu_nome == l_user or meu_nome in CONSULTORES:
-                            if st.button('🔓 LIBERAR AGORA', type='primary', use_container_width=True, key='btn_logmein_liberar_side'):
+                            if st.button('🔓 LIBERAR AGORA', type='primary', use_container_width=True, key=f'btn_logmein_liberar_side_{uuid.uuid4().hex}'):
                                 set_logmein_status(None, False)
                                 close_logmein_ui()
                                 st.rerun()
@@ -1187,7 +1192,7 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
                         st.success('✅ LIVRE PARA USO')
                         meu_nome = st.session_state.get('consultor_selectbox')
                         if meu_nome and meu_nome != 'Selecione um nome':
-                            if st.button('🚀 ASSUMIR AGORA', use_container_width=True, key='btn_logmein_assumir_side'):
+                            if st.button('🚀 ASSUMIR AGORA', use_container_width=True, key=f'btn_logmein_assumir_side_{uuid.uuid4().hex}'):
                                 set_logmein_status(meu_nome, True)
                                 close_logmein_ui()
                                 st.rerun()
@@ -1244,11 +1249,11 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
                     nome = item[0] if isinstance(item, tuple) else item
                     desc = item[1] if isinstance(item, tuple) else titulo
                     col_n, col_c = st.columns([0.85, 0.15], vertical_alignment='center')
-                    if titulo == 'Indisponível': 
+                    if titulo == 'Indisponível':
                         if col_c.checkbox(' ', key=f'chk_{titulo}_{nome}_frag', value=False, label_visibility='collapsed'):
                             enter_from_indisponivel(nome); st.rerun()
-                indic_icons = _icons_telefone_cafe(st.session_state.get('quick_indicators', {}).get(nome, {}))
-                col_n.markdown(f"<div style='font-size: 16px; margin: 2px 0;'><strong>{nome}{indic_icons}</strong><span style='background-color: {bg_hex}; color: #333; padding: 2px 8px; border-radius: 12px; font-size: 14px; margin-left: 8px;'>{desc}</span></div>", unsafe_allow_html=True)
+                    indic_icons = _icons_telefone_cafe(st.session_state.get('quick_indicators', {}).get(nome, {}))
+                    col_n.markdown(f"<div style='font-size: 16px; margin: 2px 0;'><strong>{nome}{indic_icons}</strong><span style='background-color: {bg_hex}; color: #333; padding: 2px 8px; border-radius: 12px; font-size: 14px; margin-left: 8px;'>{desc}</span></div>", unsafe_allow_html=True)
             st.markdown('---')
         
         _render_section('Atend. Presencial', '🤝', ui_lists['presencial_especifico'], 'yellow', 'Atendimento Presencial')
@@ -1328,9 +1333,9 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
                         st.session_state.active_view = None
                         status_msg = f"Atividade: {', '.join(at_t)} - {at_e}"
                         if manter_bastao_ativ:
-                            update_status(status_msg, manter_fila_atual=True)
+                            update_status(status_msg, manter_fila_atual=True); st.rerun()
                         else:
-                            update_status(status_msg, marcar_indisponivel=True)
+                            update_status(status_msg, marcar_indisponivel=True); st.rerun()
                 with c2:
                     if st.button("Sair de atividades", use_container_width=True):
                         st.session_state.active_view = None
@@ -1346,7 +1351,7 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
                 with c_ok:
                     if st.button('✅ Confirmar', type='primary', use_container_width=True):
                         if not local_presencial.strip() or not objetivo_presencial.strip(): st.warning('Preencha Local e Objetivo.')
-                        else: st.session_state.active_view = None; update_status(f"Atendimento Presencial: {local_presencial.strip()} - {objetivo_presencial.strip()}", True) # REMOVE DA FILA (TRUE)
+                        else: st.session_state.active_view = None; update_status(f"Atendimento Presencial: {local_presencial.strip()} - {objetivo_presencial.strip()}", True); st.rerun() # REMOVE DA FILA (TRUE)
                 with c_cancel:
                     if st.button('❌ Cancelar', use_container_width=True): st.session_state.active_view = None; st.rerun()
 
@@ -1363,8 +1368,8 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
                         else: 
                             st.session_state.active_view = None
                             status_msg = f"Projeto: {proj_nome.strip()}"
-                            if manter_bastao: update_status(status_msg, manter_fila_atual=True)
-                            else: update_status(status_msg, marcar_indisponivel=True)
+                            if manter_bastao: update_status(status_msg, manter_fila_atual=True); st.rerun()
+                            else: update_status(status_msg, marcar_indisponivel=True); st.rerun()
                 with c_cancel:
                     if st.button('❌ Cancelar', use_container_width=True): st.session_state.active_view = None; st.rerun()
 
@@ -1375,7 +1380,7 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
                 with c_ok:
                     if st.button('✅ Confirmar', type='primary', use_container_width=True):
                         if not tema.strip(): st.warning('Informe o tema.')
-                        else: st.session_state.active_view = None; update_status(f"Treinamento: {tema.strip()}" + (f" - {obs.strip()}" if obs.strip() else ""), True)
+                        else: st.session_state.active_view = None; update_status(f"Treinamento: {tema.strip()}" + (f" - {obs.strip()}" if obs.strip() else ""), True); st.rerun()
                 with c_cancel:
                     if st.button('❌ Cancelar', use_container_width=True): st.session_state.active_view = None; st.rerun()
 
@@ -1386,7 +1391,7 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
                 with c_ok:
                     if st.button('✅ Confirmar', type='primary', use_container_width=True):
                         if not assunto.strip(): st.warning('Informe o assunto.')
-                        else: st.session_state.active_view = None; update_status(f"Reunião: {assunto.strip()}" + (f" - {obs.strip()}" if obs.strip() else ""), True)
+                        else: st.session_state.active_view = None; update_status(f"Reunião: {assunto.strip()}" + (f" - {obs.strip()}" if obs.strip() else ""), True); st.rerun()
                 with c_cancel:
                     if st.button('❌ Cancelar', use_container_width=True): st.session_state.active_view = None; st.rerun()
 
@@ -1394,7 +1399,6 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
             with st.container(border=True):
                 st.subheader('🎙️ Registrar Sessão')
                 sessao_livre = st.text_input('Qual Sessão / Câmara?'); obs = st.text_input('Observação (opcional):')
-                enviar_chat = st.checkbox('Enviar aviso no chat', value=True)
                 c_ok, c_cancel = st.columns(2)
                 with c_ok:
                     if st.button('✅ Confirmar', type='primary', use_container_width=True):
@@ -1402,7 +1406,7 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
                         if not consultor or consultor == 'Selecione um nome': st.error('Selecione um consultor.')
                         elif not sessao_livre.strip(): st.warning('Digite qual a sessão.')
                         else:
-                            st.session_state.active_view = None; update_status(f"Sessão: {sessao_livre}" + (f" - {obs.strip()}" if obs.strip() else ""), True)
+                            st.session_state.active_view = None; update_status(f"Sessão: {sessao_livre}" + (f" - {obs.strip()}" if obs.strip() else ""), True); st.rerun()
                 with c_cancel:
                     if st.button('❌ Cancelar', use_container_width=True): st.session_state.active_view = None; st.rerun()
                     
