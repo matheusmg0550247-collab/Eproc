@@ -28,8 +28,8 @@ EQUIPES = {
             "Leandro Victor", 
             "Luiz Henrique", 
             "Marcelo Dos Santos", 
-            "Marina Silva", 
-            "Marina Torres", 
+            "Marina Marques", 
+            "Marina Amaral", 
             "Vanessa Ligiane"
         ]
     },
