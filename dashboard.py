@@ -972,7 +972,7 @@ def get_proximos_bastao(holder, n=3):
         cursor = nxt
     return proximos
 
-ddef notify_bastao_giro(reason='update', actor=None):
+def notify_bastao_giro(reason='update', actor=None):
     """Envia para n8n quem está com o bastão e os próximos (silencioso)."""
     try:
         holder = get_bastao_holder_atual()
