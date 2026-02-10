@@ -2,6 +2,26 @@
 import streamlit as st
 from dashboard import render_dashboard
 
+st.set_page_config(page_title="Central Bastão TJMG", page_icon="🧭", layout="wide")
+
+st.sidebar.title("Central Bastão")
+equipe = st.sidebar.radio("Equipe", ["⚖️ Eproc", "🏛️ Legados"], index=0)
+
+TEAM_MAP = {
+    "🏛️ Legados": (1, "Legados"),
+    "⚖️ Eproc": (2, "Eproc"),
+}
+
+team_id, team_name = TEAM_MAP[equipe]
+other_team_id = 1 if team_id == 2 else 2
+other_team_name = "Legados" if team_name == "Eproc" else "Eproc"
+
+# Renderiza apenas a equipe selecionada (evita misturar filas/estado entre equipes)
+render_dashboard(team_id=team_id, team_name=team_name, other_team_id=other_team_id, other_team_name=other_team_name)
+# -*- coding: utf-8 -*-
+import streamlit as st
+from dashboard import render_dashboard
+
 st.set_page_config(page_title="Central Unificada do Bastão", page_icon="🧭", layout="wide")
 
 EQUIPES = {
