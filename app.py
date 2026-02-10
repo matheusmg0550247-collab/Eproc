@@ -74,11 +74,19 @@ st.session_state.setdefault("consultor_logado", None)
 st.session_state.setdefault("time_selecionado", None)
 
 team_from_q = _get_team_from_query()
-if team_from_q and not st.session_state.get("consultor_logado"):
+st.session_state.setdefault("consultor_logado", None)
+st.session_state.setdefault("time_selecionado", None)
+
+team_from_q = _get_team_from_query()
+
+# Se veio da URL e não tem time setado, usa a URL
+if team_from_q and not st.session_state.time_selecionado:
     st.session_state.time_selecionado = team_from_q
 
-if not st.session_state.get("time_selecionado"):
+# Se não tem nada setado e não tá logado, padrao EPROC
+if not st.session_state.time_selecionado and not st.session_state.consultor_logado:
     st.session_state.time_selecionado = "Equipe EPROC"
+    
 _set_team_query(st.session_state.time_selecionado)
 
 # Header
