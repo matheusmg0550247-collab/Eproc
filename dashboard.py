@@ -973,25 +973,43 @@ def get_proximos_bastao(holder, n=3):
     return proximos
 
 def notify_bastao_giro(reason='update', actor=None):
-    """Envia para n8n quem está com o bastão e os próximos (silencioso)."""
+    """Envia para n8n quem está com o bastão e os 2 próximos."""
     try:
         holder = get_bastao_holder_atual()
         if not holder and st.session_state.bastao_queue:
             holder = st.session_state.bastao_queue[0]
+            
+        # Pega os proximos (limitado a 2 conforme solicitado)
+        lista_proximos = get_proximos_bastao(holder, n=2)
+        txt_proximos = ", ".join(lista_proximos) if lista_proximos else "Ninguém"
+        
+        # Pega nome da equipe
+        nome_equipe = st.session_state.get('team_name', 'Equipe')
+
+        # Monta a mensagem final para o n8n (Isso resolve o erro 'message is empty')
+        msg_final = (
+            f"🔄 *Troca de Bastão - {nome_equipe}*\n\n"
+            f"👤 *Agora:* {holder}\n"
+            f"🔜 *Próximos:* {txt_proximos}"
+        )
+
         payload = {
             'evento': 'bastao_giro',
             'motivo': reason,
             'timestamp': get_brazil_time().isoformat(),
             'team_id': st.session_state.get('team_id'),
-            'team_name': st.session_state.get('team_name'),
+            'team_name': nome_equipe,
             'actor': actor,
             'com_bastao_agora': holder,
-            'proximos': get_proximos_bastao(holder, n=5),
-            'tamanho_fila': len(st.session_state.bastao_queue),
+            'proximos': lista_proximos,
+            'message': msg_final  # <--- CAMPO OBRIGATÓRIO PARA O N8N
         }
+        
+        # Usa o webhook especifico de giro se existir, ou o generico
         post_n8n(N8N_WEBHOOK_BASTAO_GIRO, payload)
         return True
-    except Exception:
+    except Exception as e:
+        print(f"Erro webhook bastao: {e}")
         return False
 
 
