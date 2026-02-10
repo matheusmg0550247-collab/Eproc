@@ -28,84 +28,6 @@ except ImportError:
 from utils import (get_brazil_time, get_secret, send_to_chat)
 
 # ============================================
-# COMPATIBILIDADE DE SECRETS/WEBHOOKS (DigitalOcean / Streamlit)
-# - Prioriza st.secrets (secrets.toml) e variáveis de ambiente
-# - Mantém fallback para implementações existentes em utils
-# ============================================
-_utils_get_secret = get_secret
-_utils_send_to_chat = send_to_chat
-
-def get_secret(section, key, default=None):
-    """Obtém um segredo com fallback: st.secrets -> env vars -> utils.get_secret."""
-    # 1) st.secrets
-    try:
-        sec = st.secrets.get(section, {})
-        if isinstance(sec, dict) and key in sec and sec.get(key) not in (None, ''):
-            return sec.get(key)
-    except Exception:
-        pass
-
-    # 2) Variáveis de ambiente (ex.: CHAT_BASTAO, CHAT_BASTAO_WEBHOOK, STREAMLIT_CHAT_BASTAO)
-    import os
-    cand = [
-        f"{section}_{key}".upper(),
-        f"{section}_{key}_WEBHOOK".upper(),
-        f"STREAMLIT_{section}_{key}".upper(),
-        f"STREAMLIT_{section}_{key}_WEBHOOK".upper(),
-    ]
-    for env_key in cand:
-        val = os.getenv(env_key)
-        if val:
-            return val
-
-    # 3) Fallback para utils.get_secret (caso exista e esteja funcional)
-    try:
-        val = _utils_get_secret(section, key)
-        if val not in (None, ''):
-            return val
-    except Exception:
-        pass
-
-    return default
-
-def send_to_chat(tipo, mensagem):
-    """Envia mensagem ao chat via webhook. Tenta utils.send_to_chat e faz fallback por requests.post."""
-    # 1) Tenta implementação original (se existir e estiver ok)
-    try:
-        ok = _utils_send_to_chat(tipo, mensagem)
-        if ok:
-            return True
-    except Exception:
-        pass
-
-    # 2) Fallback: resolve URL e envia via HTTP
-    url = get_secret('chat', tipo) or (get_secret('chat', 'bastao') if tipo == 'bastao' else None)
-    if not url:
-        return False
-
-    # Tenta payloads comuns (n8n/Slack/Discord/serviços genéricos)
-    payloads = [
-        {'text': mensagem, 'tipo': tipo},
-        {'message': mensagem, 'type': tipo},
-        {'content': mensagem, 'channel': tipo},
-    ]
-    for payload in payloads:
-        try:
-            r = requests.post(url, json=payload, timeout=8)
-            if 200 <= getattr(r, 'status_code', 0) < 300:
-                return True
-        except Exception:
-            continue
-
-    # Último fallback: texto puro
-    try:
-        r = requests.post(url, data=mensagem.encode('utf-8'), headers={'Content-Type': 'text/plain; charset=utf-8'}, timeout=8)
-        return bool(getattr(r, 'ok', False))
-    except Exception:
-        return False
-
-
-# ============================================
 # 1. CONFIGURAÇÕES E CONSTANTES (EQUIPE ID 2 - CESUPE)
 # ============================================
 DB_APP_ID = 2        # ID da Fila desta equipe
@@ -267,14 +189,10 @@ def get_ramal_nome(nome: str):
     first = n.split(' ')[0]
     return RAMAIS_CESUPE.get(first)
 
-def _badge_ramal_html(ramal: str) -> str:
-    # Badge de ramal com cores explícitas (boa leitura em tema claro/escuro)
-    return (
-        "<span class='ramal-badge' "
-        "style=\"display:inline-block;padding:2px 8px;border-radius:999px;"
-        "border:1px solid #d0d0d0;background:#ffffff;color:#111;\">"
-        f"📞 {ramal}</span>"
-    )
+def _badge_ramal_html(ramal):
+    if not ramal:
+        return ''
+    return f"<span style='margin-left:8px; padding:2px 8px; border-radius:999px; border:1px solid #ddd; font-size:12px; background:#f7f7f7;'>☎ {ramal}</span>"
 
 def _icons_telefone_cafe(indic: dict):
     if not isinstance(indic, dict):
@@ -286,8 +204,29 @@ def _icons_telefone_cafe(indic: dict):
 APP_URL_CLOUD = 'https://controle-bastao-cesupe.streamlit.app'
 
 # Secrets
-CHAT_WEBHOOK_BASTAO = get_secret("chat", "bastao")
+# N8N / WhatsApp (Z-API via n8n)
+# Preferencialmente configure em .streamlit/secrets.toml:
+# [n8n]
+# bastao_giro = "https://.../webhook/...."
+# registros   = "https://.../webhook/...."
+#
+# Compatibilidade: caso não exista [n8n], usamos as chaves antigas em [chat]
+# - chat.bastao_eq1 / chat.bastao_eq2 (giro do bastão)
+# - chat.registro (demais registros/ferramentas)
+N8N_WEBHOOK_BASTAO_GIRO = get_secret("n8n", "bastao_giro") or get_secret("chat", "bastao_eq1") or get_secret("chat", "bastao_eq2")
+N8N_WEBHOOK_REGISTROS   = get_secret("n8n", "registros")   or get_secret("chat", "registro")
+
 WEBHOOK_STATE_DUMP = get_secret("webhook", "test_state")
+
+def post_n8n(url: str, payload: dict) -> bool:
+    """Envia evento para n8n (silencioso). Retorna True/False."""
+    if not url:
+        return False
+    try:
+        requests.post(url, json=payload, timeout=4)
+        return True
+    except Exception:
+        return False
 
 # ============================================
 # 2. OTIMIZAÇÃO E CONEXÃO
@@ -309,8 +248,10 @@ def carregar_dados_grafico(app_id):
 
     # Em algumas bases o resumo diário fica fixo no id=1 (único), então fazemos fallback.
     ids_tentar = [app_id]
-    if app_id != 1:
-        ids_tentar.append(1)
+    # fallback: tenta também os dois IDs padrão (1=Legados, 2=Eproc) caso o resumo não exista neste id
+    for _id in (1, 2):
+        if _id not in ids_tentar:
+            ids_tentar.append(_id)
 
     try:
         for _id in ids_tentar:
@@ -690,53 +631,20 @@ def gerar_docx_certidao_internal(tipo, numero, data, consultor, motivo, chamado=
     except: return None
 
 # Webhooks
-def send_chat_notification_internal(consultor, status, queue=None):
-    """
-    Envia aviso do giro do bastão para o webhook configurado.
-
-    Regra confirmada:
-      - A mensagem deve trazer apenas:
-          1) Responsável pelo bastão
-          2) Os 2 próximos da fila (após o responsável)
-      - Respeita "Pular": quem estiver marcado em skip_flags NÃO entra na lista de próximos.
-
-    Observação:
-      - Este dashboard roda 2 equipes, então incluímos o nome do time na mensagem
-        (ajuda a não confundir no grupo).
-    """
-    if not CHAT_WEBHOOK_BASTAO or status != 'Bastão':
+def send_chat_notification_internal(consultor, status):
+    """Notificação interna de giro (compat). Agora envia via n8n, se configurado."""
+    if status != 'Bastão':
         return False
+    payload = {
+        'evento': 'bastao_giro',
+        'timestamp': get_brazil_time().isoformat(),
+        'team_id': st.session_state.get('team_id'),
+        'team_name': st.session_state.get('team_name'),
+        'com_bastao_agora': consultor,
+        'proximos': [],
+    }
+    return post_n8n(N8N_WEBHOOK_BASTAO_GIRO, payload)
 
-    try:
-        team_name = (st.session_state.get("team_name") or "").strip()
-        queue = queue if queue is not None else (st.session_state.get("bastao_queue") or [])
-        skips = st.session_state.get("skip_flags") or {}
-
-        proximos_txt = "Sem próximos na fila"
-        proximos_list = []
-
-        if queue and consultor in queue:
-            idx = queue.index(consultor)
-            raw_ordered = queue[idx+1:] + queue[:idx]
-            elegiveis = [n for n in raw_ordered if n and (not skips.get(n, False)) and n != consultor]
-            proximos_list = elegiveis[:2]
-
-        if proximos_list:
-            proximos_txt = ", ".join(proximos_list)
-
-        prefix_team = f"🏷️ *Equipe:* {team_name}\n\n" if team_name else ""
-        msg = (
-            f"🧭 *BASTÃO GIRADO!*\n\n"
-            f"{prefix_team}"
-            f"🎯 *Bastão agora:* {consultor}\n"
-            f"➡️ *Próximos (2):* {proximos_txt}\n\n"
-            f"🌐 *Painel:* {APP_URL_CLOUD}"
-        )
-
-        send_to_chat("bastao", msg)
-        return True
-    except Exception:
-        return False
 
 def send_state_dump_webhook(state_data):
     if not WEBHOOK_STATE_DUMP: return False
@@ -749,29 +657,23 @@ def send_state_dump_webhook(state_data):
 
 def send_horas_extras_to_chat(consultor, data, inicio, tempo, motivo):
     msg = f"⏰ **Registro de Horas Extras**\n\n👤 **Consultor:** {consultor}\n📅 **Data:** {data.strftime('%d/%m/%Y')}\n🕐 **Início:** {inicio.strftime('%H:%M')}\n⏱️ **Tempo Total:** {tempo}\n📝 **Motivo:** {motivo}"
-    try: send_to_chat("extras", msg); return True
-    except: return False
+    return notify_registro_ferramenta("H_EXTRAS", consultor, dados={"data": data.strftime("%d/%m/%Y"), "inicio": inicio.strftime("%H:%M"), "tempo": tempo, "motivo": motivo}, mensagem=msg)
 
 def send_atendimento_to_chat(consultor, data, usuario, nome_setor, sistema, descricao, canal, desfecho, jira_opcional=""):
     jira_str = f"\n🔢 **Jira:** CESUPE-{jira_opcional}" if jira_opcional else ""
     msg = f"📋 **Novo Registro de Atendimento**\n\n👤 **Consultor:** {consultor}\n📅 **Data:** {data.strftime('%d/%m/%Y')}\n👥 **Usuário:** {usuario}\n🏢 **Nome/Setor:** {nome_setor}\n💻 **Sistema:** {sistema}\n📝 **Descrição:** {descricao}\n📞 **Canal:** {canal}\n✅ **Desfecho:** {desfecho}{jira_str}"
-    try: send_to_chat("registro", msg); return True
-    except: return False
+    return notify_registro_ferramenta("ATENDIMENTOS", consultor, dados={"data": data.strftime("%d/%m/%Y"), "usuario": usuario, "setor": nome_setor, "sistema": sistema, "canal": canal, "desfecho": desfecho, "jira": jira_opcional}, mensagem=msg)
 
 def send_chamado_to_chat(consultor, texto):
     if not consultor or consultor == 'Selecione um nome' or not texto.strip(): return False
     data_envio = get_brazil_time().strftime('%d/%m/%Y %H:%M')
     msg = f"🆘 **Rascunho de Chamado/Jira**\n📅 **Data:** {data_envio}\n\n👤 **Autor:** {consultor}\n\n📝 **Texto:**\n{texto}"
-    try: send_to_chat('chamado', msg); return True
-    except:
-        try: send_to_chat('registro', msg); return True
-        except: return False
+    return notify_registro_ferramenta('CHAMADOS', consultor, dados={'texto': texto}, mensagem=msg)
 
 def handle_erro_novidade_submission(consultor, titulo, objetivo, relato, resultado):
     data_envio = get_brazil_time().strftime("%d/%m/%Y %H:%M")
     msg = f"🐛 **Novo Relato de Erro/Novidade**\n📅 **Data:** {data_envio}\n\n👤 **Autor:** {consultor}\n📌 **Título:** {titulo}\n\n🎯 **Objetivo:**\n{objetivo}\n\n🧪 **Relato:**\n{relato}\n\n🏁 **Resultado:**\n{resultado}"
-    try: send_to_chat("erro", msg); return True
-    except: return False
+    return notify_registro_ferramenta("ERRO_NOVIDADE", consultor, dados={"titulo": titulo, "objetivo": objetivo, "relato": relato, "resultado": resultado}, mensagem=msg)
 
 def send_sessao_to_chat_fn(consultor, texto_mensagem):
     return True
@@ -780,8 +682,7 @@ def handle_sugestao_submission(consultor, texto):
     data_envio = get_brazil_time().strftime("%d/%m/%Y %H:%M")
     ip_usuario = get_remote_ip()
     msg = f"💡 **Nova Sugestão**\n📅 **Data:** {data_envio}\n👤 **Autor:** {consultor}\n🌐 **IP:** {ip_usuario}\n\n📝 **Sugestão:**\n{texto}"
-    try: send_to_chat("extras", msg); return True
-    except: return False
+    return notify_registro_ferramenta("H_EXTRAS", consultor, dados={"data": data.strftime("%d/%m/%Y"), "inicio": inicio.strftime("%H:%M"), "tempo": tempo, "motivo": motivo}, mensagem=msg)
 
 # ============================================
 # 7. FUNÇÕES DE ESTADO E LÓGICA
@@ -919,7 +820,7 @@ def check_and_assume_baton(forced_successor=None, immune_consultant=None):
             old_s = curr_s; new_s = f"Bastão | {old_s}" if old_s and old_s != "Indisponível" else "Bastão"
             log_status_change(target, old_s, new_s, now - st.session_state.current_status_starts.get(target, now))
             st.session_state.status_texto[target] = new_s; st.session_state.bastao_start_time = now
-            if current_holder != target: st.session_state.play_sound = True; send_chat_notification_internal(target, 'Bastão', st.session_state.bastao_queue)
+            if current_holder != target: st.session_state.play_sound = True; send_chat_notification_internal(target, 'Bastão')
             st.session_state.skip_flags[target] = False
             changed = True
     elif not target and current_holder:
@@ -998,6 +899,73 @@ def update_status(novo_status: str, marcar_indisponivel: bool = False, manter_fi
     check_and_assume_baton(forced_successor)
     save_state()
 
+
+def get_bastao_holder_atual():
+    """Retorna quem está com o Bastão (texto contém 'Bastão')."""
+    return next((c for c, s in st.session_state.status_texto.items() if isinstance(s, str) and 'Bastão' in s), None)
+
+def get_proximos_bastao(holder, n=3):
+    """Retorna lista de próximos considerando skips."""
+    queue = st.session_state.bastao_queue
+    skips = st.session_state.skip_flags
+    if not queue:
+        return []
+    if holder not in queue:
+        # fallback: usa o primeiro da fila
+        holder = queue[0]
+    idx = queue.index(holder)
+    proximos = []
+    cursor = idx
+    while len(proximos) < n:
+        nxt = find_next_holder_index(cursor, queue, skips)
+        if nxt == -1:
+            break
+        nxt_name = queue[nxt]
+        # evita loop infinito
+        if nxt_name == holder or nxt_name in proximos:
+            break
+        proximos.append(nxt_name)
+        cursor = nxt
+    return proximos
+
+def notify_bastao_giro(reason='update', actor=None):
+    """Envia para n8n quem está com o bastão e os próximos (silencioso)."""
+    try:
+        holder = get_bastao_holder_atual()
+        if not holder and st.session_state.bastao_queue:
+            holder = st.session_state.bastao_queue[0]
+        payload = {
+            'evento': 'bastao_giro',
+            'motivo': reason,
+            'timestamp': get_brazil_time().isoformat(),
+            'team_id': st.session_state.get('team_id'),
+            'team_name': st.session_state.get('team_name'),
+            'actor': actor,
+            'com_bastao_agora': holder,
+            'proximos': get_proximos_bastao(holder, n=5),
+            'tamanho_fila': len(st.session_state.bastao_queue),
+        }
+        post_n8n(N8N_WEBHOOK_BASTAO_GIRO, payload)
+        return True
+    except Exception:
+        return False
+
+
+def notify_registro_ferramenta(tipo: str, actor: str, dados: dict = None, mensagem: str = None) -> bool:
+    """Envia evento de registro (Ferramentas) para n8n (silencioso)."""
+    payload = {
+        'evento': 'registro_ferramenta',
+        'tipo': tipo,
+        'timestamp': get_brazil_time().isoformat(),
+        'team_id': st.session_state.get('team_id'),
+        'team_name': st.session_state.get('team_name'),
+        'actor': actor,
+        'dados': dados or {},
+        'mensagem': mensagem,
+    }
+    return post_n8n(N8N_WEBHOOK_REGISTROS, payload)
+
+
 def toggle_queue(consultor):
     ensure_daily_reset(); st.session_state.gif_warning = False; now_br = get_brazil_time()
     if consultor in st.session_state.bastao_queue:
@@ -1016,6 +984,7 @@ def toggle_queue(consultor):
         if consultor in st.session_state.priority_return_queue: st.session_state.priority_return_queue.remove(consultor)
         st.session_state.status_texto[consultor] = ''
         check_and_assume_baton()
+        notify_bastao_giro(reason='enter_bastao', actor=consultor)
     save_state()
 
 def rotate_bastao():
@@ -1051,7 +1020,7 @@ def rotate_bastao():
         st.session_state.status_texto[next_holder] = new_n_status
         st.session_state.bastao_start_time = now_br
         st.session_state.bastao_counts[current_holder] = st.session_state.bastao_counts.get(current_holder, 0) + 1
-        st.session_state.play_sound = True; send_chat_notification_internal(next_holder, 'Bastão', st.session_state.bastao_queue)
+        st.session_state.play_sound = True; send_chat_notification_internal(next_holder, 'Bastão')
         save_state()
     else: st.warning('Ninguém elegível.'); check_and_assume_baton()
 
@@ -1108,47 +1077,21 @@ def toggle_quick_cafe():
     _set_quick_indic(nome, cafe=novo, telefone=False if novo else cur.get('telefone', False))
 
 def render_quick_toggle_btn(tipo: str):
-    """
-    Toggle rápido (Telefone / Café) por consultor.
-    - Mais responsivo do que botão + rerun
-    - Persistência via save_state() (Supabase)
-
-    Regras:
-      - Telefone e Café são mutuamente exclusivos (se liga um, desliga o outro).
-    """
     nome = st.session_state.get('consultor_selectbox')
     if not nome or nome == 'Selecione um nome':
-        st.info("Selecione um consultor para usar as sinalizações rápidas.")
-        return False
-
+        st.button('📞', disabled=True, use_container_width=True) if tipo == 'telefone' else st.button('☕', disabled=True, use_container_width=True)
+        return
     indic = _get_quick_indic(nome)
-    tel_on = bool(indic.get('telefone', False))
-    cafe_on = bool(indic.get('cafe', False))
-
-    key = f"toggle_{tipo}_{nome}"
-
-    if tipo == "telefone":
-        st.session_state.setdefault(key, tel_on)
-
-        def _on_change():
-            novo = bool(st.session_state.get(key, False))
-            _set_quick_indic(nome, telefone=novo, cafe=False if novo else cafe_on)
-            # mantém toggle do outro lado coerente
-            st.session_state[f"toggle_cafe_{nome}"] = False if novo else st.session_state.get(f"toggle_cafe_{nome}", cafe_on)
-
-        return st.toggle("📞 Telefone", key=key, on_change=_on_change)
-
-    if tipo == "cafe":
-        st.session_state.setdefault(key, cafe_on)
-
-        def _on_change():
-            novo = bool(st.session_state.get(key, False))
-            _set_quick_indic(nome, telefone=False if novo else tel_on, cafe=novo)
-            st.session_state[f"toggle_telefone_{nome}"] = False if novo else st.session_state.get(f"toggle_telefone_{nome}", tel_on)
-
-        return st.toggle("☕ Café", key=key, on_change=_on_change)
-
-    return False
+    if tipo == 'telefone':
+        ativo = bool(indic.get('telefone'))
+        label = '📞✅' if ativo else '📞'
+        if st.button(label, key=f'btn_tel_{nome}', use_container_width=True):
+            toggle_quick_telefone(); st.rerun()
+    elif tipo == 'cafe':
+        ativo = bool(indic.get('cafe'))
+        label = '☕✅' if ativo else '☕'
+        if st.button(label, key=f'btn_cafe_{nome}', use_container_width=True):
+            toggle_quick_cafe(); st.rerun()
 
 def sync_logged_user():
     # Mantém a ideia de 'logado', mas permite trocar para outro consultor (auditoria via logs)
@@ -1460,9 +1403,6 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
                 st.session_state['consultor_logado'] = None
                 st.session_state['consultor_selectbox'] = 'Selecione um nome'
                 st.rerun()
-
-            # Diagnóstico rápido
-            st.caption(f"📡 Webhook bastão: {'✅' if CHAT_WEBHOOK_BASTAO else '⚠️ não configurado'}")
 
             # Fila da outra equipe (somente visualização cruzada)
             if other_id:
@@ -1808,7 +1748,7 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
         if st.session_state.active_view == "checklist":
             with st.container(border=True):
                 st.header("Gerador de Checklist"); data_eproc = st.date_input("Data:", value=get_brazil_time().date()); camara_eproc = st.text_input("Câmara:")
-                if st.button("Gerar HTML"): send_to_chat("sessao", f"Consultor {st.session_state.consultor_selectbox} acompanhando sessão {camara_eproc}"); st.success("Registrado no chat!")
+                if st.button("Gerar HTML"): st.success("Checklist gerado!")
                 if st.button("❌ Cancelar"): st.session_state.active_view = None; st.rerun()
 
         if st.session_state.active_view == "chamados":
@@ -1904,8 +1844,7 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
                             }
                             if salvar_certidao_db(payload):
                                 msg_cert = f"🖨️ **Nova Certidão Registrada**\n👤 **Autor:** {c_cons}\n📅 **Data:** {c_data.strftime('%d/%m/%Y')}\n📄 **Tipo:** {tipo_cert}\n📂 **Proc:** {c_proc}"
-                                try: send_to_chat("certidao", msg_cert)
-                                except Exception as e: st.error(f"Erro Webhook: {e}")
+                                notify_registro_ferramenta("CERTIDAO", st.session_state.consultor_selectbox, dados={"data": c_data.strftime("%d/%m/%Y"), "tipo": tipo_cert, "processo": c_proc}, mensagem=msg_cert)
                                 st.success("Salvo!"); time.sleep(1); st.session_state.active_view = None; st.session_state.word_buffer = None; st.rerun()
                             else: st.error("Erro ao salvar no banco.")
             
