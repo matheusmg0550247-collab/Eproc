@@ -308,9 +308,11 @@ def render_operational_summary():
     """Renderiza o Resumo Operacional (gráficos)"""
     st.subheader("📊 Resumo Operacional")
 
-tid = st.session_state.get('team_id')
-df_chart, gerado_em = carregar_dados_grafico(tid)
+    # Correção: alinhado com 4 espaços
+    tid = st.session_state.get('team_id')
+    df_chart, gerado_em = carregar_dados_grafico(tid)
 
+    # Correção: O 'if' deve estar na mesma direção do 'df_chart' acima (4 espaços)
     if df_chart is not None:
         try:
             # ---------------------------
