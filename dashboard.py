@@ -28,10 +28,10 @@ except ImportError:
 from utils import (get_brazil_time, get_secret, send_to_chat)
 
 # ============================================
-# 1. CONFIGURAÇÕES E CONSTANTES
+# 1. CONFIGURAÇÕES E CONSTANTES (EQUIPE ID 2 - CESUPE)
 # ============================================
-DB_APP_ID = 2        # ID padrão
-LOGMEIN_DB_ID = 1    # ID do LogMeIn (COMPARTILHADO)
+DB_APP_ID = 2        # ID da Fila desta equipe
+LOGMEIN_DB_ID = 1    # ID do LogMeIn (COMPARTILHADO - SEMPRE 1)
 
 CONSULTORES = sorted([
     "Barbara Mara", "Bruno Glaicon", "Claudia Luiza", "Douglas Paiva", "Fábio Alves", "Glayce Torres", 
@@ -44,6 +44,7 @@ REG_USUARIO_OPCOES = ["Cartório", "Gabinete", "Externo"]
 REG_SISTEMA_OPCOES = ["Conveniados", "Outros", "Eproc", "Themis", "JPE", "SIAP"]
 REG_CANAL_OPCOES = ["Presencial", "Telefone", "Email", "Whatsapp", "Outros"]
 REG_DESFECHO_OPCOES = ["Resolvido - Cesupe", "Escalonado"]
+
 OPCOES_ATIVIDADES_STATUS = ["HP", "E-mail", "WhatsApp Plantão", "Homologação", "Redação Documentos", "Outros"]
 
 # URLs e Visuais
@@ -53,89 +54,207 @@ BASTAO_EMOJI = "🎭"
 PUG2026_FILENAME = "Carnaval.gif" 
 
 # ============================================
-# RAMAIS CESUPE
+# RAMAIS CESUPE (BADGE AO LADO DO NOME)
 # ============================================
 RAMAIS_CESUPE = {
-    'douglas paiva': '2663', 'alex': '2510', 'barbara': '2517', 'bruno': '2644', 'claudio': '2667',
-    'claudia': '2667', 'dirceu': '2666', 'douglas': '2659', 'fabio': '2665', 'farley': '2651',
-    'gilberto': '2654', 'gleis': '2536', 'gleissiane': '2536', 'gleyce': '2647', 'glayce': '2647',
-    'hugo': '2650', 'jerry': '2654', 'jonatas': '2656', 'leandro': '2652', 'leonardo': '2655',
-    'ivana': '2653', 'marcelo': '2655', 'matheus': '2664', 'michael': '2638', 'pablo': '2643',
-    'ranier': '2669', 'ranyer': '2669', 'vanessa': '2607', 'victoria': '2660', 'victória': '2660'
+    # Chave normalizada (sem acento, minúscula). Priorize combinações específicas antes do primeiro nome.
+    'douglas paiva': '2663',
+    'alex': '2510',
+    'barbara': '2517',
+    'bruno': '2644',
+    'claudio': '2667',
+    'claudia': '2667',  # variação comum
+    'dirceu': '2666',
+    'douglas': '2659',
+    'fabio': '2665',
+    'farley': '2651',
+    'gilberto': '2654',
+    'gleis': '2536',
+    'gleissiane': '2536',
+    'gleyce': '2647',
+    'glayce': '2647',  # variação comum
+    'hugo': '2650',
+    'jerry': '2654',
+    'jonatas': '2656',
+    'leandro': '2652',
+    'leonardo': '2655',
+    'ivana': '2653',
+    'marcelo': '2655',
+    'matheus': '2664',
+    'michael': '2638',
+    'pablo': '2643',
+    'ranier': '2669',
+    'ranyer': '2669',  # variação comum
+    'vanessa': '2607',
+    'victoria': '2660',
+    'victória': '2660',  # caso venha com acento
 }
 
+
 # ============================================
-# AGENDA EPROC
+# AGENDA EPROC (VISÃO SEMANAL CONSOLIDADA)
+# Fonte: "Distribuição das Atividades da Equipe EPROC" (anexo do usuário)
 # ============================================
 EPROC_VISAO_SEMANAL = [
-    {"dia": "Segunda-feira", "manha": "Fábio, Leonardo, Glayce, Pablo", "tarde": "Fábio, Leonardo, Glayce, Isabela (Bruno, Cláudia, Douglas – Cond.)", "sessao": "Consultores sem projeto fixo e Configuração EPROC", "obs": ""},
-    {"dia": "Terça-feira", "manha": "Fábio, Leonardo, Glayce, Pablo", "tarde": "Fábio, Leonardo, Glayce, Isabela (IA / SOMA / Manuais – Cond.)", "sessao": "Prioridade: Isac e Ranyer (SOMA)", "obs": ""},
-    {"dia": "Quarta-feira", "manha": "Fábio, Leonardo, Glayce, Pablo", "tarde": "Fábio, Leonardo, Glayce, Isabela (IA / Manuais / Cartórios – Cond.)", "sessao": "Distribuição geral, sem prioridade específica", "obs": ""},
-    {"dia": "Quinta-feira", "manha": "Fábio, Leonardo, Glayce, Pablo", "tarde": "Fábio, Leonardo, Glayce, Isabela (IA / SOMA / Manuais – Cond.)", "sessao": "Prioridade: Isac e Ranyer (SOMA)", "obs": "Obs.: Bárbara não pode."},
-    {"dia": "Sexta-feira", "manha": "Fábio, Leonardo, Glayce (Demais – Cond.)", "tarde": "Fábio, Leonardo, Glayce (Demais – Cond.)", "sessao": "Preferencialmente consultores sem projeto crítico", "obs": ""}
+    {
+        "dia": "Segunda-feira",
+        "manha": "Fábio, Leonardo, Glayce, Pablo",
+        "tarde": "Fábio, Leonardo, Glayce, Isabela (Bruno, Cláudia, Douglas – Cond.)",
+        "sessao": "Consultores sem projeto fixo e Configuração EPROC",
+        "obs": ""
+    },
+    {
+        "dia": "Terça-feira",
+        "manha": "Fábio, Leonardo, Glayce, Pablo",
+        "tarde": "Fábio, Leonardo, Glayce, Isabela (IA / SOMA / Manuais – Cond.)",
+        "sessao": "Prioridade: Isac e Ranyer (SOMA)",
+        "obs": ""
+    },
+    {
+        "dia": "Quarta-feira",
+        "manha": "Fábio, Leonardo, Glayce, Pablo",
+        "tarde": "Fábio, Leonardo, Glayce, Isabela (IA / Manuais / Cartórios – Cond.)",
+        "sessao": "Distribuição geral, sem prioridade específica",
+        "obs": ""
+    },
+    {
+        "dia": "Quinta-feira",
+        "manha": "Fábio, Leonardo, Glayce, Pablo",
+        "tarde": "Fábio, Leonardo, Glayce, Isabela (IA / SOMA / Manuais – Cond.)",
+        "sessao": "Prioridade: Isac e Ranyer (SOMA)",
+        "obs": "Obs.: Bárbara não pode."
+    },
+    {
+        "dia": "Sexta-feira",
+        "manha": "Fábio, Leonardo, Glayce (Demais – Cond.)",
+        "tarde": "Fábio, Leonardo, Glayce (Demais – Cond.)",
+        "sessao": "Preferencialmente consultores sem projeto crítico",
+        "obs": ""
+    },
 ]
-DIA_SEMANA_PT = {0: "Segunda-feira", 1: "Terça-feira", 2: "Quarta-feira", 3: "Quinta-feira", 4: "Sexta-feira", 5: "Sábado", 6: "Domingo"}
+
+DIA_SEMANA_PT = {
+    0: "Segunda-feira",
+    1: "Terça-feira",
+    2: "Quarta-feira",
+    3: "Quinta-feira",
+    4: "Sexta-feira",
+    5: "Sábado",
+    6: "Domingo",
+}
 
 def render_agenda_eproc_sidebar():
+    """Renderiza a agenda EPROC (visão semanal) no painel lateral."""
     now_br = get_brazil_time()
     dia_pt = DIA_SEMANA_PT.get(now_br.weekday(), "")
     st.markdown(f"### 📅 Agenda EPROC")
     st.caption(f"Hoje: **{dia_pt}** — {now_br.strftime('%d/%m/%Y')}")
+
     with st.expander("Ver visão semanal consolidada", expanded=False):
         for row in EPROC_VISAO_SEMANAL:
             is_today = (row.get("dia") == dia_pt)
             bg = "#E7F1FF" if is_today else "#FFFFFF"
             border = "1px solid #cbd5e1" if is_today else "1px solid #eee"
-            st.markdown(f"<div style='border:{border}; background:{bg}; padding:10px 12px; border-radius:12px; margin:8px 0;'><div style='font-weight:800; font-size:15px; margin-bottom:6px;'>🗓️ {row.get('dia','')}</div><div style='font-size:14px; margin:2px 0;'><b>🕘 Manhã:</b> {row.get('manha','')}</div><div style='font-size:14px; margin:2px 0;'><b>🕜 Tarde:</b> {row.get('tarde','')}</div><div style='font-size:14px; margin:2px 0;'><b>🎙️ Sessões:</b> {row.get('sessao','')}</div>{f'<div style=\\'font-size:13px; margin-top:6px; color:#6b7280;\\'><i>{row.get(\"obs\")}</i></div>' if row.get('obs') else ''}</div>", unsafe_allow_html=True)
+            
+            # --- CORREÇÃO 1: Construção segura do HTML para evitar erro de sintaxe ---
+            obs_text = row.get('obs')
+            obs_html = f"<div style='font-size:13px; margin-top:6px; color:#6b7280;'><i>{obs_text}</i></div>" if obs_text else ""
+            
+            st.markdown(
+                f"""
+<div style='border:{border}; background:{bg}; padding:10px 12px; border-radius:12px; margin:8px 0;'>
+  <div style='font-weight:800; font-size:15px; margin-bottom:6px;'>🗓️ {row.get('dia','')}</div>
+  <div style='font-size:14px; margin:2px 0;'><b>🕘 Manhã:</b> {row.get('manha','')}</div>
+  <div style='font-size:14px; margin:2px 0;'><b>🕜 Tarde:</b> {row.get('tarde','')}</div>
+  <div style='font-size:14px; margin:2px 0;'><b>🎙️ Sessões:</b> {row.get('sessao','')}</div>
+  {obs_html}
+</div>
+""", unsafe_allow_html=True
+            )
 
 def _normalize_nome(txt: str) -> str:
-    if not isinstance(txt, str): return ''
+    if not isinstance(txt, str):
+        return ''
+    # remove acentos + normaliza espaços
     txt = ''.join(ch for ch in unicodedata.normalize('NFKD', txt) if not unicodedata.combining(ch))
-    return re.sub(r'\s+', ' ', txt).strip().lower()
+    txt = re.sub(r'\s+', ' ', txt).strip().lower()
+    return txt
 
 def get_ramal_nome(nome: str):
     n = _normalize_nome(nome)
-    if not n: return None
-    if 'douglas' in n and 'paiva' in n: return RAMAIS_CESUPE.get('douglas paiva')
-    if n in RAMAIS_CESUPE: return RAMAIS_CESUPE[n]
+    if not n:
+        return None
+    # Regra específica: Douglas Paiva
+    if 'douglas' in n and 'paiva' in n:
+        return RAMAIS_CESUPE.get('douglas paiva')
+    # Primeira tentativa: match completo
+    if n in RAMAIS_CESUPE:
+        return RAMAIS_CESUPE[n]
+    # Segunda tentativa: primeiro nome
     first = n.split(' ')[0]
     return RAMAIS_CESUPE.get(first)
 
 def _badge_ramal_html(ramal):
-    return f"<span style='margin-left:8px; padding:2px 8px; border-radius:999px; border:1px solid #ddd; font-size:12px; background:#f7f7f7;'>☎ {ramal}</span>" if ramal else ''
+    if not ramal:
+        return ''
+    return f"<span style='margin-left:8px; padding:2px 8px; border-radius:999px; border:1px solid #ddd; font-size:12px; background:#f7f7f7;'>☎ {ramal}</span>"
 
 def _icons_telefone_cafe(indic: dict):
-    if not isinstance(indic, dict): return ''
+    if not isinstance(indic, dict):
+        return ''
     parts = []
     if indic.get('telefone'): parts.append('📞')
     if indic.get('cafe'): parts.append('☕')
     return (' ' + ' '.join(parts)) if parts else ''
-
 APP_URL_CLOUD = 'https://controle-bastao-cesupe.streamlit.app'
+
+# Secrets
+# N8N / WhatsApp (Z-API via n8n)
+# Preferencialmente configure em .streamlit/secrets.toml:
+# [n8n]
+# bastao_giro = "https://.../webhook/...."
+# registros   = "https://.../webhook/...."
+#
+# Compatibilidade: caso não exista [n8n], usamos as chaves antigas em [chat]
+# - chat.bastao_eq1 / chat.bastao_eq2 (giro do bastão)
+# - chat.registro (demais registros/ferramentas)
 N8N_WEBHOOK_BASTAO_GIRO = get_secret("n8n", "bastao_giro") or get_secret("chat", "bastao_eq1") or get_secret("chat", "bastao_eq2")
 N8N_WEBHOOK_REGISTROS   = get_secret("n8n", "registros")   or get_secret("chat", "registro")
+
 WEBHOOK_STATE_DUMP = get_secret("webhook", "test_state")
 
 def post_n8n(url: str, payload: dict) -> bool:
-    if not url: return False
+    """Envia evento para n8n (silencioso). Retorna True/False."""
+    if not url:
+        return False
     try:
         requests.post(url, json=payload, timeout=4)
         return True
-    except: return False
+    except Exception:
+        return False
+
+# ============================================
+# 2. OTIMIZAÇÃO E CONEXÃO
+# ============================================
 
 @st.cache_resource(ttl=3600)
 def get_supabase():
-    try: return create_client(st.secrets["supabase"]["url"], st.secrets["supabase"]["key"])
-    except: 
+    try: 
+        return create_client(st.secrets["supabase"]["url"], st.secrets["supabase"]["key"])
+    except Exception as e:
         st.cache_resource.clear()
         return None
 
-# CACHE DE 24H PARA O GRÁFICO
+# MUDANÇA 1: Cache de 24 horas (86400 segundos) para o gráfico não pesar a CPU
 @st.cache_data(ttl=86400, show_spinner=False)
 def carregar_dados_grafico(app_id):
     sb = get_supabase()
     if not sb: return None, None
     
+    # ESTRATÉGIA DE BUSCA DO GRÁFICO:
+    # 1. Tenta o ID da equipe atual.
+    # 2. Se falhar, tenta o ID 2 (Eproc), pois ele costuma ter o consolidado "Operacional".
+    # 3. Se falhar, tenta o ID 1.
     ids_tentar = [app_id]
     if 2 not in ids_tentar: ids_tentar.append(2)
     if 1 not in ids_tentar: ids_tentar.append(1)
@@ -143,65 +262,115 @@ def carregar_dados_grafico(app_id):
     try:
         for tid in ids_tentar:
             res = sb.table("atendimentos_resumo").select("*").eq("id", tid).execute()
+            
             if res.data and len(res.data) > 0:
                 json_data = res.data[0].get('data') or {}
+                
+                # Tratamento de string JSON
                 if isinstance(json_data, str):
                     try: json_data = json.loads(json_data)
                     except: json_data = {}
                 
+                # VERIFICA SE O JSON TEM OS DADOS DO GRÁFICO
+                # Se tiver a chave 'totais_por_relatorio', achamos o gráfico certo!
                 if 'totais_por_relatorio' in json_data:
                     df = pd.DataFrame(json_data.get('totais_por_relatorio', []))
                     if not df.empty and 'relatorio' not in df.columns:
                          df = df.rename(columns={df.columns[0]: 'relatorio'})
+                    
+                    # Retorna imediatamente ao encontrar dados válidos
                     return df, json_data.get('gerado_em', '-')
+                    
     except Exception as e:
         print(f"Erro ao carregar gráfico: {e}")
+
     return None, None
 
 def render_operational_summary():
+    """Renderiza o Resumo Operacional (gráficos)"""
     st.subheader("📊 Resumo Operacional")
+
+    # Correção: alinhado com 4 espaços
     tid = st.session_state.get('team_id')
     df_chart, gerado_em = carregar_dados_grafico(tid)
 
+    # Correção: O 'if' deve estar na mesma direção do 'df_chart' acima (4 espaços)
     if df_chart is not None:
         try:
+            # ---------------------------
+            # CARDS (TOTALIZADORES)
+            # ---------------------------
             total_eproc = int(df_chart.get("Eproc", 0).fillna(0).sum()) if hasattr(df_chart.get("Eproc", 0), "fillna") else 0
             total_legados = int(df_chart.get("Legados", 0).fillna(0).sum()) if hasattr(df_chart.get("Legados", 0), "fillna") else 0
             total_geral = int(total_eproc + total_legados)
 
             c1, c2, c3 = st.columns(3)
-            with c1: st.metric("⚖️ Eproc", f"{total_eproc}")
-            with c2: st.metric("🏛️ Legados", f"{total_legados}")
-            with c3: st.metric("📌 Total", f"{total_geral}")
+            with c1:
+                st.metric("⚖️ Eproc", f"{total_eproc}")
+            with c2:
+                st.metric("🏛️ Legados", f"{total_legados}")
+            with c3:
+                st.metric("📌 Total", f"{total_geral}")
 
             st.caption(f"Dados do dia: {gerado_em} (Atualização diária)")
 
-            df_long = df_chart.melt(id_vars=['relatorio'], value_vars=['Eproc', 'Legados'], var_name='Sistema', value_name='Qtd')
-            base = alt.Chart(df_long).encode(x=alt.X('relatorio', title=None, axis=alt.Axis(labels=True, labelAngle=0)), y=alt.Y('Qtd', title='Quantidade'), color=alt.Color('Sistema', legend=alt.Legend(title="Sistema")), xOffset='Sistema')
+            # ---------------------------
+            # GRÁFICO (AGRUPADO POR RELATÓRIO)
+            # ---------------------------
+            df_long = df_chart.melt(
+                id_vars=['relatorio'],
+                value_vars=['Eproc', 'Legados'],
+                var_name='Sistema',
+                value_name='Qtd'
+            )
+
+            base = alt.Chart(df_long).encode(
+                x=alt.X('relatorio', title=None, axis=alt.Axis(labels=True, labelAngle=0)),
+                y=alt.Y('Qtd', title='Quantidade'),
+                color=alt.Color('Sistema', legend=alt.Legend(title="Sistema")),
+                xOffset='Sistema'
+            )
+
             bars = base.mark_bar()
             text = base.mark_text(dy=-5, color='black').encode(text='Qtd')
             final_chart = (bars + text).properties(height=320)
+
             st.altair_chart(final_chart, use_container_width=True)
 
+            # ---------------------------
+            # DETALHADO (EXPANDER)
+            # ---------------------------
             with st.expander("📄 Dados detalhados", expanded=False):
                 st.dataframe(df_chart, use_container_width=True)
-        except Exception as e: st.error(f"Erro gráfico: {e}")
+
+        except Exception as e:
+            st.error(f"Erro gráfico: {e}")
     else:
         st.info("Sem dados de resumo disponíveis.")
 
 @st.cache_data
 def get_img_as_base64_cached(file_path):
     try:
-        with open(file_path, "rb") as f: data = f.read()
+        with open(file_path, "rb") as f:
+            data = f.read()
         return base64.b64encode(data).decode()
     except: return None
 
+# ============================================
+# 3. REPOSITÓRIO
+# ============================================
+
 def clean_data_for_db(obj):
-    if isinstance(obj, dict): return {k: clean_data_for_db(v) for k, v in obj.items()}
-    elif isinstance(obj, list): return [clean_data_for_db(i) for i in obj]
-    elif isinstance(obj, (datetime, date)): return obj.isoformat()
-    elif isinstance(obj, timedelta): return obj.total_seconds()
-    else: return obj
+    if isinstance(obj, dict):
+        return {k: clean_data_for_db(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [clean_data_for_db(i) for i in obj]
+    elif isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    elif isinstance(obj, timedelta):
+        return obj.total_seconds()
+    else:
+        return obj
 
 @st.cache_data(ttl=5, show_spinner=False)
 def load_state_from_db(app_id):
@@ -209,18 +378,31 @@ def load_state_from_db(app_id):
     if not sb: return {}
     try:
         response = sb.table("app_state").select("data").eq("id", app_id).execute()
-        if response.data and len(response.data) > 0: return response.data[0].get("data", {})
+        if response.data and len(response.data) > 0:
+            return response.data[0].get("data", {})
         return {}
-    except: return {}
+    except Exception as e:
+        return {}
 
 def save_state_to_db(app_id, state_data):
     sb = get_supabase()
-    if not sb: return
+    if not sb: 
+        st.error("Sem conexão para salvar.")
+        return
     try:
         sanitized_data = clean_data_for_db(state_data)
         sb.table("app_state").upsert({"id": app_id, "data": sanitized_data}).execute()
-        st.session_state['_last_save_time'] = time.time() # MARCA A HORA DO SAVE PARA O WATCHER SABER
-    except Exception as e: st.error(f"🔥 ERRO DE ESCRITA NO BANCO: {e}")
+        
+        # --- CORREÇÃO 2: Marca o tempo do salvamento para o Watcher não conflitar
+        st.session_state['_last_save_time'] = time.time() 
+        
+        # Feedback visual pós-salvar (mostra no próximo rerun)
+        try:
+            st.session_state['_toast_msg'] = '✅ Registro salvo.'
+        except Exception:
+            pass
+    except Exception as e:
+        st.error(f"🔥 ERRO DE ESCRITA NO BANCO: {e}")
 
 # --- LOGMEIN DB ---
 def get_logmein_status():
@@ -228,7 +410,8 @@ def get_logmein_status():
     if not sb: return None, False
     try:
         res = sb.table("controle_logmein").select("*").eq("id", LOGMEIN_DB_ID).execute()
-        if res.data: return res.data[0].get('consultor_atual'), res.data[0].get('em_uso', False)
+        if res.data:
+            return res.data[0].get('consultor_atual'), res.data[0].get('em_uso', False)
     except: pass
     return None, False
 
@@ -236,21 +419,29 @@ def set_logmein_status(consultor, em_uso):
     sb = get_supabase()
     if not sb: return
     try:
-        dados = {"consultor_atual": consultor if em_uso else None, "em_uso": em_uso, "data_inicio": datetime.now().isoformat()}
+        dados = {
+            "consultor_atual": consultor if em_uso else None,
+            "em_uso": em_uso,
+            "data_inicio": datetime.now().isoformat()
+        }
         sb.table("controle_logmein").update(dados).eq("id", LOGMEIN_DB_ID).execute()
     except Exception as e: st.error(f"Erro LogMeIn DB: {e}")
 
 # ============================================
-# FUNÇÕES DE UTILIDADE
+# 4. FUNÇÕES DE UTILIDADE E IP
 # ============================================
 def get_browser_id():
     if st_javascript is None: return "no_js_lib"
     js_code = """(function() {
         let id = localStorage.getItem("device_id");
-        if (!id) { id = "id_" + Math.random().toString(36).substr(2, 9); localStorage.setItem("device_id", id); }
+        if (!id) {
+            id = "id_" + Math.random().toString(36).substr(2, 9);
+            localStorage.setItem("device_id", id);
+        }
         return id;
     })();"""
-    try: return st_javascript(js_code, key="browser_id_tag")
+    try:
+        return st_javascript(js_code, key="browser_id_tag")
     except: return "unknown_device"
 
 def get_remote_ip():
@@ -262,23 +453,31 @@ def get_remote_ip():
             if session_info:
                 request = session_info.request
                 if isinstance(request, ClientWebSocketRequest):
-                    if 'X-Forwarded-For' in request.headers: return request.headers['X-Forwarded-For'].split(',')[0]
+                    if 'X-Forwarded-For' in request.headers:
+                        return request.headers['X-Forwarded-For'].split(',')[0]
                     return request.remote_ip
     except: return "Unknown"
     return "Unknown"
 
+# --- LIMPEZA DE MEMÓRIA ---
 def memory_sweeper():
-    if 'last_cleanup' not in st.session_state: st.session_state.last_cleanup = time.time(); return
+    if 'last_cleanup' not in st.session_state:
+        st.session_state.last_cleanup = time.time()
+        return
     if time.time() - st.session_state.last_cleanup > 300:
         st.session_state.word_buffer = None 
         gc.collect()
         st.session_state.last_cleanup = time.time()
-    if 'last_hard_cleanup' not in st.session_state: st.session_state.last_hard_cleanup = time.time()
+    
+    if 'last_hard_cleanup' not in st.session_state:
+        st.session_state.last_hard_cleanup = time.time()
+        
     if time.time() - st.session_state.last_hard_cleanup > 14400: # 4h
         st.cache_data.clear()
         gc.collect()
         st.session_state.last_hard_cleanup = time.time()
 
+# --- LÓGICA DE FILA VISUAL ---
 def get_ordered_visual_queue(queue, status_dict):
     if not queue: return []
     current_holder = next((c for c, s in status_dict.items() if 'Bastão' in (s or '')), None)
@@ -288,6 +487,10 @@ def get_ordered_visual_queue(queue, status_dict):
         return queue[idx:] + queue[:idx]
     except ValueError: return list(queue)
 
+# ============================================
+# 5. MANIPULAÇÃO DE ESTADO E DATA
+# ============================================
+
 def reset_day_state():
     st.session_state.bastao_queue = []
     st.session_state.status_texto = {n: 'Indisponível' for n in CONSULTORES}
@@ -295,23 +498,26 @@ def reset_day_state():
     st.session_state.report_last_run_date = get_brazil_time()
 
 def ensure_daily_reset():
+    """
+    CORREÇÃO 3: Lógica robusta para não zerar a fila acidentalmente.
+    Só zera se a data salva no banco for VÁLIDA e MENOR que hoje.
+    """
     now_br = get_brazil_time()
     last_run = st.session_state.get('report_last_run_date')
     
-    # Tratamento robusto de data
+    # Tentativa segura de ler a data
     if isinstance(last_run, str):
         try: 
             last_run_dt = datetime.fromisoformat(last_run).date()
         except: 
-            # SE DER ERRO, ASSUME QUE É HOJE PARA NÃO ZERAR A FILA
+            # Se a data estiver corrompida, assumimos que é HOJE para não zerar a fila.
             last_run_dt = now_br.date() 
     elif isinstance(last_run, datetime):
         last_run_dt = last_run.date()
     else:
-        # Se for None ou inválido, assume hoje para evitar reset acidental
+        # Se for None ou outro tipo, assume hoje.
         last_run_dt = now_br.date()
 
-    # Só zera se a data salva for explicitamente ANTERIOR a hoje
     if now_br.date() > last_run_dt:
         if st.session_state.daily_logs: 
             send_daily_report_to_webhook()
@@ -321,23 +527,190 @@ def ensure_daily_reset():
                 'queue_final': st.session_state.bastao_queue
             }
             send_state_dump_webhook(full_state)
-        
-        # ZERA TUDO
         reset_day_state()
-        
-        # Atualiza a data para hoje
-        st.session_state.report_last_run_date = now_br
+        st.session_state.report_last_run_date = now_br # Atualiza data
         save_state()
 
-def auto_manage_time(): ensure_daily_reset()
+def auto_manage_time():
+    ensure_daily_reset()
 
 # ============================================
-# LÓGICA E ESTADO
+# 6. LOGICA DO SISTEMA (DOCUMENTOS E WEBHOOKS)
 # ============================================
+def verificar_duplicidade_certidao(tipo, processo=None, data=None):
+    sb = get_supabase()
+    if not sb: return False
+    try:
+        query = sb.table("certidoes_registro").select("*")
+        if tipo in ['Físico', 'Eletrônico', 'Física', 'Eletrônica'] and processo:
+            proc_limpo = str(processo).strip()
+            if not proc_limpo: return False
+            response = query.eq("processo", proc_limpo).execute()
+            return len(response.data) > 0
+        return False
+    except Exception as e:
+        return False
+
+def salvar_certidao_db(dados):
+    sb = get_supabase()
+    if not sb: return False
+    try:
+        if isinstance(dados.get('data'), (date, datetime)):
+            dados['data'] = dados['data'].isoformat()
+        if 'hora_periodo' in dados:
+             if dados['hora_periodo']:
+                dados['motivo'] = f"{dados.get('motivo', '')} - Hora/Período: {dados['hora_periodo']}"
+             del dados['hora_periodo']
+        if 'n_processo' in dados: 
+            dados['processo'] = dados.pop('n_processo')
+        if 'n_chamado' in dados: 
+            dados['incidente'] = dados.pop('n_chamado')
+        if 'data_evento' in dados:
+            dados['data'] = dados.pop('data_evento')
+
+        sb.table("certidoes_registro").insert(dados).execute()
+        return True
+    except Exception as e:
+        st.error(f"Erro ao salvar no Supabase: {e}")
+        return False
+
+def gerar_docx_certidao_internal(tipo, numero, data, consultor, motivo, chamado="", hora="", nome_parte=""):
+    try:
+        doc = Document()
+        section = doc.sections[0]
+        section.top_margin = Cm(2.5); section.bottom_margin = Cm(2.0)
+        section.left_margin = Cm(3.0); section.right_margin = Cm(3.0)
+        style = doc.styles['Normal']; style.font.name = 'Arial'; style.font.size = Pt(11)
+        
+        # Cabeçalho
+        head_p = doc.add_paragraph(); head_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        runner = head_p.add_run("TRIBUNAL DE JUSTIÇA DO ESTADO DE MINAS GERAIS\n")
+        runner.bold = True
+        head_p.add_run("Rua Ouro Preto, N° 1564 - Bairro Santo Agostinho - CEP 30170-041 - Belo Horizonte - MG\nwww.tjmg.jus.br - Andar: 3º e 4º PV")
+        doc.add_paragraph("\n")
+        
+        # Numeração e Assunto
+        if tipo == 'Geral': p_num = doc.add_paragraph(f"Parecer GEJUD/DIRTEC/TJMG nº ____/2026. Assunto: Notifica erro no “JPe – 2ª Instância” ao peticionar.")
+        else: p_num = doc.add_paragraph(f"Parecer Técnico GEJUD/DIRTEC/TJMG nº ____/2026. Assunto: Notifica erro no “JPe – 2ª Instância” ao peticionar.")
+        p_num.runs[0].bold = True
+        
+        # Data
+        data_extenso_str = ""
+        try:
+            dt_obj = datetime.strptime(data, "%d/%m/%Y")
+            meses = {1:'janeiro', 2:'fevereiro', 3:'março', 4:'abril', 5:'maio', 6:'junho', 
+                     7:'julho', 8:'agosto', 9:'setembro', 10:'outubro', 11:'novembro', 12:'dezembro'}
+            data_extenso_str = f"Belo Horizonte, {dt_obj.day} de {meses[dt_obj.month]} de {dt_obj.year}"
+        except:
+            data_extenso_str = f"Belo Horizonte, {data}" 
+            
+        doc.add_paragraph(data_extenso_str)
+              
+        doc.add_paragraph(f"Exmo(a). Senhor(a) Relator(a),")
+        
+        if tipo == 'Geral':
+            corpo = doc.add_paragraph(); corpo.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+            txt = (f"Para fins de cumprimento dos artigos 13 e 14 da Resolução nº 780/2014 do Tribunal de Justiça do Estado de Minas Gerais, "
+                   f"informamos que em {data} houve indisponibilidade do portal JPe, superior a uma hora, {hora}, que impossibilitou o peticionamento eletrônico de recursos em processos que já tramitavam no sistema.")
+            corpo.add_run(txt)
+            doc.add_paragraph("\nColocamo-nos à disposição para outras que se fizerem necessárias.")
+            
+        elif tipo in ['Eletrônica', 'Eletrônico']:
+            corpo = doc.add_paragraph(); corpo.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+            corpo.add_run(f"Informamos que de {data}, houve indisponibilidade específica do sistema para o peticionamento do processo nº {numero}")
+            if nome_parte: corpo.add_run(f", Parte/Advogado: {nome_parte}")
+            corpo.add_run(".\n\n")
+            corpo.add_run(f"O Chamado de número {chamado if chamado else '_____'}, foi aberto e encaminhado à DIRTEC (Diretoria Executiva de Tecnologia da Informação e Comunicação).\n\n")
+            corpo.add_run("Esperamos ter prestado as informações solicitadas e colocamo-nos à disposição para outras que se fizerem necessárias.")
+
+        elif tipo in ['Física', 'Físico']:
+            corpo1 = doc.add_paragraph(); corpo1.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+            corpo1.add_run(f"Informamos que no dia {data}, houve indisponibilidade específica do sistema para o peticionamento do processo nº {numero}")
+            if nome_parte: corpo1.add_run(f", Parte/Advogado: {nome_parte}")
+            corpo1.add_run(".")
+            
+            corpo2 = doc.add_paragraph(); corpo2.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+            corpo2.add_run(f"O Chamado de número {chamado if chamado else '_____'}, foi aberto e encaminhado à DIRTEC (Diretoria Executiva de Tecnologia da Informação e Comunicação).")
+            
+            corpo3 = doc.add_paragraph(); corpo3.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+            corpo3.add_run("Diante da indisponibilidade específica, não havendo um prazo para solução do problema, a Primeira Vice-Presidência recomenda o ingresso dos autos físicos, nos termos do § 2º, do artigo 14º, da Resolução nº 780/2014, do Tribunal de Justiça do Estado de Minas Gerais.")
+            
+            doc.add_paragraph("Colocamo-nos à disposição para outras informações que se fizerem necessárias.")
+
+        doc.add_paragraph("\nRespeitosamente,")
+        sign = doc.add_paragraph("\n___________________________________\nWaner Andrade Silva\n0-009020-9\nCoordenação de Análise e Integração de Sistemas Judiciais Informatizados - COJIN\nGerência de Sistemas Judiciais - GEJUD\nDiretoria Executiva de Tecnologia da Informação e Comunicação - DIRTEC")
+        sign.runs[0].bold = True 
+        
+        buffer = io.BytesIO(); doc.save(buffer); buffer.seek(0)
+        return buffer
+    except: return None
+
+# Webhooks
+def send_chat_notification_internal(consultor, status):
+    """Notificação interna de giro corrigida para enviar os próximos."""
+    if status != 'Bastão':
+        return False
+        
+    # --- CORREÇÃO: Calcula os próximos em vez de mandar lista vazia ---
+    lista_proximos = get_proximos_bastao(consultor, n=2)
+    
+    payload = {
+        'evento': 'bastao_giro',
+        'timestamp': get_brazil_time().isoformat(),
+        'team_id': st.session_state.get('team_id'),
+        'team_name': st.session_state.get('team_name'),
+        'com_bastao_agora': consultor,
+        'proximos': lista_proximos, # <--- AGORA VAI PREENCHIDO
+    }
+    return post_n8n(N8N_WEBHOOK_BASTAO_GIRO, payload)
+
+
+def send_state_dump_webhook(state_data):
+    if not WEBHOOK_STATE_DUMP: return False
+    try:
+        sanitized_data = clean_data_for_db(state_data)
+        headers = {'Content-Type': 'application/json'}
+        requests.post(WEBHOOK_STATE_DUMP, data=json.dumps(sanitized_data), headers=headers, timeout=5)
+        return True
+    except: return False
+
+def send_horas_extras_to_chat(consultor, data, inicio, tempo, motivo):
+    msg = f"⏰ **Registro de Horas Extras**\n\n👤 **Consultor:** {consultor}\n📅 **Data:** {data.strftime('%d/%m/%Y')}\n🕐 **Início:** {inicio.strftime('%H:%M')}\n⏱️ **Tempo Total:** {tempo}\n📝 **Motivo:** {motivo}"
+    return notify_registro_ferramenta("H_EXTRAS", consultor, dados={"data": data.strftime("%d/%m/%Y"), "inicio": inicio.strftime("%H:%M"), "tempo": tempo, "motivo": motivo}, mensagem=msg)
+
+def send_atendimento_to_chat(consultor, data, usuario, nome_setor, sistema, descricao, canal, desfecho, jira_opcional=""):
+    jira_str = f"\n🔢 **Jira:** CESUPE-{jira_opcional}" if jira_opcional else ""
+    msg = f"📋 **Novo Registro de Atendimento**\n\n👤 **Consultor:** {consultor}\n📅 **Data:** {data.strftime('%d/%m/%Y')}\n👥 **Usuário:** {usuario}\n🏢 **Nome/Setor:** {nome_setor}\n💻 **Sistema:** {sistema}\n📝 **Descrição:** {descricao}\n📞 **Canal:** {canal}\n✅ **Desfecho:** {desfecho}{jira_str}"
+    return notify_registro_ferramenta("ATENDIMENTOS", consultor, dados={"data": data.strftime("%d/%m/%Y"), "usuario": usuario, "setor": nome_setor, "sistema": sistema, "canal": canal, "desfecho": desfecho, "jira": jira_opcional}, mensagem=msg)
+
+def send_chamado_to_chat(consultor, texto):
+    if not consultor or consultor == 'Selecione um nome' or not texto.strip(): return False
+    data_envio = get_brazil_time().strftime('%d/%m/%Y %H:%M')
+    msg = f"🆘 **Rascunho de Chamado/Jira**\n📅 **Data:** {data_envio}\n\n👤 **Autor:** {consultor}\n\n📝 **Texto:**\n{texto}"
+    return notify_registro_ferramenta('CHAMADOS', consultor, dados={'texto': texto}, mensagem=msg)
+
+def handle_erro_novidade_submission(consultor, titulo, objetivo, relato, resultado):
+    data_envio = get_brazil_time().strftime("%d/%m/%Y %H:%M")
+    msg = f"🐛 **Novo Relato de Erro/Novidade**\n📅 **Data:** {data_envio}\n\n👤 **Autor:** {consultor}\n📌 **Título:** {titulo}\n\n🎯 **Objetivo:**\n{objetivo}\n\n🧪 **Relato:**\n{relato}\n\n🏁 **Resultado:**\n{resultado}"
+    return notify_registro_ferramenta("ERRO_NOVIDADE", consultor, dados={"titulo": titulo, "objetivo": objetivo, "relato": relato, "resultado": resultado}, mensagem=msg)
+
+def send_sessao_to_chat_fn(consultor, texto_mensagem):
+    return True
+
+def handle_sugestao_submission(consultor, texto):
+    data_envio = get_brazil_time().strftime("%d/%m/%Y %H:%M")
+    ip_usuario = get_remote_ip()
+    msg = f"💡 **Nova Sugestão**\n📅 **Data:** {data_envio}\n👤 **Autor:** {consultor}\n🌐 **IP:** {ip_usuario}\n\n📝 **Sugestão:**\n{texto}"
+    return notify_registro_ferramenta("H_EXTRAS", consultor, dados={"data": data.strftime("%d/%m/%Y"), "inicio": inicio.strftime("%H:%M"), "tempo": tempo, "motivo": motivo}, mensagem=msg)
+
+# ============================================
+# 7. FUNÇÕES DE ESTADO E LÓGICA
+# ============================================
+
 def save_state():
     try:
         tid = st.session_state.get('team_id')
-        if not tid: return
+        if not tid: return # Evita salvar se nao tiver ID
         
         last_run = st.session_state.report_last_run_date
         visual_queue_calculated = get_ordered_visual_queue(st.session_state.bastao_queue, st.session_state.status_texto)
@@ -356,10 +729,15 @@ def save_state():
             'previous_states': st.session_state.get('previous_states', {}),
             'quick_indicators': st.session_state.get('quick_indicators', {})
         }
+        
         save_state_to_db(tid, state_to_save)
+        
         load_state_from_db.clear()
-        try: st.session_state['_toast_msg'] = '✅ Registro salvo.'
-        except: pass
+        try:
+            st.session_state['_toast_msg'] = '✅ Registro salvo.'
+            st.session_state['_skip_db_sync_until'] = time.time() + 2.0
+        except Exception: pass
+        
     except Exception as e: print(f"Erro save: {e}")
 
 def format_time_duration(duration):
@@ -406,12 +784,15 @@ def log_status_change(consultor, old_status, new_status, duration):
     now_br = get_brazil_time()
     st.session_state.daily_logs.append({
         'timestamp': now_br, 'consultor': consultor, 
-        'old_status': old_status or 'Fila', 'new_status': new_status or 'Fila', 
+        'old_status': old_lbl if 'old_lbl' in locals() else old_status or 'Fila', 
+        'new_status': new_lbl if 'new_lbl' in locals() else new_status or 'Fila', 
         'duration': duration, 'ip': st.session_state.get('device_id_val', 'unknown')
     })
-    if len(st.session_state.daily_logs) > 150: st.session_state.daily_logs = st.session_state.daily_logs[-150:]
+    if len(st.session_state.daily_logs) > 150:
+        st.session_state.daily_logs = st.session_state.daily_logs[-150:]
     st.session_state.current_status_starts[consultor] = now_br
 
+# --- LOGICA DE STATUS (FUNÇÕES HELPERS) ---
 def find_next_holder_index(current_index, queue, skips):
     if not queue: return -1
     n = len(queue); start_index = (current_index + 1) % n
@@ -442,6 +823,7 @@ def check_and_assume_baton(forced_successor=None, immune_consultant=None):
         target = queue[idx] if idx != -1 else None
         
     changed = False; now = get_brazil_time()
+    
     for c in CONSULTORES:
         if c != immune_consultant: 
             if c != target and 'Bastão' in st.session_state.status_texto.get(c, ''):
@@ -461,9 +843,11 @@ def check_and_assume_baton(forced_successor=None, immune_consultant=None):
         if current_holder != immune_consultant:
             log_status_change(current_holder, 'Bastão', 'Indisponível', now - st.session_state.current_status_starts.get(current_holder, now))
             st.session_state.status_texto[current_holder] = 'Indisponível'; changed = True
+            
     if changed: save_state()
     return changed
 
+# --- AÇÕES PRINCIPAIS (QUE CHAMAM AS HELPERS) ---
 def update_status(novo_status: str, marcar_indisponivel: bool = False, manter_fila_atual: bool = False):
     selected = st.session_state.get('consultor_selectbox')
     if not selected or selected == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
@@ -475,7 +859,10 @@ def update_status(novo_status: str, marcar_indisponivel: bool = False, manter_fi
     current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in (s or '')), None)
     
     if novo_status == 'Almoço':
-        st.session_state.previous_states[selected] = {'status': current, 'in_queue': selected in st.session_state.bastao_queue}
+        st.session_state.previous_states[selected] = {
+            'status': current,
+            'in_queue': selected in st.session_state.bastao_queue
+        }
     
     if marcar_indisponivel:
         st.session_state[f'check_{selected}'] = False; st.session_state.skip_flags[selected] = True
@@ -497,10 +884,12 @@ def update_status(novo_status: str, marcar_indisponivel: bool = False, manter_fi
                     nxt = find_next_holder_index(idx, st.session_state.bastao_queue, st.session_state.skip_flags)
                     if nxt != -1: forced_successor = st.session_state.bastao_queue[nxt]
                 st.session_state.bastao_queue.remove(selected)
+
         elif manter_fila_atual:
             if selected not in st.session_state.bastao_queue: st.session_state.bastao_queue.append(selected)
             st.session_state[f'check_{selected}'] = True
             st.session_state.skip_flags[selected] = False
+
         else:
             st.session_state[f'check_{selected}'] = False
             if selected in st.session_state.bastao_queue:
@@ -518,47 +907,94 @@ def update_status(novo_status: str, marcar_indisponivel: bool = False, manter_fi
     if not final_status and (selected not in st.session_state.bastao_queue): final_status = 'Indisponível'
     
     log_status_change(selected, current, final_status, now_br - st.session_state.current_status_starts.get(selected, now_br))
+    
     st.session_state.status_texto[selected] = final_status
     check_and_assume_baton(forced_successor)
     save_state()
 
+
 def get_bastao_holder_atual():
+    """Retorna quem está com o Bastão (texto contém 'Bastão')."""
     return next((c for c, s in st.session_state.status_texto.items() if isinstance(s, str) and 'Bastão' in s), None)
 
 def get_proximos_bastao(holder, n=3):
+    """Retorna lista de próximos considerando skips."""
     queue = st.session_state.bastao_queue
     skips = st.session_state.skip_flags
-    if not queue: return []
-    if holder not in queue: holder = queue[0]
+    if not queue:
+        return []
+    if holder not in queue:
+        # fallback: usa o primeiro da fila
+        holder = queue[0]
     idx = queue.index(holder)
     proximos = []
     cursor = idx
     while len(proximos) < n:
         nxt = find_next_holder_index(cursor, queue, skips)
-        if nxt == -1: break
+        if nxt == -1:
+            break
         nxt_name = queue[nxt]
-        if nxt_name == holder or nxt_name in proximos: break
+        # evita loop infinito
+        if nxt_name == holder or nxt_name in proximos:
+            break
         proximos.append(nxt_name)
         cursor = nxt
     return proximos
 
 def notify_bastao_giro(reason='update', actor=None):
+    """Envia para n8n quem está com o bastão e os próximos (silencioso)."""
     try:
         holder = get_bastao_holder_atual()
-        if not holder and st.session_state.bastao_queue: holder = st.session_state.bastao_queue[0]
+        if not holder and st.session_state.bastao_queue:
+            holder = st.session_state.bastao_queue[0]
+            
         lista_proximos = get_proximos_bastao(holder, n=2)
         txt_proximos = ", ".join(lista_proximos) if lista_proximos else "Ninguém"
+        
         nome_equipe = st.session_state.get('team_name', 'Equipe')
-        msg_final = (f"🔄 *Troca de Bastão - {nome_equipe}*\n\n👤 *Agora:* {holder}\n🔜 *Próximos:* {txt_proximos}")
-        payload = {'evento': 'bastao_giro', 'motivo': reason, 'timestamp': get_brazil_time().isoformat(), 'team_id': st.session_state.get('team_id'), 'team_name': nome_equipe, 'actor': actor, 'com_bastao_agora': holder, 'proximos': lista_proximos, 'tamanho_fila': len(st.session_state.bastao_queue), 'message': msg_final}
+
+        msg_final = (
+            f"🔄 *Troca de Bastão - {nome_equipe}*\n\n"
+            f"👤 *Agora:* {holder}\n"
+            f"🔜 *Próximos:* {txt_proximos}"
+        )
+
+        payload = {
+            'evento': 'bastao_giro',
+            'motivo': reason,
+            'timestamp': get_brazil_time().isoformat(),
+            'team_id': st.session_state.get('team_id'),
+            'team_name': nome_equipe,
+            'actor': actor,
+            'com_bastao_agora': holder,
+            'proximos': lista_proximos,
+            'tamanho_fila': len(st.session_state.bastao_queue),
+            'message': msg_final  
+        }
+        
         post_n8n(N8N_WEBHOOK_BASTAO_GIRO, payload)
         return True
-    except: return False
+    except Exception:
+        return False
+
 
 def notify_registro_ferramenta(tipo: str, actor: str, dados: dict = None, mensagem: str = None) -> bool:
-    if not mensagem: mensagem = f"Novo registro: {tipo} por {actor}"
-    payload = {'evento': 'registro_ferramenta', 'tipo': tipo, 'timestamp': get_brazil_time().isoformat(), 'team_id': st.session_state.get('team_id'), 'team_name': st.session_state.get('team_name'), 'actor': actor, 'dados': dados or {}, 'message': mensagem}
+    """Envia evento de registro corrigindo o campo message."""
+    if not mensagem:
+        mensagem = f"Novo registro: {tipo} por {actor}"
+
+    payload = {
+        'evento': 'registro_ferramenta',
+        'tipo': tipo,
+        'timestamp': get_brazil_time().isoformat(),
+        'team_id': st.session_state.get('team_id'),
+        'team_name': st.session_state.get('team_name'),
+        'actor': actor,
+        'dados': dados or {},
+        'message': mensagem, 
+    }
     return post_n8n(N8N_WEBHOOK_REGISTROS, payload)
+
 
 def toggle_queue(consultor):
     ensure_daily_reset(); st.session_state.gif_warning = False; now_br = get_brazil_time()
@@ -584,9 +1020,14 @@ def toggle_queue(consultor):
 def rotate_bastao():
     ensure_daily_reset(); selected = st.session_state.consultor_selectbox
     if not selected or selected == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
+    
     queue = st.session_state.bastao_queue; skips = st.session_state.skip_flags
     current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
-    if selected != current_holder: st.error(f"⚠️ Apenas quem está com o bastão ({current_holder}) pode passá-lo!"); return
+    
+    if selected != current_holder:
+        st.error(f"⚠️ Apenas quem está com o bastão ({current_holder}) pode passá-lo!")
+        return
+        
     current_index = queue.index(current_holder) if current_holder in queue else -1
     if current_index == -1: check_and_assume_baton(); return
     next_idx = find_next_holder_index(current_index, queue, skips)
@@ -625,12 +1066,15 @@ def toggle_presence_btn():
     if not selected or selected == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
     toggle_queue(selected)
 
+# --- INDICADORES RÁPIDOS (📞 / ☕) ---
 def _get_quick_indic(nome: str) -> dict:
-    if 'quick_indicators' not in st.session_state or not isinstance(st.session_state.quick_indicators, dict): st.session_state.quick_indicators = {}
+    if 'quick_indicators' not in st.session_state or not isinstance(st.session_state.quick_indicators, dict):
+        st.session_state.quick_indicators = {}
     return st.session_state.quick_indicators.get(nome, {'telefone': False, 'cafe': False})
 
 def _set_quick_indic(nome: str, telefone=None, cafe=None):
-    if 'quick_indicators' not in st.session_state or not isinstance(st.session_state.quick_indicators, dict): st.session_state.quick_indicators = {}
+    if 'quick_indicators' not in st.session_state or not isinstance(st.session_state.quick_indicators, dict):
+        st.session_state.quick_indicators = {}
     cur = _get_quick_indic(nome).copy()
     if telefone is not None: cur['telefone'] = bool(telefone)
     if cafe is not None: cur['cafe'] = bool(cafe)
@@ -639,14 +1083,20 @@ def _set_quick_indic(nome: str, telefone=None, cafe=None):
 
 def toggle_quick_telefone():
     nome = st.session_state.get('consultor_selectbox')
-    if not nome or nome == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
-    cur = _get_quick_indic(nome); novo = not cur.get('telefone', False)
+    if not nome or nome == 'Selecione um nome':
+        st.warning('Selecione um(a) consultor(a).')
+        return
+    cur = _get_quick_indic(nome)
+    novo = not cur.get('telefone', False)
     _set_quick_indic(nome, telefone=novo, cafe=False if novo else cur.get('cafe', False))
 
 def toggle_quick_cafe():
     nome = st.session_state.get('consultor_selectbox')
-    if not nome or nome == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
-    cur = _get_quick_indic(nome); novo = not cur.get('cafe', False)
+    if not nome or nome == 'Selecione um nome':
+        st.warning('Selecione um(a) consultor(a).')
+        return
+    cur = _get_quick_indic(nome)
+    novo = not cur.get('cafe', False)
     _set_quick_indic(nome, cafe=novo, telefone=False if novo else cur.get('telefone', False))
 
 def render_quick_toggle_btn(tipo: str):
@@ -655,69 +1105,96 @@ def render_quick_toggle_btn(tipo: str):
         label = '📞' if tipo == 'telefone' else '☕'
         st.button(label, disabled=True, use_container_width=True)
         return
+    
     indic = _get_quick_indic(nome)
+    
     if tipo == 'telefone':
-        ativo = bool(indic.get('telefone')); label = '📞✅' if ativo else '📞'
-        if st.button(label, key=f'btn_tel_{nome}', use_container_width=True): toggle_quick_telefone(); st.rerun()
+        ativo = bool(indic.get('telefone'))
+        label = '📞✅' if ativo else '📞'
+        if st.button(label, key=f'btn_tel_{nome}', use_container_width=True):
+            toggle_quick_telefone(); st.rerun()
+            
     elif tipo == 'cafe':
-        ativo = bool(indic.get('cafe')); label = '☕✅' if ativo else '☕'
-        if st.button(label, key=f'btn_cafe_{nome}', use_container_width=True): toggle_quick_cafe(); st.rerun()
+        ativo = bool(indic.get('cafe'))
+        label = '☕✅' if ativo else '☕'
+        if st.button(label, key=f'btn_cafe_{nome}', use_container_width=True):
+            toggle_quick_cafe(); st.rerun()
 
 def sync_logged_user():
     val = st.session_state.get('consultor_selectbox')
-    if val and val != 'Selecione um nome': st.session_state['consultor_logado'] = val
+    if val and val != 'Selecione um nome':
+        st.session_state['consultor_logado'] = val
 
 def handle_sair():
     selected = st.session_state.get('consultor_selectbox')
-    if not selected or selected == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
+    if not selected or selected == 'Selecione um nome':
+        st.warning('Selecione um(a) consultor(a).')
+        return
     ensure_daily_reset()
     current = st.session_state.status_texto.get(selected, '') or ''
+    
     if current and current != 'Indisponível' and 'Bastão' not in current and current.strip() != '':
-        if selected not in st.session_state.bastao_queue: st.session_state.bastao_queue.append(selected)
+        if selected not in st.session_state.bastao_queue:
+            st.session_state.bastao_queue.append(selected)
         st.session_state.status_texto[selected] = ''
         st.session_state.skip_flags[selected] = False
-        if selected in st.session_state.priority_return_queue: st.session_state.priority_return_queue.remove(selected)
+        if selected in st.session_state.priority_return_queue:
+            st.session_state.priority_return_queue.remove(selected)
         check_and_assume_baton()
         save_state()
         return
-    if selected in st.session_state.bastao_queue: toggle_queue(selected)
-    else: st.session_state.status_texto[selected] = 'Indisponível'; save_state()
+    if selected in st.session_state.bastao_queue:
+        toggle_queue(selected)
+    else:
+        st.session_state.status_texto[selected] = 'Indisponível'
+        save_state()
 
 def restore_from_lunch(nome: str):
     prev = st.session_state.get('previous_states', {}).get(nome)
     if not prev:
         st.session_state.status_texto[nome] = ''
-        if nome not in st.session_state.bastao_queue: st.session_state.bastao_queue.append(nome)
+        if nome not in st.session_state.bastao_queue:
+            st.session_state.bastao_queue.append(nome)
         st.session_state.skip_flags[nome] = False
-        check_and_assume_baton(); save_state()
+        check_and_assume_baton()
+        save_state()
         return
     prev_status = prev.get('status', '') or ''
     prev_in_queue = bool(prev.get('in_queue', False))
-    if isinstance(prev_status, str) and 'Bastão' in prev_status: prev_status = ''; prev_in_queue = True
+    if isinstance(prev_status, str) and 'Bastão' in prev_status:
+        prev_status = ''
+        prev_in_queue = True
     st.session_state.status_texto[nome] = prev_status if prev_status != 'Indisponível' else ''
     if prev_in_queue:
-        if nome not in st.session_state.bastao_queue: st.session_state.bastao_queue.append(nome)
+        if nome not in st.session_state.bastao_queue:
+            st.session_state.bastao_queue.append(nome)
         st.session_state.skip_flags[nome] = False
-        if nome in st.session_state.priority_return_queue: st.session_state.priority_return_queue.remove(nome)
+        if nome in st.session_state.priority_return_queue:
+            st.session_state.priority_return_queue.remove(nome)
         check_and_assume_baton()
     else:
-        if nome in st.session_state.bastao_queue: st.session_state.bastao_queue.remove(nome)
-    try: del st.session_state.previous_states[nome]
-    except: pass
+        if nome in st.session_state.bastao_queue:
+            st.session_state.bastao_queue.remove(nome)
+    try:
+        del st.session_state.previous_states[nome]
+    except Exception:
+        pass
     save_state()
 
 def handle_almoco_toggle():
     selected = st.session_state.get('consultor_selectbox')
-    if not selected or selected == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
+    if not selected or selected == 'Selecione um nome':
+        st.warning('Selecione um(a) consultor(a).')
+        return
     current = st.session_state.status_texto.get(selected, '') or ''
-    if current == 'Almoço': restore_from_lunch(selected); return
+    if current == 'Almoço':
+        restore_from_lunch(selected)
+        return
     update_status('Almoço', True)
 
 def enter_from_indisponivel(c):
     if c not in st.session_state.bastao_queue: st.session_state.bastao_queue.append(c)
-    st.session_state.status_texto[c] = ''
-    check_and_assume_baton() # Garante que se fila tiver vazia ele pega bastao
-    save_state()
+    st.session_state.status_texto[c] = ''; save_state()
 
 def toggle_view(v):
     if st.session_state.active_view == v: st.session_state.active_view = None
@@ -725,16 +1202,21 @@ def toggle_view(v):
 
 def init_session_state():
     dev = get_browser_id()
-    if dev: st.session_state['device_id_val'] = dev
+    if dev: 
+        st.session_state['device_id_val'] = dev
+    
     if 'db_loaded' not in st.session_state:
         tid = st.session_state.get('team_id', 2)
         db = load_state_from_db(tid)
         if db:
             if 'report_last_run_date' in db and isinstance(db['report_last_run_date'], str):
-                try: db['report_last_run_date'] = datetime.fromisoformat(db['report_last_run_date'])
-                except: db['report_last_run_date'] = datetime.min
+                try: 
+                    db['report_last_run_date'] = datetime.fromisoformat(db['report_last_run_date'])
+                except: 
+                    db['report_last_run_date'] = datetime.min
             st.session_state.update(db)
         st.session_state['db_loaded'] = True
+    
     defaults = {
         'bastao_start_time': None, 'report_last_run_date': datetime.min, 'rotation_gif_start_time': None,
         'play_sound': False, 'gif_warning': False, 'lunch_warning_info': None, 'last_reg_status': None,
@@ -760,15 +1242,17 @@ def close_logmein_ui(): st.session_state.view_logmein_ui = False
 @st.fragment(run_every=10)
 def watcher_de_atualizacoes():
     try:
-        # Se eu salvei algo nos ultimos 5 segundos, NÃO atualize a tela agora.
-        # Isso impede que o watcher sobrescreva meu trabalho.
+        # Se salvei algo nos ultimos 5 segundos, NÃO atualize a tela agora.
         if time.time() - st.session_state.get('_last_save_time', 0) < 5.0:
             return
 
         tid = st.session_state.get('team_id', 2)
         sb = get_supabase()
         if not sb: return
+        
+        # Leitura eficiente
         res = sb.table("app_state").select("data").eq("id", tid).execute()
+        
         if res.data and len(res.data) > 0:
             remote_data = res.data[0].get("data", {})
             rem_status = remote_data.get('status_texto', {})
@@ -776,14 +1260,24 @@ def watcher_de_atualizacoes():
             loc_status = st.session_state.get('status_texto', {})
             loc_queue = st.session_state.get('bastao_queue', [])
             
-            # Só atualiza se realmente houve mudança vinda de FORA
-            if str(rem_status) != str(loc_status) or str(rem_queue) != str(loc_queue):
+            # Comparação direta de dicionários (mais segura que string)
+            if rem_status != loc_status or rem_queue != loc_queue:
                 load_state_from_db.clear()
                 st.session_state.update(remote_data)
                 st.rerun()
     except: pass
 
+# ============================================
+# PONTO DE ENTRADA
+# ============================================
 def render_dashboard(team_id: int, team_name: str, consultores_list: list, webhook_key: str, app_url: str, other_team_id: int, other_team_name: str, usuario_logado: str):
+    
+    # 1. Inicializa estado PRIMEIRO para garantir que tudo existe
+    init_session_state()
+    memory_sweeper()
+    auto_manage_time()
+
+    # 2. Chama watcher DEPOIS de inicializar
     watcher_de_atualizacoes()
     
     if 'team_id' not in st.session_state or st.session_state['team_id'] != team_id:
@@ -793,7 +1287,8 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
     
     global APP_URL_CLOUD, CONSULTORES
     APP_URL_CLOUD = app_url or APP_URL_CLOUD
-    if consultores_list: CONSULTORES = list(consultores_list)
+    if consultores_list:
+        CONSULTORES = list(consultores_list)
 
     try:
         msg_toast = st.session_state.get('_toast_msg')
@@ -823,10 +1318,11 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
             st.session_state['consultor_selectbox'] = usuario_logado
 
     st.markdown("""<style>div.stButton > button {width: 100%; height: 3rem;}</style>""", unsafe_allow_html=True)
-    init_session_state(); memory_sweeper(); auto_manage_time()
     st.components.v1.html("<script>window.scrollTo(0, 0);</script>", height=0)
     st.info("🎗️ Fevereiro Laranja: Apoie a conscientização sobre leucemia.")
 
+    # --- HEADER FRAGMENT ---
+    @st.fragment
     def render_header_info_left():
         sync_state_from_db()
         c_topo_esq, c_topo_dir = st.columns([2, 1], vertical_alignment="bottom")
@@ -876,6 +1372,8 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
         else: st.markdown("**Demais na fila:** _Vazio_")
         if lista_pularam: st.markdown(f"**Consultor(es) pulou(pularam) o bastão:** {', '.join(lista_pularam)}")
 
+    # --- SIDEBAR FRAGMENT ---
+    @st.fragment
     def render_right_sidebar():
         other_id = st.session_state.get('other_team_id')
         other_name = st.session_state.get('other_team_name', 'Outra Equipe')
@@ -1006,7 +1504,7 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
                     desc = item[1] if isinstance(item, tuple) else titulo
                     col_n, col_c = st.columns([0.85, 0.15], vertical_alignment='center')
                     if titulo == 'Indisponível':
-                        # GERA BOTÃO PARA EVITAR INDENTATION ERROR E MELHORAR UX
+                        # CORREÇÃO 4: Botão em vez de Checkbox para reativar
                         if col_c.button('⬆️', key=f'btn_back_{titulo}_{nome}', help="Voltar para a fila"):
                             enter_from_indisponivel(nome)
                             st.session_state['_skip_db_sync_until'] = time.time() + 3
@@ -1261,6 +1759,6 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
                 with c2:
                     if st.button("Cancelar", use_container_width=True): st.session_state.active_view = None; st.rerun()
 
-        # GRÁFICO MOVIDO PARA O FINAL (Correção do Layout)
+        # CORREÇÃO 4: GRÁFICO MOVIDO PARA O FINAL (Fica abaixo de todos os formulários)
         with st.container(border=True):
             render_operational_summary()
