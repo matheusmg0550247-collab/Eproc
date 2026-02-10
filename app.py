@@ -87,10 +87,20 @@ def render_agenda_eproc_sidebar():
             bg = "#E7F1FF" if is_today else "#FFFFFF"
             border = "1px solid #cbd5e1" if is_today else "1px solid #eee"
             
-            # CORREÇÃO AQUI: Trocado estilo de aspas para evitar backslash na f-string
-            obs_html = f'<div style="font-size:13px; margin-top:6px; color:#6b7280;"><i>{row.get("obs")}</i></div>' if row.get('obs') else ''
+            # Correção de Sintaxe: Construindo HTML passo a passo para evitar erro
+            obs_text = row.get("obs")
+            obs_html = f'<div style="font-size:13px; margin-top:6px; color:#6b7280;"><i>{obs_text}</i></div>' if obs_text else ''
             
-            st.markdown(f"<div style='border:{border}; background:{bg}; padding:10px 12px; border-radius:12px; margin:8px 0;'><div style='font-weight:800; font-size:15px; margin-bottom:6px;'>🗓️ {row.get('dia','')}</div><div style='font-size:14px; margin:2px 0;'><b>🕘 Manhã:</b> {row.get('manha','')}</div><div style='font-size:14px; margin:2px 0;'><b>🕜 Tarde:</b> {row.get('tarde','')}</div><div style='font-size:14px; margin:2px 0;'><b>🎙️ Sessões:</b> {row.get('sessao','')}</div>{obs_html}</div>", unsafe_allow_html=True)
+            card_html = f"""
+            <div style='border:{border}; background:{bg}; padding:10px 12px; border-radius:12px; margin:8px 0;'>
+                <div style='font-weight:800; font-size:15px; margin-bottom:6px;'>🗓️ {row.get('dia','')}</div>
+                <div style='font-size:14px; margin:2px 0;'><b>🕘 Manhã:</b> {row.get('manha','')}</div>
+                <div style='font-size:14px; margin:2px 0;'><b>🕜 Tarde:</b> {row.get('tarde','')}</div>
+                <div style='font-size:14px; margin:2px 0;'><b>🎙️ Sessões:</b> {row.get('sessao','')}</div>
+                {obs_html}
+            </div>
+            """
+            st.markdown(card_html, unsafe_allow_html=True)
 
 def _normalize_nome(txt: str) -> str:
     if not isinstance(txt, str): return ''
@@ -367,6 +377,7 @@ def format_time_duration(duration):
 
 def sync_state_from_db():
     try:
+        # Se salvei há menos de 3s, confio no meu local, não puxo do banco
         if time.time() - st.session_state.get('_last_save_time', 0) < 3.0:
             return
 
@@ -773,14 +784,21 @@ def watcher_de_atualizacoes():
             loc_status = st.session_state.get('status_texto', {})
             loc_queue = st.session_state.get('bastao_queue', [])
             
-            # Só atualiza se realmente houve mudança vinda de FORA
-            if str(rem_status) != str(loc_status) or str(rem_queue) != str(loc_queue):
+            # Comparação direta de dicionários (mais segura que string)
+            if rem_status != loc_status or rem_queue != loc_queue:
                 load_state_from_db.clear()
                 st.session_state.update(remote_data)
                 st.rerun()
     except: pass
 
 def render_dashboard(team_id: int, team_name: str, consultores_list: list, webhook_key: str, app_url: str, other_team_id: int, other_team_name: str, usuario_logado: str):
+    
+    # 1. Primeiro inicializa estado para garantir defaults
+    init_session_state()
+    memory_sweeper()
+    auto_manage_time()
+
+    # 2. Depois chama o watcher (para não crashar com estado vazio)
     watcher_de_atualizacoes()
     
     if 'team_id' not in st.session_state or st.session_state['team_id'] != team_id:
@@ -820,7 +838,6 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
             st.session_state['consultor_selectbox'] = usuario_logado
 
     st.markdown("""<style>div.stButton > button {width: 100%; height: 3rem;}</style>""", unsafe_allow_html=True)
-    init_session_state(); memory_sweeper(); auto_manage_time()
     st.components.v1.html("<script>window.scrollTo(0, 0);</script>", height=0)
     st.info("🎗️ Fevereiro Laranja: Apoie a conscientização sobre leucemia.")
 
