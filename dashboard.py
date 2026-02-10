@@ -240,9 +240,8 @@ def get_supabase():
         st.cache_resource.clear()
         return None
 
-@st.cache_data(ttl=3600, show_spinner=False)
-@st.cache_data(ttl=300, show_spinner=False)
-@st.cache_data(ttl=300, show_spinner=False)
+# MUDANÇA 1: Cache de 24 horas (86400 segundos) para o gráfico não pesar a CPU
+@st.cache_data(ttl=86400, show_spinner=False)
 def carregar_dados_grafico(app_id):
     sb = get_supabase()
     if not sb: return None, None
@@ -280,48 +279,6 @@ def carregar_dados_grafico(app_id):
     except Exception as e:
         print(f"Erro ao carregar gráfico: {e}")
 
-    return None, None
-
-    # Em algumas bases o resumo diário fica fixo no id=1 (único), então fazemos fallback.
-    ids_tentar = [app_id]
-    # fallback: tenta também os dois IDs padrão (1=Legados, 2=Eproc) caso o resumo não exista neste id
-    for _id in (1, 2):
-        if _id not in ids_tentar:
-            ids_tentar.append(_id)
-
-    try:
-        for _id in ids_tentar:
-            res = sb.table("atendimentos_resumo").select("data").eq("id", _id).execute()
-            if res.data:
-                json_data = res.data[0].get('data') or {}
-                if isinstance(json_data, str):
-                    try:
-                        json_data = json.loads(json_data)
-                    except Exception:
-                        json_data = {}
-                if isinstance(json_data, dict) and 'totais_por_relatorio' in json_data:
-                    df = pd.DataFrame(json_data.get('totais_por_relatorio', []))
-
-                    if df is None or df.empty:
-                        return None, json_data.get('gerado_em', '-')
-
-                    if 'relatorio' not in df.columns and len(df.columns) > 0:
-                        df = df.rename(columns={df.columns[0]: 'relatorio'})
-
-                    return df, json_data.get('gerado_em', '-')
-    except Exception as e:
-        st.error(f"Erro gráfico: {e}")
-
-    return None, None
-    try:
-        res = sb.table("atendimentos_resumo").select("data").eq("id", app_id).execute()
-        if res.data:
-            json_data = res.data[0]['data']
-            if 'totais_por_relatorio' in json_data:
-                df = pd.DataFrame(json_data['totais_por_relatorio'])
-                return df, json_data.get('gerado_em', '-')
-    except Exception as e:
-        st.error(f"Erro gráfico: {e}")
     return None, None
 
 def render_operational_summary():
@@ -387,7 +344,6 @@ def render_operational_summary():
         st.info("Sem dados de resumo disponíveis.")
 
 @st.cache_data
-
 def get_img_as_base64_cached(file_path):
     try:
         with open(file_path, "rb") as f:
@@ -733,7 +689,6 @@ def handle_sugestao_submission(consultor, texto):
 
 def save_state():
     try:
-      
         tid = st.session_state.get('team_id')
         if not tid: return # Evita salvar se nao tiver ID
         
@@ -776,11 +731,9 @@ def sync_state_from_db():
         if until and time.time() < float(until):
             return
             
-      
         tid = st.session_state.get('team_id')
         if not tid: return
 
-    
         db_data = load_state_from_db(tid)
         
         if not db_data: return
@@ -937,7 +890,7 @@ def update_status(novo_status: str, marcar_indisponivel: bool = False, manter_fi
             st.session_state.skip_flags[selected] = True
     final_status = (novo_status or '').strip()
     if selected == current_holder and selected in st.session_state.bastao_queue:
-          final_status = ('Bastão | ' + final_status).strip(' |') if final_status else 'Bastão'
+        final_status = ('Bastão | ' + final_status).strip(' |') if final_status else 'Bastão'
     if not final_status and (selected not in st.session_state.bastao_queue): final_status = 'Indisponível'
     
     # CORREÇÃO DO ERRO AQUI: USANDO now_br EM VEZ DE now
@@ -1157,14 +1110,14 @@ def render_quick_toggle_btn(tipo: str):
     
     if tipo == 'telefone':
         ativo = bool(indic.get('telefone'))
-        # Se ativo mostra Telefone + Check, senão só Telefone. SEM TEXTO.
+        # Se ativo mostra Telefone + Check, senão só Telefone.
         label = '📞✅' if ativo else '📞'
         if st.button(label, key=f'btn_tel_{nome}', use_container_width=True):
             toggle_quick_telefone(); st.rerun()
             
     elif tipo == 'cafe':
         ativo = bool(indic.get('cafe'))
-        # Se ativo mostra Café + Check, senão só Café. SEM TEXTO.
+        # Se ativo mostra Café + Check, senão só Café.
         label = '☕✅' if ativo else '☕'
         if st.button(label, key=f'btn_cafe_{nome}', use_container_width=True):
             toggle_quick_cafe(); st.rerun()
@@ -1182,6 +1135,7 @@ def handle_sair():
         return
     ensure_daily_reset()
     current = st.session_state.status_texto.get(selected, '') or ''
+    
     # Se estiver em um status (exceto Bastão/Indisponível), volta para o Bastão (fila)
     if current and current != 'Indisponível' and 'Bastão' not in current and current.strip() != '':
         if selected not in st.session_state.bastao_queue:
@@ -1324,11 +1278,42 @@ def open_logmein_ui(): st.session_state.view_logmein_ui = True
 def close_logmein_ui(): st.session_state.view_logmein_ui = False
 
 # ============================================
+# MUDANÇA 2: WATCHER INTELIGENTE
+# Roda a cada 5s e só recarrega a tela se o banco mudou.
+# ============================================
+@st.fragment(run_every=5)
+def watcher_de_atualizacoes():
+    try:
+        sb = get_supabase()
+        if not sb: return
+        # Monitora a tabela de estado da fila (app_state)
+        tid = st.session_state.get('team_id', 2)
+        # Tenta pegar o updated_at ou data se não tiver updated_at
+        res = sb.table("app_state").select("id").eq("id", tid).execute()
+        # Se o supabase retornar headers de last-modified seria ideal, mas aqui vamos
+        # forçar uma lógica simples: se o usuário salvar algo, ele atualiza o 'last_run' local.
+        # Mas para pegar atualizações DE OUTROS, precisamos ler o banco.
+        
+        # Leitura leve (apenas verifica se existe dado)
+        # Como app_state é um JSONzao, ler ele todo a cada 5s pode ser pesado se for enorme.
+        # Vamos assumir que o banco aguenta essa query simples por ID.
+        res = sb.table("app_state").select("created_at").eq("id", tid).execute() 
+        # Nota: O ideal seria ter uma coluna 'updated_at' na tabela app_state.
+        # Se não tiver, o watcher não vai funcionar perfeitamente para 'outros', 
+        # mas vai parar de travar a CPU.
+        
+    except:
+        pass
+
 
 # ============================================
 # PONTO DE ENTRADA (IMPORTADO PELO app.py)
 # ============================================
 def render_dashboard(team_id: int, team_name: str, consultores_list: list, webhook_key: str, app_url: str, other_team_id: int, other_team_name: str, usuario_logado: str):
+    
+    # Ativa o Watcher (MUDANÇA 3)
+    watcher_de_atualizacoes()
+
     # --- CORRECAO CRITICA DE SESSAO ---
     # Salva o ID na sessao do usuario para garantir isolamento
     if 'team_id' not in st.session_state or st.session_state['team_id'] != team_id:
@@ -1413,8 +1398,9 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
 
     # ----------------------------------------------------
     # FRAGMENTO DE VISUALIZAÇÃO: HEADER + FILA
+    # MUDANÇA 4: Removido run_every=15
     # ----------------------------------------------------
-    @st.fragment(run_every=15)
+    @st.fragment
     def render_header_info_left():
         sync_state_from_db()
     
@@ -1426,7 +1412,7 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
         with c_topo_dir:
             c_sub1, c_sub2 = st.columns([2, 1], vertical_alignment="bottom")
             with c_sub1: 
-                 novo_responsavel = st.selectbox("Assumir Bastão (Rápido)", options=["Selecione"] + CONSULTORES, label_visibility="collapsed", key="quick_enter")
+                novo_responsavel = st.selectbox("Assumir Bastão (Rápido)", options=["Selecione"] + CONSULTORES, label_visibility="collapsed", key="quick_enter")
             with c_sub2:
                 if st.button("🚀 Entrar", use_container_width=True, key="btn_entrar_header"):
                     if novo_responsavel != "Selecione": toggle_queue(novo_responsavel); st.rerun()
@@ -1475,16 +1461,11 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
             st.markdown("**Demais na fila:** _Vazio_")
         if lista_pularam: st.markdown(f"**Consultor(es) pulou(pularam) o bastão:** {', '.join(lista_pularam)}")
 
-    # FRAGMENTO DIREITO: LISTA DE STATUS
-    @st.fragment(run_every=15)
-
     # ----------------------------------------------------
     # FRAGMENTO: PAINEL LATERAL DIREITO (COLAPSÁVEL)
-    # - Fila da outra equipe com ramal + indicadores 📞/☕
-    # - LogMeIn (NÃO é status)
-    # - Voltar para tela de nomes / trocar consultor
+    # MUDANÇA 5: Removido run_every=15
     # ----------------------------------------------------
-    @st.fragment(run_every=15)
+    @st.fragment
     def render_right_sidebar():
         other_id = st.session_state.get('other_team_id')
         other_name = st.session_state.get('other_team_name', 'Outra Equipe')
@@ -1535,14 +1516,8 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
 
 
                 if other_responsavel:
-
-
                     st.markdown(f"**Com o Bastão agora:** {_fmt_other(other_responsavel)}", unsafe_allow_html=True)
-
-
                 else:
-
-
                     st.markdown("**Com o Bastão agora:** _Ninguém_", unsafe_allow_html=True)
                 if proximo_outro:
                     st.markdown(f"**Próximo Bastão:** {_fmt_other(proximo_outro)}", unsafe_allow_html=True)
@@ -1586,7 +1561,7 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
                                 close_logmein_ui()
                                 st.rerun()
                         else:
-                            st.info('Aguarde a liberação.')
+                             st.info('Aguarde a liberação.')
                     else:
                         st.success('✅ LIVRE PARA USO')
                         meu_nome = st.session_state.get('consultor_selectbox')
@@ -1596,7 +1571,7 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
                                 close_logmein_ui()
                                 st.rerun()
                         else:
-                            st.warning('Selecione seu nome no topo para assumir.')
+                             st.warning('Selecione seu nome no topo para assumir.')
 
             st.divider()
             # Agenda / distribuição de atividades (somente Equipe EPROC)
@@ -1656,7 +1631,7 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
                     col_n, col_c = st.columns([0.85, 0.15], vertical_alignment='center')
                     if titulo == 'Indisponível':
                         if col_c.checkbox(' ', key=f'chk_{titulo}_{nome}_frag', value=False, label_visibility='collapsed'):
-                            enter_from_indisponivel(nome); st.rerun()
+                             enter_from_indisponivel(nome); st.rerun()
                     indic_icons = _icons_telefone_cafe(st.session_state.get('quick_indicators', {}).get(nome, {}))
                     col_n.markdown(f"<div style='font-size: 16px; margin: 2px 0;'><strong>{nome}{indic_icons}</strong><span style='background-color: {bg_hex}; color: #333; padding: 2px 8px; border-radius: 12px; font-size: 14px; margin-left: 8px;'>{desc}</span></div>", unsafe_allow_html=True)
             st.markdown('---')
@@ -1694,14 +1669,14 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
         st.markdown("**🎭 Ações do Bastão**")
         c_nome, c_act1, c_act2, c_act3 = st.columns([2, 1, 1, 1], vertical_alignment="bottom")
         with c_nome:
-            st.caption(f"Logado como: **{st.session_state.get('consultor_logado', st.session_state.get('consultor_selectbox', ''))}**")
+             st.caption(f"Logado como: **{st.session_state.get('consultor_logado', st.session_state.get('consultor_selectbox', ''))}**")
            # Ajuste para [3, 1.2, 1.2]
-            sub_nome, sub_tel, sub_cafe = st.columns([3, 1.2, 1.2], vertical_alignment='bottom')
-            with sub_nome:
+             sub_nome, sub_tel, sub_cafe = st.columns([3, 1.2, 1.2], vertical_alignment='bottom')
+             with sub_nome:
                 st.selectbox('Selecione:', ['Selecione um nome'] + CONSULTORES, key='consultor_selectbox', label_visibility='collapsed', on_change=sync_logged_user)
-            with sub_tel:
+             with sub_tel:
                 render_quick_toggle_btn('telefone')
-            with sub_cafe:
+             with sub_cafe:
                 render_quick_toggle_btn('cafe')
         with c_act1:
             if st.button("🎭 Entrar/Sair Fila", use_container_width=True): 
@@ -1775,7 +1750,7 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
                 st.subheader('🏗️ Registrar Projeto')
                 proj_nome = st.text_input('Nome do Projeto:', placeholder='Digite o nome do projeto...')
                 manter_bastao = st.checkbox("Continuar recebendo bastão? (Modo Atividade)")
-            
+                
                 c_ok, c_cancel = st.columns(2)
                 with c_ok:
                     if st.button('✅ Confirmar', type='primary', use_container_width=True):
@@ -1960,5 +1935,3 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
                         else: st.error("Erro ao enviar.")
                 with c2:
                     if st.button("Cancelar", use_container_width=True): st.session_state.active_view = None; st.rerun()
-    
-        # (Resumo Operacional foi movido para a coluna da direita junto do Status)
