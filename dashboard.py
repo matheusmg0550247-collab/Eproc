@@ -490,15 +490,22 @@ def reset_day_state():
 
 def ensure_daily_reset():
     now_br = get_brazil_time()
-    last_run = st.session_state.report_last_run_date
+    last_run = st.session_state.get('report_last_run_date')
+    
+    # Tratamento robusto de data
     if isinstance(last_run, str):
-        try: last_run_dt = datetime.fromisoformat(last_run).date()
-        except: last_run_dt = date.min
+        try: 
+            last_run_dt = datetime.fromisoformat(last_run).date()
+        except: 
+            # SE DER ERRO, ASSUME QUE É HOJE PARA NÃO ZERAR A FILA
+            last_run_dt = now_br.date() 
     elif isinstance(last_run, datetime):
         last_run_dt = last_run.date()
     else:
-        last_run_dt = date.min
+        # Se for None ou inválido, assume hoje para evitar reset acidental
+        last_run_dt = now_br.date()
 
+    # Só zera se a data salva for explicitamente ANTERIOR a hoje
     if now_br.date() > last_run_dt:
         if st.session_state.daily_logs: 
             send_daily_report_to_webhook()
@@ -508,7 +515,12 @@ def ensure_daily_reset():
                 'queue_final': st.session_state.bastao_queue
             }
             send_state_dump_webhook(full_state)
+        
+        # ZERA TUDO
         reset_day_state()
+        
+        # Atualiza a data para hoje
+        st.session_state.report_last_run_date = now_br
         save_state()
 
 def auto_manage_time():
@@ -1648,8 +1660,10 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
                     desc = item[1] if isinstance(item, tuple) else titulo
                     col_n, col_c = st.columns([0.85, 0.15], vertical_alignment='center')
                     if titulo == 'Indisponível':
-                        if col_c.checkbox(' ', key=f'chk_{titulo}_{nome}_frag', value=False, label_visibility='collapsed'):
-                             enter_from_indisponivel(nome); st.rerun()
+                        if col_c.button('⬆️', key=f'btn_back_{titulo}_{nome}', help="Voltar para a fila"):
+    enter_from_indisponivel(nome)
+    st.session_state['_skip_db_sync_until'] = time.time() + 3 # Bloqueia o watcher por 3s para garantir o save
+    st.rerun()
                     indic_icons = _icons_telefone_cafe(st.session_state.get('quick_indicators', {}).get(nome, {}))
                     col_n.markdown(f"<div style='font-size: 16px; margin: 2px 0;'><strong>{nome}{indic_icons}</strong><span style='background-color: {bg_hex}; color: #333; padding: 2px 8px; border-radius: 12px; font-size: 14px; margin-left: 8px;'>{desc}</span></div>", unsafe_allow_html=True)
             st.markdown('---')
@@ -1728,7 +1742,7 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
         # --- RESUMO OPERACIONAL (GRÁFICOS) ---
         # Fica no lado esquerdo, logo abaixo do painel de botões.
         with st.container(border=True):
-            render_operational_summary()
+    render_operational_summary()
 
 # --- MENUS DE AÇÃO ---
         if st.session_state.active_view == 'menu_atividades':
