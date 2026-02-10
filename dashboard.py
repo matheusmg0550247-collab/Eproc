@@ -1014,7 +1014,12 @@ def notify_bastao_giro(reason='update', actor=None):
 
 
 def notify_registro_ferramenta(tipo: str, actor: str, dados: dict = None, mensagem: str = None) -> bool:
-    """Envia evento de registro (Ferramentas) para n8n (silencioso)."""
+    """Envia evento de registro corrigindo o campo message."""
+    
+    # Se nao tiver mensagem de texto, cria uma padrao para nao dar erro
+    if not mensagem:
+        mensagem = f"Novo registro: {tipo} por {actor}"
+
     payload = {
         'evento': 'registro_ferramenta',
         'tipo': tipo,
@@ -1023,7 +1028,7 @@ def notify_registro_ferramenta(tipo: str, actor: str, dados: dict = None, mensag
         'team_name': st.session_state.get('team_name'),
         'actor': actor,
         'dados': dados or {},
-        'mensagem': mensagem,
+        'message': mensagem, # <--- AQUI ESTAVA O ERRO (antes era 'mensagem')
     }
     return post_n8n(N8N_WEBHOOK_REGISTROS, payload)
 
