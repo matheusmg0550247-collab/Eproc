@@ -1281,29 +1281,47 @@ def close_logmein_ui(): st.session_state.view_logmein_ui = False
 # MUDANÇA 2: WATCHER INTELIGENTE
 # Roda a cada 5s e só recarrega a tela se o banco mudou.
 # ============================================
-@st.fragment(run_every=5)
+@st.fragment(run_every=10)
 def watcher_de_atualizacoes():
     try:
+        # 1. Pega o ID da equipe atual
+        tid = st.session_state.get('team_id', 2)
+        
+        # 2. Consulta direta ao banco (Bypassing cache para garantir dado real)
         sb = get_supabase()
         if not sb: return
-        # Monitora a tabela de estado da fila (app_state)
-        tid = st.session_state.get('team_id', 2)
-        # Tenta pegar o updated_at ou data se não tiver updated_at
-        res = sb.table("app_state").select("id").eq("id", tid).execute()
-        # Se o supabase retornar headers de last-modified seria ideal, mas aqui vamos
-        # forçar uma lógica simples: se o usuário salvar algo, ele atualiza o 'last_run' local.
-        # Mas para pegar atualizações DE OUTROS, precisamos ler o banco.
         
-        # Leitura leve (apenas verifica se existe dado)
-        # Como app_state é um JSONzao, ler ele todo a cada 5s pode ser pesado se for enorme.
-        # Vamos assumir que o banco aguenta essa query simples por ID.
-        res = sb.table("app_state").select("created_at").eq("id", tid).execute() 
-        # Nota: O ideal seria ter uma coluna 'updated_at' na tabela app_state.
-        # Se não tiver, o watcher não vai funcionar perfeitamente para 'outros', 
-        # mas vai parar de travar a CPU.
+        # Busca apenas o campo 'data' da tabela de estado
+        res = sb.table("app_state").select("data").eq("id", tid).execute()
         
-    except:
-        pass
+        if res.data and len(res.data) > 0:
+            remote_data = res.data[0].get("data", {})
+            
+            # 3. COMPARAÇÃO (O PULO DO GATO)
+            # Vamos ver se o Bastão ou a Fila no banco são diferentes do que temos na tela agora.
+            
+            # Dados do Banco (Remoto)
+            rem_status = remote_data.get('status_texto', {})
+            rem_queue = remote_data.get('bastao_queue', [])
+            
+            # Dados da Tela (Local)
+            loc_status = st.session_state.get('status_texto', {})
+            loc_queue = st.session_state.get('bastao_queue', [])
+            
+            # Se houver diferença, força a atualização!
+            # (Convertemos para string para facilitar a comparação de listas/dicionários)
+            if str(rem_status) != str(loc_status) or str(rem_queue) != str(loc_queue):
+                # Limpa o cache para obrigar o download novo
+                load_state_from_db.clear()
+                
+                # Atualiza a sessão imediatamente
+                st.session_state.update(remote_data)
+                
+                # DISPARA O RERUN (Igual apertar F5 ou "Atualizar Agora")
+                st.rerun()
+                
+    except Exception:
+        pass # Falha silenciosa para não travar a tela
 
 
 # ============================================
