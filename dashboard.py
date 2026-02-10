@@ -1,3 +1,4 @@
+
 # -*- coding: utf-8 -*-
 import streamlit as st
 import pandas as pd
@@ -228,8 +229,14 @@ def post_n8n(url: str, payload: dict) -> bool:
     if not url:
         return False
     try:
-        requests.post(url, json=payload, timeout=4)
+        # Timeout maior para evitar falhas intermitentes no Streamlit Cloud / DO
+        resp = requests.post(url, json=payload, timeout=12)
+        # Se der erro HTTP, considera falha (mas sem estourar exception pro usuário)
+        if getattr(resp, "status_code", 200) >= 400:
+            return False
         return True
+    except requests.exceptions.Timeout:
+        return False
     except Exception:
         return False
 
@@ -1239,7 +1246,7 @@ def close_logmein_ui(): st.session_state.view_logmein_ui = False
 # ============================================
 # WATCHER INTELIGENTE (SEM CONFLITO DE SAVE)
 # ============================================
-@st.fragment(run_every=10)
+@st.fragment(run_every=20)
 def watcher_de_atualizacoes():
     try:
         # Se salvei algo nos ultimos 5 segundos, NÃO atualize a tela agora.
@@ -1379,6 +1386,34 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
         other_name = st.session_state.get('other_team_name', 'Outra Equipe')
         team_name = st.session_state.get('team_name', '')
 
+        # Botão grande para voltar ao menu (tela de login)
+        st.markdown(
+            """
+<style>
+button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]{
+  background: #ef4444 !important;
+  color: white !important;
+  border: 1px solid #ef4444 !important;
+  font-weight: 800 !important;
+  height: 52px !important;
+  border-radius: 14px !important;
+  width: 100% !important;
+}
+button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{
+  background: #dc2626 !important;
+  border-color: #dc2626 !important;
+}
+</style>
+""",
+            unsafe_allow_html=True
+        )
+        if st.button("⬅️ SAIR / VOLTAR AO MENU", use_container_width=True, key="btn_back_menu_top"):
+            st.session_state['_force_back_to_names'] = True
+            st.session_state['time_selecionado'] = None
+            st.session_state['consultor_logado'] = None
+            st.session_state['consultor_selectbox'] = 'Selecione um nome'
+            st.rerun()
+
         with st.expander('🧭 Painel (outra equipe / LogMeIn / trocar consultor)', expanded=False):
             if st.button('🔙 Voltar à tela de nomes', use_container_width=True, key=f'btn_voltar_nomes_{uuid.uuid4().hex}'):
                 st.session_state['_force_back_to_names'] = True
@@ -1480,15 +1515,20 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
         if not render_order and queue: render_order = list(queue)
         if not render_order: st.markdown('_Ninguém na fila._')
         else:
-            for i, nome in enumerate(render_order):
-                if nome not in ui_lists['fila']: continue
+            for i, nome in enumerate(render_order, 1):  # fila começa em 1º lugar
+                if nome not in ui_lists['fila']:
+                    continue
                 col_nome, col_check = st.columns([0.85, 0.15], vertical_alignment='center')
-                col_check.checkbox(' ', key=f'chk_fila_{nome}_frag', value=True, disabled=True, label_visibility='collapsed')
+                # Botão "Sair" (❌) no lugar do checkbox (permite remover da fila)
+                if col_check.button('❌', key=f'btn_sair_fila_{nome}_frag', help="Remover da fila"):
+                    toggle_queue(nome)
+                    st.session_state['_skip_db_sync_until'] = time.time() + 3
+                    st.rerun()
                 skip_flag = skips.get(nome, False); status_atual = st.session_state.status_texto.get(nome, '') or ''; extra = ''
                 indic_icons = _icons_telefone_cafe(st.session_state.get('quick_indicators', {}).get(nome, {}))
                 if 'Atividade' in status_atual: extra += ' 📋'
                 if 'Projeto' in status_atual: extra += ' 🏗️'
-                if nome == responsavel: display = f'<span style="background-color: #FF8C00; color: #FFF; padding: 2px 6px; border-radius: 5px; font-weight: 800;">🎭 {nome}{indic_icons}</span>'
+                if nome == responsavel: display = f'<span style="background-color: #FF8C00; color: #FFF; padding: 2px 6px; border-radius: 5px; font-weight: 800;">🎭 {i}º {nome}{indic_icons}</span>'
                 elif skip_flag: display = f'<strong>{i}º {nome}{indic_icons}</strong>{extra} <span style="background-color: #FEF3C7; padding: 2px 8px; border-radius: 10px;">Pulando ⏭️</span>'
                 else: display = f'<strong>{i}º {nome}{indic_icons}</strong>{extra} <span style="background-color: #FFEDD5; padding: 2px 8px; border-radius: 10px;">Aguardando</span>'
                 col_nome.markdown(display, unsafe_allow_html=True)
