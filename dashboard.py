@@ -241,10 +241,26 @@ def get_supabase():
         return None
 
 @st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def carregar_dados_grafico(app_id):
     sb = get_supabase()
-    if not sb:
-        return None, None
+    if not sb: return None, None
+    try:
+        # Busca EXATAMENTE o ID da equipe atual
+        res = sb.table("atendimentos_resumo").select("*").eq("id", app_id).execute()
+        if res.data and len(res.data) > 0:
+            json_data = res.data[0].get('data') or {}
+            if isinstance(json_data, str):
+                try: json_data = json.loads(json_data)
+                except: json_data = {}
+            if 'totais_por_relatorio' in json_data:
+                df = pd.DataFrame(json_data.get('totais_por_relatorio', []))
+                if not df.empty and 'relatorio' not in df.columns:
+                     df = df.rename(columns={df.columns[0]: 'relatorio'})
+                return df, json_data.get('gerado_em', '-')
+    except Exception as e:
+        print(f"Erro grafico ID {app_id}: {e}")
+    return None, None
 
     # Em algumas bases o resumo diário fica fixo no id=1 (único), então fazemos fallback.
     ids_tentar = [app_id]
@@ -1242,9 +1258,16 @@ def close_logmein_ui(): st.session_state.view_logmein_ui = False
 # PONTO DE ENTRADA (IMPORTADO PELO app.py)
 # ============================================
 def render_dashboard(team_id: int, team_name: str, consultores_list: list, webhook_key: str, app_url: str, other_team_id: int, other_team_name: str, usuario_logado: str):
-    """Renderiza o dashboard. Mantém a estrutura do Equipe1.txt, apenas com as evoluções combinadas."""
     global DB_APP_ID, CONSULTORES, APP_URL_CLOUD
-    DB_APP_ID = int(team_id) if team_id is not None else DB_APP_ID
+    # --- INICIO DA CORRECAO ---
+    nova_equipe = int(team_id) if team_id is not None else DB_APP_ID
+    # Se mudou de equipe, limpa o cache para não misturar filas
+    if nova_equipe != DB_APP_ID:
+        load_state_from_db.clear()
+        carregar_dados_grafico.clear()
+    DB_APP_ID = nova_equipe
+    # --- FIM DA CORRECAO ---
+    
     APP_URL_CLOUD = app_url or APP_URL_CLOUD
     if consultores_list:
         # Mantém a lista recebida do app.py (duas equipes).
@@ -1600,7 +1623,8 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
         c_nome, c_act1, c_act2, c_act3 = st.columns([2, 1, 1, 1], vertical_alignment="bottom")
         with c_nome:
             st.caption(f"Logado como: **{st.session_state.get('consultor_logado', st.session_state.get('consultor_selectbox', ''))}**")
-            sub_nome, sub_tel, sub_cafe = st.columns([6, 1, 1], vertical_alignment='bottom')
+           # Ajuste para [3, 1.2, 1.2]
+            sub_nome, sub_tel, sub_cafe = st.columns([3, 1.2, 1.2], vertical_alignment='bottom')
             with sub_nome:
                 st.selectbox('Selecione:', ['Selecione um nome'] + CONSULTORES, key='consultor_selectbox', label_visibility='collapsed', on_change=sync_logged_user)
             with sub_tel:
