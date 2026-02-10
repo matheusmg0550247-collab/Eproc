@@ -308,7 +308,8 @@ def render_operational_summary():
     """Renderiza o Resumo Operacional (gráficos)"""
     st.subheader("📊 Resumo Operacional")
 
-    df_chart, gerado_em = carregar_dados_grafico(DB_APP_ID)
+tid = st.session_state.get('team_id')
+    df_chart, gerado_em = carregar_dados_grafico(tid)
 
     if df_chart is not None:
         try:
@@ -1100,16 +1101,23 @@ def toggle_quick_cafe():
 def render_quick_toggle_btn(tipo: str):
     nome = st.session_state.get('consultor_selectbox')
     if not nome or nome == 'Selecione um nome':
-        st.button('📞', disabled=True, use_container_width=True) if tipo == 'telefone' else st.button('☕', disabled=True, use_container_width=True)
+        # Mostra apenas o emoji desabilitado se não tiver nome selecionado
+        label = '📞' if tipo == 'telefone' else '☕'
+        st.button(label, disabled=True, use_container_width=True)
         return
+    
     indic = _get_quick_indic(nome)
+    
     if tipo == 'telefone':
         ativo = bool(indic.get('telefone'))
+        # Se ativo mostra Telefone + Check, senão só Telefone. SEM TEXTO.
         label = '📞✅' if ativo else '📞'
         if st.button(label, key=f'btn_tel_{nome}', use_container_width=True):
             toggle_quick_telefone(); st.rerun()
+            
     elif tipo == 'cafe':
         ativo = bool(indic.get('cafe'))
+        # Se ativo mostra Café + Check, senão só Café. SEM TEXTO.
         label = '☕✅' if ativo else '☕'
         if st.button(label, key=f'btn_cafe_{nome}', use_container_width=True):
             toggle_quick_cafe(); st.rerun()
