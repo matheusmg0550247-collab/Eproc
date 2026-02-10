@@ -1,176 +1,162 @@
-import os
 import streamlit as st
-
-# ============================================
-# CONFIGURAÇÃO DAS EQUIPES E MEMBROS
-# ============================================
-EQUIPES = {
-    "Equipe Legados": {
-        "id": 1,
-        "cor": "#FF8C00",  # Laranja
-        "icone": "🏛️",
-        "consultores": [
-            "Alex Paulo",
-            "Dirceu Gonçalves",
-            "Douglas De Souza",
-            "Farley Leandro",
-            "Gleis Da Silva",
-            "Hugo Leonardo",
-            "Igor Dayrell",
-            "Jerry Marcos",
-            "Jonatas Gomes",
-            "Leandro Victor",
-            "Luiz Henrique",
-            "Marcelo Dos Santos",
-            "Marina Silva",
-            "Marina Torres",
-            "Vanessa Ligiane",
-        ],
-    },
-    "Equipe Eproc": {
-        "id": 2,
-        "cor": "#1E88E5",  # Azul
-        "icone": "⚖️",
-        "consultores": [
-            "Barbara Mara",
-            "Bruno Glaicon",
-            "Claudia Luiza",
-            "Douglas Paiva",
-            "Fábio Alves",
-            "Glayce Torres",
-            "Isabela Dias",
-            "Isac Candido",
-            "Ivana Guimarães",
-            "Leonardo Damaceno",
-            "Marcelo PenaGuerra",
-            "Michael Douglas",
-            "Morôni",
-            "Pablo Mol",
-            "Ranyer Segal",
-            "Sarah Leal",
-            "Victoria Lisboa",
-        ],
-    },
-}
-
-# ============================================
-# CONFIGURAÇÃO DO APP
-# ============================================
-st.set_page_config(page_title="Central Bastão TJMG", layout="wide", page_icon="⚖️")
-
 from dashboard import render_dashboard
 
-# URL base do app (para montar links no dashboard)
-# - 1ª opção: st.secrets["app"]["url"]
-# - 2ª opção: variável de ambiente APP_URL
-# - fallback: IP atual informado por você
-APP_URL = (
-    st.secrets.get("app", {}).get("url")
-    or os.getenv("APP_URL")
-    or "http://157.230.167.24:8501"
+# ============================================================
+# Central Unificada de Bastão - Tela de Entrada (Login)
+# ============================================================
+
+st.set_page_config(
+    page_title="Central Unificada de Bastão",
+    page_icon="🔐",
+    layout="wide",
+    initial_sidebar_state="collapsed",
 )
 
-# CSS: Cards, limpeza visual e remoção de menu padrão
+# --- CSS (Cards / Botões) ---
 st.markdown(
     """
 <style>
-    [data-testid="stSidebarNav"] {display: none;}
-    .stDeployButton {display: none;}
-
-    /* Estilo dos Botões da Home para parecerem Cards */
-    div.stButton > button {
-        width: 100%;
-        border-radius: 10px;
-        height: auto;
-        min-height: 60px;
-        padding: 15px 10px;
-        border: 1px solid #ddd;
-        background-color: #f8f9fa;
-        color: #333;
-        transition: all 0.3s;
-        text-align: left;
-        display: flex;
-        align-items: center;
-        justify-content: flex-start;
-        gap: 10px;
-        white-space: nowrap;
-    }
-    div.stButton > button:hover {
-        border-color: #111;
-        background-color: #f2f2f2;
-        transform: translateY(-2px);
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    }
-    div.stButton > button p {
-        font-size: 16px;
-        font-weight: 600;
-        margin: 0;
-        white-space: nowrap;
-    }
+/* Centraliza e dá cara de "card" */
+.login-wrap{
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.hero{
+  border: 1px solid rgba(0,0,0,.06);
+  border-radius: 18px;
+  padding: 18px 18px 14px 18px;
+  background: linear-gradient(180deg, rgba(255,140,0,.10), rgba(255,255,255,0));
+}
+.hero h1{
+  margin: 0;
+  font-size: 1.55rem;
+}
+.hero p{
+  margin: 6px 0 0 0;
+  color: rgba(0,0,0,.65);
+}
+.card-grid [data-testid="stButton"] > button{
+  height: 56px;
+  border-radius: 16px;
+  border: 1px solid rgba(0,0,0,.08);
+  font-weight: 700;
+  transition: transform .06s ease, box-shadow .06s ease;
+}
+.card-grid [data-testid="stButton"] > button:hover{
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(0,0,0,.08);
+}
+.small-note{
+  color: rgba(0,0,0,.55);
+  font-size: .9rem;
+}
 </style>
 """,
     unsafe_allow_html=True,
 )
 
-# Inicialização de Estado de Login
-if "time_selecionado" not in st.session_state:
+# --- Se o dashboard pedir volta ao menu, garante que estamos no login ---
+if st.session_state.get("_force_back_to_names"):
     st.session_state["time_selecionado"] = None
-if "consultor_logado" not in st.session_state:
     st.session_state["consultor_logado"] = None
+    st.session_state["_force_back_to_names"] = False
 
-# ============================================
-# TELA DE SELEÇÃO (LOGIN)
-# ============================================
-if st.session_state["time_selecionado"] is None:
+CONSULTORES_EPROC = [
+    "Barbara Mara", "Bruno Glaicon", "Claudia Luiza", "Douglas Paiva", "Fábio Alves",
+    "Glayce Torres", "Isabela Dias", "Isac Candido", "Ivana Guimarães",
+    "Leonardo Damaceno", "Marcelo PenaGuerra", "Michael Douglas", "Morôni",
+    "Pablo Mol", "Ranyer Segal", "Sarah Leal", "Victoria Lisboa"
+]
+
+CONSULTORES_LEGADOS = [
+    "Alex Paulo", "Barbara Mara", "Bruno Glaicon", "Claudia Luiza", "Dirceu Gonçalves",
+    "Douglas De Souza", "Farley", "Fábio Alves", "Gilberto", "Glayce Torres",
+    "Isabela Dias", "Isac Candido", "Ivana Guimarães", "Leonardo Damaceno",
+    "Marcelo PenaGuerra", "Matheus", "Michael Douglas", "Morôni", "Pablo Mol",
+    "Ranyer Segal", "Sarah Leal", "Victoria Lisboa"
+]
+
+# Configurações por equipe
+EQUIPES = {
+    "Eproc": {
+        "team_id": 2,
+        "team_name": "Eproc",
+        "consultores": CONSULTORES_EPROC,
+        "webhook_key": "eproc",
+        "app_url": "https://controle-bastao-cesupe.streamlit.app",
+        "other_team_id": 1,
+        "other_team_name": "Legados"
+    },
+    "Legados": {
+        "team_id": 1,
+        "team_name": "Legados",
+        "consultores": CONSULTORES_LEGADOS,
+        "webhook_key": "legados",
+        "app_url": "https://controle-bastao-cesupe.streamlit.app",
+        "other_team_id": 2,
+        "other_team_name": "Eproc"
+    }
+}
+
+# ============================================================
+# LOGIN / ROTEAMENTO
+# ============================================================
+
+cfg = None
+if st.session_state.get("time_selecionado") in ("Eproc", "Legados"):
+    cfg = EQUIPES[st.session_state["time_selecionado"]]
+
+if cfg is None:
+    # Tela inicial
+    st.markdown('<div class="login-wrap">', unsafe_allow_html=True)
+
     st.markdown(
-        "<h1 style='text-align: center; color: #111;'>🔐 Central Unificada de Bastão</h1>",
+        """
+<div class="hero">
+  <h1>🔐 Central Unificada de Bastão</h1>
+  <p>Escolha sua equipe e depois seu nome para entrar no painel.</p>
+</div>
+""",
         unsafe_allow_html=True,
     )
-    st.markdown(
-        "<p style='text-align: center; color: #444;'>Selecione seu nome para entrar no sistema:</p>",
-        unsafe_allow_html=True,
-    )
 
-    st.divider()
+    st.write("")
 
-    # Prepara lista unificada de todos os consultores
-    todos_consultores = []
-    for nome_eq, dados in EQUIPES.items():
-        for c in dados["consultores"]:
-            todos_consultores.append({"nome": c, "equipe": nome_eq, "dados": dados})
+    tab_eproc, tab_legados = st.tabs(["⚖️ Eproc", "🏛️ Legados"])
 
-    # Ordena alfabeticamente
-    todos_consultores.sort(key=lambda x: x["nome"])
+    def render_cards(lista, equipe_nome):
+        cols = st.columns(4)
+        for i, nome in enumerate(lista):
+            with cols[i % 4]:
+                with st.container():
+                    st.markdown('<div class="card-grid">', unsafe_allow_html=True)
+                    if st.button(nome, use_container_width=True, key=f"login_{equipe_nome}_{nome}"):
+                        st.session_state["time_selecionado"] = equipe_nome
+                        st.session_state["consultor_logado"] = nome
+                        st.rerun()
+                    st.markdown('</div>', unsafe_allow_html=True)
 
-    # Renderiza Grade (5 colunas)
-    cols = st.columns(5)
-    for i, user in enumerate(todos_consultores):
-        col = cols[i % 5]
-        with col:
-            label = f"{user['dados']['icone']} {user['nome']}"
-            if st.button(label, key=f"btn_{user['nome']}", use_container_width=True):
-                st.session_state["time_selecionado"] = user["equipe"]
-                st.session_state["consultor_logado"] = user["nome"]
-                st.rerun()
+    with tab_eproc:
+        st.markdown("<div class='small-note'>Equipe focada no Eproc (2ª Instância).</div>", unsafe_allow_html=True)
+        st.write(" ")
+        render_cards(CONSULTORES_EPROC, "Eproc")
 
-# ============================================
-# DASHBOARD (LOGADO)
-# ============================================
+    with tab_legados:
+        st.markdown("<div class='small-note'>Equipe focada em sistemas legados (Themis/JPe/SIAP etc.).</div>", unsafe_allow_html=True)
+        st.write(" ")
+        render_cards(CONSULTORES_LEGADOS, "Legados")
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
 else:
-    chave = st.session_state["time_selecionado"]
-    dados_time = EQUIPES[chave]
-
-    # Outra equipe (apenas para visualização cruzada)
-    outro_id = 2 if dados_time["id"] == 1 else 1
-    nome_outra_equipe = "Equipe Eproc" if dados_time["id"] == 1 else "Equipe Legados"
-
+    # Entrou no Dashboard
     render_dashboard(
-        team_id=dados_time["id"],
-        team_name=dados_time.get("nome_exibicao", chave),
-        consultores_list=dados_time["consultores"],
-        webhook_key="bastao_eq1" if dados_time["id"] == 1 else "bastao_eq2",
-        app_url=APP_URL,
-        other_team_id=outro_id,
-        other_team_name=nome_outra_equipe,
-        usuario_logado=st.session_state["consultor_logado"],
+        team_id=cfg["team_id"],
+        team_name=cfg["team_name"],
+        consultores_list=cfg["consultores"],
+        webhook_key=cfg["webhook_key"],
+        app_url=cfg["app_url"],
+        other_team_id=cfg["other_team_id"],
+        other_team_name=cfg["other_team_name"],
+        usuario_logado=st.session_state.get("consultor_logado"),
     )
