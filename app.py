@@ -12,68 +12,52 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# --- CSS (Cards / Botões) ---
-st.markdown(
-    """
-<style>
-/* Centraliza e dá cara de "card" */
-.login-wrap{
-  max-width: 1100px;
-  margin: 0 auto;
-}
-.hero{
-  border: 1px solid rgba(0,0,0,.06);
-  border-radius: 18px;
-  padding: 18px 18px 14px 18px;
-  background: linear-gradient(180deg, rgba(255,140,0,.10), rgba(255,255,255,0));
-}
-.hero h1{
-  margin: 0;
-  font-size: 1.55rem;
-}
-.hero p{
-  margin: 6px 0 0 0;
-  color: rgba(0,0,0,.65);
-}
-.card-grid [data-testid="stButton"] > button{
-  height: 56px;
-  border-radius: 16px;
-  border: 1px solid rgba(0,0,0,.08);
-  font-weight: 700;
-  transition: transform .06s ease, box-shadow .06s ease;
-}
-.card-grid [data-testid="stButton"] > button:hover{
-  transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(0,0,0,.08);
-}
-.small-note{
-  color: rgba(0,0,0,.55);
-  font-size: .9rem;
-}
-</style>
-""",
-    unsafe_allow_html=True,
-)
-
 # --- Se o dashboard pedir volta ao menu, garante que estamos no login ---
 if st.session_state.get("_force_back_to_names"):
     st.session_state["time_selecionado"] = None
     st.session_state["consultor_logado"] = None
     st.session_state["_force_back_to_names"] = False
 
+# ============================================================
+# LISTAS (por equipe)
+# ============================================================
+
 CONSULTORES_EPROC = [
-    "Barbara Mara", "Bruno Glaicon", "Claudia Luiza", "Douglas Paiva", "Fábio Alves",
-    "Glayce Torres", "Isabela Dias", "Isac Candido", "Ivana Guimarães",
-    "Leonardo Damaceno", "Marcelo PenaGuerra", "Michael Douglas", "Morôni",
-    "Pablo Mol", "Ranyer Segal", "Sarah Leal", "Victoria Lisboa"
+    "Barbara Mara",
+    "Bruno Glaicon",
+    "Claudia Luiza",
+    "Douglas Paiva",
+    "Fábio Alves",
+    "Glayce Torres",
+    "Isabela Dias",
+    "Isac Candido",
+    "Ivana Guimarães",
+    "Leonardo Damaceno",
+    "Marcelo PenaGuerra",
+    "Michael Douglas",
+    "Morôni",
+    "Pablo Mol",
+    "Ranyer Segal",
+    "Sarah Leal",
+    "Victoria Lisboa",
 ]
 
+# Legados (Equipe 1) – mantendo nomes “canônicos” (curtos) usados no dashboard
 CONSULTORES_LEGADOS = [
-    "Alex Paulo", "Barbara Mara", "Bruno Glaicon", "Claudia Luiza", "Dirceu Gonçalves",
-    "Douglas De Souza", "Farley", "Fábio Alves", "Gilberto", "Glayce Torres",
-    "Isabela Dias", "Isac Candido", "Ivana Guimarães", "Leonardo Damaceno",
-    "Marcelo PenaGuerra", "Matheus", "Michael Douglas", "Morôni", "Pablo Mol",
-    "Ranyer Segal", "Sarah Leal", "Victoria Lisboa"
+    "Alex Paulo",
+    "Dirceu Gonçalves",
+    "Douglas De Souza",
+    "Hugo Leonardo",
+    "Farley Leonardo",
+    "Gleis Da Silva",
+    "Jerry Marcos",
+    "Jonatas Gomes",
+    "Leandro Victor",
+    "Luiz Henrique",
+    "Marcelo Dos Santos",
+    "Marina Silva",
+    "Marina Torres",
+    "Vanessa Ligiane",
 ]
 
 # Configurações por equipe
@@ -85,7 +69,7 @@ EQUIPES = {
         "webhook_key": "eproc",
         "app_url": "https://controle-bastao-cesupe.streamlit.app",
         "other_team_id": 1,
-        "other_team_name": "Legados"
+        "other_team_name": "Legados",
     },
     "Legados": {
         "team_id": 1,
@@ -94,9 +78,118 @@ EQUIPES = {
         "webhook_key": "legados",
         "app_url": "https://controle-bastao-cesupe.streamlit.app",
         "other_team_id": 2,
-        "other_team_name": "Eproc"
-    }
+        "other_team_name": "Eproc",
+    },
 }
+
+# ============================================================
+# CSS (cards, cores por equipe, hover e espaçamentos)
+# ============================================================
+
+st.markdown(
+    """
+<style>
+/* ---------- Layout geral ---------- */
+.main .block-container{
+  padding-top: 1.2rem;
+  padding-bottom: 2rem;
+}
+
+/* reduz gaps entre colunas/linhas */
+div[data-testid="stHorizontalBlock"]{ gap: .6rem; }
+div[data-testid="stVerticalBlock"] > div{ gap: .55rem; }
+div[data-testid="stButton"]{ margin: 0; }
+
+/* ---------- Hero ---------- */
+.login-wrap{
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.hero{
+  border: 1px solid rgba(0,0,0,.06);
+  border-radius: 18px;
+  padding: 18px 18px 14px 18px;
+  background: linear-gradient(180deg, rgba(255,140,0,.09), rgba(255,255,255,0));
+}
+.hero h1{
+  margin: 0;
+  font-size: 1.55rem;
+}
+.hero p{
+  margin: 6px 0 0 0;
+  color: rgba(0,0,0,.65);
+}
+
+/* ---------- Banners por equipe (cor de fundo como no Excel) ---------- */
+.team-banner{
+  border-radius: 14px;
+  padding: 10px 12px;
+  margin: .35rem 0 .65rem 0;
+  border: 1px solid rgba(0,0,0,.06);
+}
+.team-banner .t-title{
+  font-weight: 800;
+  margin: 0;
+}
+.team-banner .t-sub{
+  margin: 2px 0 0 0;
+  opacity: .85;
+  font-size: .92rem;
+}
+.team-eproc-banner{
+  background: linear-gradient(135deg, rgba(33,150,243,.18), rgba(33,150,243,.06));
+}
+.team-legados-banner{
+  background: linear-gradient(135deg, rgba(141,110,99,.22), rgba(141,110,99,.06));
+}
+
+/* ---------- Cards (botões) ---------- */
+.card-grid [data-testid="stButton"] > button{
+  height: 54px;
+  border-radius: 16px;
+  border: 1px solid rgba(0,0,0,.08);
+  font-weight: 800;
+  letter-spacing: .2px;
+  transition: transform .10s ease, box-shadow .10s ease, filter .10s ease;
+}
+
+/* Eproc (azul) */
+.team-eproc .card-grid [data-testid="stButton"] > button{
+  color: #ffffff;
+  border: 0;
+  background: linear-gradient(135deg, #1E88E5 0%, #64B5F6 100%);
+  box-shadow: 0 2px 10px rgba(30,136,229,.18);
+}
+
+/* Legados (marrom) */
+.team-legados .card-grid [data-testid="stButton"] > button{
+  color: #ffffff;
+  border: 0;
+  background: linear-gradient(135deg, #6D4C41 0%, #A1887F 100%);
+  box-shadow: 0 2px 10px rgba(109,76,65,.18);
+}
+
+/* Hover / Active */
+.card-grid [data-testid="stButton"] > button:hover{
+  transform: translateY(-2px);
+  filter: brightness(1.05);
+  box-shadow: 0 10px 22px rgba(0,0,0,.14);
+}
+.card-grid [data-testid="stButton"] > button:active{
+  transform: translateY(0px) scale(.995);
+  filter: brightness(.98);
+}
+
+/* Nota pequena */
+.small-note{
+  color: rgba(0,0,0,.55);
+  font-size: .92rem;
+  margin-top: -2px;
+}
+</style>
+""",
+    unsafe_allow_html=True,
+)
 
 # ============================================================
 # LOGIN / ROTEAMENTO
@@ -124,29 +217,50 @@ if cfg is None:
 
     tab_eproc, tab_legados = st.tabs(["⚖️ Eproc", "🏛️ Legados"])
 
-    def render_cards(lista, equipe_nome):
-        cols = st.columns(4)
+    def render_cards(lista, equipe_nome: str, wrap_class: str):
+        # gap="small" deixa os botões mais “colados”
+        try:
+            cols = st.columns(4, gap="small")
+        except TypeError:
+            cols = st.columns(4)
         for i, nome in enumerate(lista):
             with cols[i % 4]:
-                with st.container():
-                    st.markdown('<div class="card-grid">', unsafe_allow_html=True)
-                    if st.button(nome, use_container_width=True, key=f"login_{equipe_nome}_{nome}"):
-                        st.session_state["time_selecionado"] = equipe_nome
-                        st.session_state["consultor_logado"] = nome
-                        st.rerun()
-                    st.markdown('</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="{wrap_class}"><div class="card-grid">', unsafe_allow_html=True)
+                if st.button(nome, use_container_width=True, key=f"login_{equipe_nome}_{nome}"):
+                    st.session_state["time_selecionado"] = equipe_nome
+                    st.session_state["consultor_logado"] = nome
+                    st.rerun()
+                st.markdown("</div></div>", unsafe_allow_html=True)
 
     with tab_eproc:
-        st.markdown("<div class='small-note'>Equipe focada no Eproc (2ª Instância).</div>", unsafe_allow_html=True)
-        st.write(" ")
-        render_cards(CONSULTORES_EPROC, "Eproc")
+        st.markdown(
+            """
+<div class="team-banner team-eproc-banner">
+  <div class="t-title">Equipe Eproc (2ª Instância)</div>
+  <div class="t-sub">Clique no seu nome para entrar no painel.</div>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+        st.markdown('<div class="team-eproc">', unsafe_allow_html=True)
+        render_cards(CONSULTORES_EPROC, "Eproc", "team-eproc")
+        st.markdown("</div>", unsafe_allow_html=True)
 
     with tab_legados:
-        st.markdown("<div class='small-note'>Equipe focada em sistemas legados (Themis/JPe/SIAP etc.).</div>", unsafe_allow_html=True)
-        st.write(" ")
-        render_cards(CONSULTORES_LEGADOS, "Legados")
+        st.markdown(
+            """
+<div class="team-banner team-legados-banner">
+  <div class="t-title">Equipe Legados (Themis/JPe/SIAP etc.)</div>
+  <div class="t-sub">Clique no seu nome para entrar no painel.</div>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+        st.markdown('<div class="team-legados">', unsafe_allow_html=True)
+        render_cards(CONSULTORES_LEGADOS, "Legados", "team-legados")
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 else:
     # Entrou no Dashboard
