@@ -242,24 +242,44 @@ def get_supabase():
 
 @st.cache_data(ttl=3600, show_spinner=False)
 @st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def carregar_dados_grafico(app_id):
     sb = get_supabase()
     if not sb: return None, None
+    
+    # ESTRATÉGIA DE BUSCA DO GRÁFICO:
+    # 1. Tenta o ID da equipe atual.
+    # 2. Se falhar, tenta o ID 2 (Eproc), pois ele costuma ter o consolidado "Operacional".
+    # 3. Se falhar, tenta o ID 1.
+    ids_tentar = [app_id]
+    if 2 not in ids_tentar: ids_tentar.append(2)
+    if 1 not in ids_tentar: ids_tentar.append(1)
+
     try:
-        # Busca EXATAMENTE o ID da equipe atual
-        res = sb.table("atendimentos_resumo").select("*").eq("id", app_id).execute()
-        if res.data and len(res.data) > 0:
-            json_data = res.data[0].get('data') or {}
-            if isinstance(json_data, str):
-                try: json_data = json.loads(json_data)
-                except: json_data = {}
-            if 'totais_por_relatorio' in json_data:
-                df = pd.DataFrame(json_data.get('totais_por_relatorio', []))
-                if not df.empty and 'relatorio' not in df.columns:
-                     df = df.rename(columns={df.columns[0]: 'relatorio'})
-                return df, json_data.get('gerado_em', '-')
+        for tid in ids_tentar:
+            res = sb.table("atendimentos_resumo").select("*").eq("id", tid).execute()
+            
+            if res.data and len(res.data) > 0:
+                json_data = res.data[0].get('data') or {}
+                
+                # Tratamento de string JSON
+                if isinstance(json_data, str):
+                    try: json_data = json.loads(json_data)
+                    except: json_data = {}
+                
+                # VERIFICA SE O JSON TEM OS DADOS DO GRÁFICO
+                # Se tiver a chave 'totais_por_relatorio', achamos o gráfico certo!
+                if 'totais_por_relatorio' in json_data:
+                    df = pd.DataFrame(json_data.get('totais_por_relatorio', []))
+                    if not df.empty and 'relatorio' not in df.columns:
+                         df = df.rename(columns={df.columns[0]: 'relatorio'})
+                    
+                    # Retorna imediatamente ao encontrar dados válidos
+                    return df, json_data.get('gerado_em', '-')
+                    
     except Exception as e:
-        print(f"Erro grafico ID {app_id}: {e}")
+        print(f"Erro ao carregar gráfico: {e}")
+
     return None, None
 
     # Em algumas bases o resumo diário fica fixo no id=1 (único), então fazemos fallback.
