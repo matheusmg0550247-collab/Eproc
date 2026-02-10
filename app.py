@@ -11,7 +11,7 @@ EQUIPES = {
         "consultores_list": [
             "Alex Paulo", "Dirceu Gonçalves", "Douglas De Souza", "Farley Leandro", "Gleis Da Silva",
             "Hugo Leonardo", "Igor Dayrell", "Jerry Marcos", "Jonatas Gomes", "Leandro Victor",
-            "Luiz Henrique", "Marcelo Dos Santos", "Marina Silva", "Marina Torres", "Vanessa Ligiane"
+            "Luiz Henrique", "Marcelo Dos Santos", "Marina Marques", "Marina Amaral", "Vanessa Ligiane"
         ],
         "webhook_key": "bastao_eq1",
         "app_url": "http://138.197.212.187:8501",
