@@ -2,26 +2,6 @@
 import streamlit as st
 from dashboard import render_dashboard
 
-st.set_page_config(page_title="Central Bastão TJMG", page_icon="🧭", layout="wide")
-
-st.sidebar.title("Central Bastão")
-equipe = st.sidebar.radio("Equipe", ["⚖️ Eproc", "🏛️ Legados"], index=0)
-
-TEAM_MAP = {
-    "🏛️ Legados": (1, "Legados"),
-    "⚖️ Eproc": (2, "Eproc"),
-}
-
-team_id, team_name = TEAM_MAP[equipe]
-other_team_id = 1 if team_id == 2 else 2
-other_team_name = "Legados" if team_name == "Eproc" else "Eproc"
-
-# Renderiza apenas a equipe selecionada (evita misturar filas/estado entre equipes)
-render_dashboard(team_id=team_id, team_name=team_name, other_team_id=other_team_id, other_team_name=other_team_name)
-# -*- coding: utf-8 -*-
-import streamlit as st
-from dashboard import render_dashboard
-
 st.set_page_config(page_title="Central Unificada do Bastão", page_icon="🧭", layout="wide")
 
 EQUIPES = {
@@ -74,10 +54,6 @@ st.session_state.setdefault("consultor_logado", None)
 st.session_state.setdefault("time_selecionado", None)
 
 team_from_q = _get_team_from_query()
-st.session_state.setdefault("consultor_logado", None)
-st.session_state.setdefault("time_selecionado", None)
-
-team_from_q = _get_team_from_query()
 
 # Se veio da URL e não tem time setado, usa a URL
 if team_from_q and not st.session_state.time_selecionado:
@@ -86,7 +62,7 @@ if team_from_q and not st.session_state.time_selecionado:
 # Se não tem nada setado e não tá logado, padrao EPROC
 if not st.session_state.time_selecionado and not st.session_state.consultor_logado:
     st.session_state.time_selecionado = "Equipe EPROC"
-    
+
 _set_team_query(st.session_state.time_selecionado)
 
 # Header
@@ -95,14 +71,16 @@ with c1:
     st.title("🧭 Central Unificada do Bastão")
     st.caption("Selecione o time e clique no seu nome para entrar.")
 with c2:
-    st.markdown(
-        f"""<div style="text-align:right;margin-top:8px;">
-        <a href="{EQUIPES[st.session_state.time_selecionado]['app_url']}" target="_blank"
-           style="text-decoration:none;padding:8px 12px;border-radius:10px;border:1px solid #ddd;color:#111;background:#fff;display:inline-block;">
-           🌐 Abrir em nova guia
-        </a>
-        </div>""", unsafe_allow_html=True
-    )
+    if st.session_state.get('time_selecionado') in EQUIPES:
+        url_dest = EQUIPES[st.session_state.time_selecionado]['app_url']
+        st.markdown(
+            f"""<div style="text-align:right;margin-top:8px;">
+            <a href="{url_dest}" target="_blank"
+               style="text-decoration:none;padding:8px 12px;border-radius:10px;border:1px solid #ddd;color:#111;background:#fff;display:inline-block;">
+               🌐 Abrir em nova guia
+            </a>
+            </div>""", unsafe_allow_html=True
+        )
 
 st.divider()
 
@@ -119,16 +97,22 @@ if st.session_state.consultor_logado:
 # Seleção de time (somente se não estiver logado)
 if not st.session_state.consultor_logado:
     team_options = list(EQUIPES.keys())
-    idx = team_options.index(st.session_state.time_selecionado) if st.session_state.time_selecionado in team_options else 0
+    # Proteção contra chave inválida
+    curr = st.session_state.time_selecionado
+    idx = team_options.index(curr) if curr in team_options else 0
+    
     team_choice = st.radio("Escolha a equipe", team_options, index=idx, horizontal=True, key="team_radio_selector")
     if team_choice != st.session_state.time_selecionado:
         st.session_state.time_selecionado = team_choice
         _set_team_query(team_choice)
         st.rerun()
 
-# Login (nomes)
+# Login (nomes) ou Dashboard
 if not st.session_state.consultor_logado:
-    equipe = EQUIPES[st.session_state.time_selecionado]
+    equipe_nome = st.session_state.time_selecionado
+    if equipe_nome not in EQUIPES: equipe_nome = "Equipe EPROC"
+    equipe = EQUIPES[equipe_nome]
+    
     st.subheader(f"👥 {equipe['team_name']}")
     cols = st.columns(4)
     for i, nome in enumerate(equipe["consultores_list"]):
@@ -139,9 +123,11 @@ if not st.session_state.consultor_logado:
                 _set_team_query(equipe["team_name"])
                 st.rerun()
 
-# Dashboard
 else:
-    equipe = EQUIPES[st.session_state.time_selecionado]
+    equipe_nome = st.session_state.time_selecionado
+    if equipe_nome not in EQUIPES: equipe_nome = "Equipe EPROC"
+    equipe = EQUIPES[equipe_nome]
+    
     render_dashboard(
         team_id=equipe["team_id"],
         team_name=equipe["team_name"],
