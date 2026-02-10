@@ -706,6 +706,10 @@ def handle_sugestao_submission(consultor, texto):
 
 def save_state():
     try:
+      
+        tid = st.session_state.get('team_id')
+        if not tid: return # Evita salvar se nao tiver ID
+        
         last_run = st.session_state.report_last_run_date
         visual_queue_calculated = get_ordered_visual_queue(st.session_state.bastao_queue, st.session_state.status_texto)
         
@@ -723,18 +727,14 @@ def save_state():
             'previous_states': st.session_state.get('previous_states', {}),
             'quick_indicators': st.session_state.get('quick_indicators', {})
         }
-        # Limpeza é feita dentro de save_state_to_db agora, mas podemos chamar aqui também para garantir
-        save_state_to_db(DB_APP_ID, state_to_save)
         
-        # INVALIDAÇÃO DE CACHE (CRÍTICO)
+        save_state_to_db(tid, state_to_save)
+        
         load_state_from_db.clear()
-
-        # Feedback visual de salvamento + janela curta para evitar sync prematuro do DB
         try:
             st.session_state['_toast_msg'] = '✅ Registro salvo.'
             st.session_state['_skip_db_sync_until'] = time.time() + 2.0
-        except Exception:
-            pass
+        except Exception: pass
         
     except Exception as e: print(f"Erro save: {e}")
 
@@ -745,12 +745,17 @@ def format_time_duration(duration):
 
 def sync_state_from_db():
     try:
-        # Evita sobrescrever estado local imediatamente após uma ação (mitiga necessidade de duplo clique)
         until = st.session_state.get('_skip_db_sync_until', 0)
         if until and time.time() < float(until):
             return
-        # Usa a função com cache
-        db_data = load_state_from_db(DB_APP_ID)
+            
+      
+        tid = st.session_state.get('team_id')
+        if not tid: return
+
+    
+        db_data = load_state_from_db(tid)
+        
         if not db_data: return
         keys = ['status_texto', 'bastao_queue', 'skip_flags', 'bastao_counts', 'priority_return_queue', 'daily_logs', 'simon_ranking', 'previous_states', 'quick_indicators']
         for k in keys:
@@ -1228,7 +1233,8 @@ def init_session_state():
     dev = get_browser_id(); 
     if dev: st.session_state['device_id_val'] = dev
     if 'db_loaded' not in st.session_state:
-        db = load_state_from_db(DB_APP_ID)
+        tid = st.session_state.get('team_id', 2) # 2 é fallback se falhar
+    db = load_state_from_db(tid)
         if 'report_last_run_date' in db and isinstance(db['report_last_run_date'], str):
             try: db['report_last_run_date'] = datetime.fromisoformat(db['report_last_run_date'])
             except: db['report_last_run_date'] = datetime.min
