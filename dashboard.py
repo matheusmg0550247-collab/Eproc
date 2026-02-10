@@ -973,20 +973,20 @@ def get_proximos_bastao(holder, n=3):
     return proximos
 
 def notify_bastao_giro(reason='update', actor=None):
-    """Envia para n8n quem está com o bastão e os 2 próximos."""
+    """Envia para n8n quem está com o bastão e os próximos (silencioso)."""
     try:
         holder = get_bastao_holder_atual()
         if not holder and st.session_state.bastao_queue:
             holder = st.session_state.bastao_queue[0]
             
-        # Pega os proximos (limitado a 2 conforme solicitado)
-        lista_proximos = get_proximos_bastao(holder, n=2)
+        # Gera o texto dos próximos para a mensagem
+        lista_proximos = get_proximos_bastao(holder, n=5)
         txt_proximos = ", ".join(lista_proximos) if lista_proximos else "Ninguém"
         
         # Pega nome da equipe
         nome_equipe = st.session_state.get('team_name', 'Equipe')
 
-        # Monta a mensagem final para o n8n (Isso resolve o erro 'message is empty')
+        # Monta a mensagem formatada para o WhatsApp
         msg_final = (
             f"🔄 *Troca de Bastão - {nome_equipe}*\n\n"
             f"👤 *Agora:* {holder}\n"
@@ -1002,14 +1002,13 @@ def notify_bastao_giro(reason='update', actor=None):
             'actor': actor,
             'com_bastao_agora': holder,
             'proximos': lista_proximos,
-            'message': msg_final  # <--- CAMPO OBRIGATÓRIO PARA O N8N
+            'tamanho_fila': len(st.session_state.bastao_queue),
+            'message': msg_final  # <--- O CAMPO QUE O N8N ESTÁ ESPERANDO
         }
         
-        # Usa o webhook especifico de giro se existir, ou o generico
         post_n8n(N8N_WEBHOOK_BASTAO_GIRO, payload)
         return True
-    except Exception as e:
-        print(f"Erro webhook bastao: {e}")
+    except Exception:
         return False
 
 
