@@ -309,7 +309,7 @@ def render_operational_summary():
     st.subheader("📊 Resumo Operacional")
 
 tid = st.session_state.get('team_id')
-    df_chart, gerado_em = carregar_dados_grafico(tid)
+df_chart, gerado_em = carregar_dados_grafico(tid)
 
     if df_chart is not None:
         try:
