@@ -1258,19 +1258,20 @@ def close_logmein_ui(): st.session_state.view_logmein_ui = False
 # PONTO DE ENTRADA (IMPORTADO PELO app.py)
 # ============================================
 def render_dashboard(team_id: int, team_name: str, consultores_list: list, webhook_key: str, app_url: str, other_team_id: int, other_team_name: str, usuario_logado: str):
-    global DB_APP_ID, CONSULTORES, APP_URL_CLOUD
-    # --- INICIO DA CORRECAO ---
-    nova_equipe = int(team_id) if team_id is not None else DB_APP_ID
-    # Se mudou de equipe, limpa o cache para não misturar filas
-    if nova_equipe != DB_APP_ID:
+    # --- CORRECAO CRITICA DE SESSAO ---
+    # Salva o ID na sessao do usuario para garantir isolamento
+    if 'team_id' not in st.session_state or st.session_state['team_id'] != team_id:
+        st.session_state['team_id'] = team_id
+        # Limpa cache se trocou de time
         load_state_from_db.clear()
         carregar_dados_grafico.clear()
-    DB_APP_ID = nova_equipe
-    # --- FIM DA CORRECAO ---
+    
+    # Define variaveis locais para uso imediato
+    current_team_id = st.session_state['team_id']
+    global APP_URL_CLOUD, CONSULTORES
     
     APP_URL_CLOUD = app_url or APP_URL_CLOUD
     if consultores_list:
-        # Mantém a lista recebida do app.py (duas equipes).
         CONSULTORES = list(consultores_list)
     # Mostra feedback de salvamento pendente
     try:
