@@ -972,22 +972,20 @@ def get_proximos_bastao(holder, n=3):
         cursor = nxt
     return proximos
 
-def notify_bastao_giro(reason='update', actor=None):
+ddef notify_bastao_giro(reason='update', actor=None):
     """Envia para n8n quem está com o bastão e os próximos (silencioso)."""
     try:
         holder = get_bastao_holder_atual()
         if not holder and st.session_state.bastao_queue:
             holder = st.session_state.bastao_queue[0]
             
-        # Gera a lista dos próximos (2 próximos, como você pediu)
+        # --- PARTE NOVA: GERA O TEXTO DOS PRÓXIMOS ---
         lista_proximos = get_proximos_bastao(holder, n=2)
         txt_proximos = ", ".join(lista_proximos) if lista_proximos else "Ninguém"
         
-        # Pega nome da equipe para o título
         nome_equipe = st.session_state.get('team_name', 'Equipe')
 
-        # --- AQUI ESTÁ A MÁGICA QUE FALTAVA ---
-        # Monta a mensagem de texto formatada para o WhatsApp
+        # --- PARTE NOVA: MONTA A MENSAGEM ---
         msg_final = (
             f"🔄 *Troca de Bastão - {nome_equipe}*\n\n"
             f"👤 *Agora:* {holder}\n"
@@ -1004,7 +1002,7 @@ def notify_bastao_giro(reason='update', actor=None):
             'com_bastao_agora': holder,
             'proximos': lista_proximos,
             'tamanho_fila': len(st.session_state.bastao_queue),
-            'message': msg_final  # <--- AGORA O PYTHON VAI ENVIAR ESSE CAMPO
+            'message': msg_final  # <--- AGORA SIM O PYTHON VAI ENVIAR O TEXTO
         }
         
         post_n8n(N8N_WEBHOOK_BASTAO_GIRO, payload)
