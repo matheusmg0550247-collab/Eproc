@@ -1240,15 +1240,24 @@ def auto_manage_time():
     ensure_daily_reset()
 
 def init_session_state():
-    dev = get_browser_id(); 
-    if dev: st.session_state['device_id_val'] = dev
+    dev = get_browser_id()
+    if dev: 
+        st.session_state['device_id_val'] = dev
+    
     if 'db_loaded' not in st.session_state:
-        tid = st.session_state.get('team_id', 2) # 2 é fallback se falhar
-    db = load_state_from_db(tid)
-        if 'report_last_run_date' in db and isinstance(db['report_last_run_date'], str):
-            try: db['report_last_run_date'] = datetime.fromisoformat(db['report_last_run_date'])
-            except: db['report_last_run_date'] = datetime.min
-        st.session_state.update(db); st.session_state['db_loaded'] = True
+        # --- CORRECAO: Carregar do ID da sessao ---
+        # Se nao tiver team_id, usa 2 (Eproc) como fallback
+        tid = st.session_state.get('team_id', 2)
+        db = load_state_from_db(tid)
+        
+        if db:
+            if 'report_last_run_date' in db and isinstance(db['report_last_run_date'], str):
+                try: 
+                    db['report_last_run_date'] = datetime.fromisoformat(db['report_last_run_date'])
+                except: 
+                    db['report_last_run_date'] = datetime.min
+            st.session_state.update(db)
+        st.session_state['db_loaded'] = True
     
     defaults = {
         'bastao_start_time': None, 'report_last_run_date': datetime.min, 'rotation_gif_start_time': None,
@@ -1263,7 +1272,8 @@ def init_session_state():
     for k, v in defaults.items():
         if k not in st.session_state: st.session_state[k] = v
     for n in CONSULTORES:
-        st.session_state.skip_flags.setdefault(n, False); st.session_state[f'check_{n}'] = n in st.session_state.bastao_queue
+        st.session_state.skip_flags.setdefault(n, False)
+        st.session_state[f'check_{n}'] = n in st.session_state.bastao_queue
 
 def open_logmein_ui(): st.session_state.view_logmein_ui = True
 def close_logmein_ui(): st.session_state.view_logmein_ui = False
