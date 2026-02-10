@@ -671,16 +671,20 @@ def gerar_docx_certidao_internal(tipo, numero, data, consultor, motivo, chamado=
 
 # Webhooks
 def send_chat_notification_internal(consultor, status):
-    """Notificação interna de giro (compat). Agora envia via n8n, se configurado."""
+    """Notificação interna de giro corrigida para enviar os próximos."""
     if status != 'Bastão':
         return False
+        
+    # --- CORREÇÃO: Calcula os próximos em vez de mandar lista vazia ---
+    lista_proximos = get_proximos_bastao(consultor, n=2)
+    
     payload = {
         'evento': 'bastao_giro',
         'timestamp': get_brazil_time().isoformat(),
         'team_id': st.session_state.get('team_id'),
         'team_name': st.session_state.get('team_name'),
         'com_bastao_agora': consultor,
-        'proximos': [],
+        'proximos': lista_proximos, # <--- AGORA VAI PREENCHIDO
     }
     return post_n8n(N8N_WEBHOOK_BASTAO_GIRO, payload)
 
