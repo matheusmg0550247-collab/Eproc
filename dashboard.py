@@ -979,14 +979,15 @@ def notify_bastao_giro(reason='update', actor=None):
         if not holder and st.session_state.bastao_queue:
             holder = st.session_state.bastao_queue[0]
             
-        # Gera o texto dos próximos para a mensagem
-        lista_proximos = get_proximos_bastao(holder, n=5)
+        # Gera a lista dos próximos (2 próximos, como você pediu)
+        lista_proximos = get_proximos_bastao(holder, n=2)
         txt_proximos = ", ".join(lista_proximos) if lista_proximos else "Ninguém"
         
-        # Pega nome da equipe
+        # Pega nome da equipe para o título
         nome_equipe = st.session_state.get('team_name', 'Equipe')
 
-        # Monta a mensagem formatada para o WhatsApp
+        # --- AQUI ESTÁ A MÁGICA QUE FALTAVA ---
+        # Monta a mensagem de texto formatada para o WhatsApp
         msg_final = (
             f"🔄 *Troca de Bastão - {nome_equipe}*\n\n"
             f"👤 *Agora:* {holder}\n"
@@ -1003,7 +1004,7 @@ def notify_bastao_giro(reason='update', actor=None):
             'com_bastao_agora': holder,
             'proximos': lista_proximos,
             'tamanho_fila': len(st.session_state.bastao_queue),
-            'message': msg_final  # <--- O CAMPO QUE O N8N ESTÁ ESPERANDO
+            'message': msg_final  # <--- AGORA O PYTHON VAI ENVIAR ESSE CAMPO
         }
         
         post_n8n(N8N_WEBHOOK_BASTAO_GIRO, payload)
@@ -1013,9 +1014,9 @@ def notify_bastao_giro(reason='update', actor=None):
 
 
 def notify_registro_ferramenta(tipo: str, actor: str, dados: dict = None, mensagem: str = None) -> bool:
-    """Envia evento de registro (Ferramentas) para n8n (silencioso)."""
+    """Envia evento de registro corrigindo o campo message."""
     
-    # Se não tiver mensagem de texto, cria uma padrão
+    # Se nao tiver mensagem de texto, cria uma padrao
     if not mensagem:
         mensagem = f"Novo registro: {tipo} por {actor}"
 
@@ -1027,7 +1028,7 @@ def notify_registro_ferramenta(tipo: str, actor: str, dados: dict = None, mensag
         'team_name': st.session_state.get('team_name'),
         'actor': actor,
         'dados': dados or {},
-        'message': mensagem, # <--- Corrigido de 'mensagem' para 'message' (inglês)
+        'message': mensagem, # Garante que envia como 'message' (inglês)
     }
     return post_n8n(N8N_WEBHOOK_REGISTROS, payload)
 
