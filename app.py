@@ -167,7 +167,7 @@ def main():
     # Se já logado, vai direto pro dashboard
     if st.session_state.get("_force_enter_dashboard") and st.session_state.get("consultor_logado"):
         # Import lazy (evita lentidão/ram na tela de login)
-        from dashboard import render_dashboard
+        from dashboard_v2 import render_dashboard
 
         nome = st.session_state.get("consultor_logado")
         time_sel = st.session_state.get("time_selecionado")
