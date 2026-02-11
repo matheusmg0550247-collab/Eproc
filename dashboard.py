@@ -1386,28 +1386,28 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
         other_name = st.session_state.get('other_team_name', 'Outra Equipe')
         team_name = st.session_state.get('team_name', '')
 
-        # Botão grande para voltar ao menu (tela de login)
+        # Botão discreto para voltar ao menu (tela de login)
         st.markdown(
             """
 <style>
-button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]{
-  background: #ef4444 !important;
-  color: white !important;
-  border: 1px solid #ef4444 !important;
-  font-weight: 800 !important;
-  height: 52px !important;
-  border-radius: 14px !important;
+button[aria-label="⬅️ Menu"]{
+  background: transparent !important;
+  color: rgba(0,0,0,.85) !important;
+  border: 1px solid rgba(0,0,0,.18) !important;
+  font-weight: 700 !important;
+  height: 38px !important;
+  border-radius: 12px !important;
   width: 100% !important;
 }
-button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{
-  background: #dc2626 !important;
-  border-color: #dc2626 !important;
+button[aria-label="⬅️ Menu"]:hover{
+  background: rgba(0,0,0,.04) !important;
+  border-color: rgba(0,0,0,.26) !important;
 }
 </style>
 """,
             unsafe_allow_html=True
         )
-        if st.button("⬅️ SAIR / VOLTAR AO MENU", use_container_width=True, key="btn_back_menu_top"):
+        if st.button("⬅️ Menu", use_container_width=True, key="btn_back_menu_top"):
             st.session_state['_force_back_to_names'] = True
             st.session_state['time_selecionado'] = None
             st.session_state['consultor_logado'] = None
