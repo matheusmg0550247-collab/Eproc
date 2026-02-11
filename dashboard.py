@@ -1,8 +1,6 @@
 
-
 # -*- coding: utf-8 -*-
 import streamlit as st
-import pandas as pd
 import requests
 import time
 import gc
@@ -14,10 +12,7 @@ import uuid
 import unicodedata
 import base64
 import io
-import hashlib
-import altair as alt
 from supabase import create_client
-# (docx) importado sob demanda para reduzir tempo/RAM no carregamento inicial
 
 # Importação condicional
 try:
@@ -34,27 +29,58 @@ from utils import (get_brazil_time, get_secret, send_to_chat)
 DB_APP_ID = 2        # ID da Fila desta equipe
 LOGMEIN_DB_ID = 1    # ID do LogMeIn (COMPARTILHADO - SEMPRE 1)
 
-CONSULTORES_DEFAULT = sorted([
+CONSULTORES = sorted([
     "Barbara Mara", "Bruno Glaicon", "Claudia Luiza", "Douglas Paiva", "Fábio Alves", "Glayce Torres", 
     "Isabela Dias", "Isac Candido", "Ivana Guimarães", "Leonardo Damaceno", "Marcelo PenaGuerra", 
     "Michael Douglas", "Morôni", "Pablo Mol", "Ranyer Segal", "Sarah Leal", "Victoria Lisboa"
 ])
 
 # ============================================
-# CONSULTOR LIST (POR SESSÃO / POR EQUIPE)
-# Evita "mistura" entre Eproc/Legados em sessões diferentes (globals são compartilhados no servidor).
+# UTILITÁRIOS DE SESSÃO (EVITA MISTURA ENTRE EQUIPES/USUÁRIOS)
 # ============================================
-def get_consultores_list() -> list:
-    lst = st.session_state.get("_consultores_list")
-    if isinstance(lst, list) and len(lst) > 0:
+def get_consultores():
+    """Lista de consultores da equipe atual (por sessão)."""
+    lst = st.session_state.get('consultores_list')
+    if isinstance(lst, list) and lst:
         return lst
-    return CONSULTORES_DEFAULT
+    return CONSULTORES
 
-def set_consultores_list(lst: list):
-    if isinstance(lst, list) and len(lst) > 0:
-        st.session_state["_consultores_list"] = list(lst)
+def ensure_brazil_dt(value):
+    """Garante datetime (Brasil) a partir de datetime/ISO string/None."""
+    if value is None:
+        return None
+    tz = get_brazil_time().tzinfo
+    dt = None
+    if isinstance(value, datetime):
+        dt = value
+    elif isinstance(value, (int, float)):
+        try:
+            dt = datetime.fromtimestamp(value, tz=tz)
+        except Exception:
+            return None
+    elif isinstance(value, str):
+        s = value.strip()
+        try:
+            dt = datetime.fromisoformat(s.replace('Z', '+00:00'))
+        except Exception:
+            for fmt in ('%d/%m/%Y %H:%M:%S', '%d/%m/%Y %H:%M'):
+                try:
+                    dt = datetime.strptime(s, fmt)
+                    break
+                except Exception:
+                    dt = None
+            if dt is None:
+                return None
     else:
-        st.session_state["_consultores_list"] = list(CONSULTORES_DEFAULT)
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=tz)
+    else:
+        try:
+            dt = dt.astimezone(tz)
+        except Exception:
+            pass
+    return dt
 
 
 # Listas de Opções
@@ -261,7 +287,7 @@ def post_n8n(url: str, payload: dict) -> bool:
 # 2. OTIMIZAÇÃO E CONEXÃO
 # ============================================
 
-@st.cache_resource(ttl=3600, show_spinner=False)
+@st.cache_resource(ttl=3600)
 def get_supabase():
     try: 
         return create_client(st.secrets["supabase"]["url"], st.secrets["supabase"]["key"])
@@ -271,7 +297,9 @@ def get_supabase():
 
 # MUDANÇA 1: Cache de 24 horas (86400 segundos) para o gráfico não pesar a CPU
 @st.cache_data(ttl=86400, show_spinner=False)
-def carregar_dados_grafico(app_id, dia_iso: str):
+def carregar_dados_grafico(app_id, cache_day: str = None):
+    import pandas as pd
+    cache_day = cache_day or date.today().isoformat()  # chave diária do cache
     sb = get_supabase()
     if not sb: return None, None
     
@@ -311,12 +339,13 @@ def carregar_dados_grafico(app_id, dia_iso: str):
     return None, None
 
 def render_operational_summary():
+    import altair as alt
     """Renderiza o Resumo Operacional (gráficos)"""
     st.subheader("📊 Resumo Operacional")
 
     # Correção: alinhado com 4 espaços
     tid = st.session_state.get('team_id')
-    df_chart, gerado_em = carregar_dados_grafico(tid, get_brazil_time().strftime('%Y-%m-%d'))
+    df_chart, gerado_em = carregar_dados_grafico(tid, date.today().isoformat())
 
     # Correção: O 'if' deve estar na mesma direção do 'df_chart' acima (4 espaços)
     if df_chart is not None:
@@ -396,7 +425,7 @@ def clean_data_for_db(obj):
     else:
         return obj
 
-@st.cache_data(ttl=15, show_spinner=False)
+@st.cache_data(ttl=5, show_spinner=False)
 def load_state_from_db(app_id):
     sb = get_supabase()
     if not sb: return {}
@@ -414,15 +443,6 @@ def save_state_to_db(app_id, state_data):
         st.error("Sem conexão para salvar.")
         return
     try:
-        # Revisão leve do estado (para watcher checar mudanças sem baixar o JSON inteiro)
-        try:
-            rev = int(st.session_state.get('_state_rev', 0)) + 1
-            st.session_state['_state_rev'] = rev
-            # grava no próprio JSON
-            if isinstance(state_data, dict):
-                state_data['_state_rev'] = rev
-        except Exception:
-            pass
         sanitized_data = clean_data_for_db(state_data)
         sb.table("app_state").upsert({"id": app_id, "data": sanitized_data}).execute()
         
@@ -526,7 +546,7 @@ def get_ordered_visual_queue(queue, status_dict):
 
 def reset_day_state():
     st.session_state.bastao_queue = []
-    st.session_state.status_texto = {n: 'Indisponível' for n in get_consultores_list()}
+    st.session_state.status_texto = {n: 'Indisponível' for n in get_consultores()}
     st.session_state.daily_logs = []
     st.session_state.report_last_run_date = get_brazil_time()
 
@@ -608,10 +628,10 @@ def salvar_certidao_db(dados):
         return False
 
 def gerar_docx_certidao_internal(tipo, numero, data, consultor, motivo, chamado="", hora="", nome_parte=""):
+    from docx import Document
+    from docx.shared import Pt, Cm
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
     try:
-        from docx import Document
-        from docx.shared import Pt, Cm
-        from docx.enum.text import WD_ALIGN_PARAGRAPH
         doc = Document()
         section = doc.sections[0]
         section.top_margin = Cm(2.5); section.bottom_margin = Cm(2.0)
@@ -783,11 +803,6 @@ def format_time_duration(duration):
 
 def sync_state_from_db():
     try:
-        now_ts = time.time()
-        if now_ts - st.session_state.get('_last_sync_time', 0) < 1.0:
-            return
-        st.session_state['_last_sync_time'] = now_ts
-
         # Se salvei há menos de 3s, confio no meu local, não puxo do banco
         if time.time() - st.session_state.get('_last_save_time', 0) < 3.0:
             return
@@ -808,9 +823,9 @@ def sync_state_from_db():
                     
         if 'bastao_start_time' in db_data and db_data['bastao_start_time']:
             try:
-                if isinstance(db_data['bastao_start_time'], str): st.session_state['bastao_start_time'] = datetime.fromisoformat(db_data['bastao_start_time'])
-                else: st.session_state['bastao_start_time'] = db_data['bastao_start_time']
-            except: pass
+                st.session_state['bastao_start_time'] = ensure_brazil_dt(db_data['bastao_start_time'])
+            except:
+                pass
         if 'current_status_starts' in db_data:
             starts = db_data['current_status_starts']
             for nome, val in starts.items():
@@ -865,7 +880,7 @@ def check_and_assume_baton(forced_successor=None, immune_consultant=None):
         
     changed = False; now = get_brazil_time()
     
-    for c in get_consultores_list():
+    for c in get_consultores():
         if c != immune_consultant: 
             if c != target and 'Bastão' in st.session_state.status_texto.get(c, ''):
                 log_status_change(c, 'Bastão', 'Indisponível', now - st.session_state.current_status_starts.get(c, now))
@@ -1082,7 +1097,8 @@ def rotate_bastao():
         next_holder = queue[next_idx]; st.session_state.skip_flags[next_holder] = False; now_br = get_brazil_time()
         old_h_status = st.session_state.status_texto[current_holder]
         new_h_status = old_h_status.replace('Bastão | ', '').replace('Bastão', '').strip()
-        log_status_change(current_holder, old_h_status, new_h_status, now_br - (st.session_state.bastao_start_time or now_br))
+        _bst = ensure_brazil_dt(st.session_state.get('bastao_start_time')) or now_br
+        log_status_change(current_holder, old_h_status, new_h_status, now_br - _bst)
         st.session_state.status_texto[current_holder] = new_h_status
         old_n_status = st.session_state.status_texto.get(next_holder, '')
         new_n_status = f"Bastão | {old_n_status}" if old_n_status else "Bastão"
@@ -1262,179 +1278,103 @@ def init_session_state():
         'bastao_start_time': None, 'report_last_run_date': datetime.min, 'rotation_gif_start_time': None,
         'play_sound': False, 'gif_warning': False, 'lunch_warning_info': None, 'last_reg_status': None,
         'chamado_guide_step': 0, 'auxilio_ativo': False, 'active_view': None,
-        'consultor_selectbox': "Selecione um nome", 'status_texto': {n: 'Indisponível' for n in get_consultores_list()},
-        'bastao_queue': [], 'skip_flags': {}, 'current_status_starts': {n: get_brazil_time() for n in get_consultores_list()},
-        'bastao_counts': {n: 0 for n in get_consultores_list()}, 'priority_return_queue': [], 'daily_logs': [], 'simon_ranking': [],
+        'consultor_selectbox': "Selecione um nome", 'status_texto': {n: 'Indisponível' for n in get_consultores()},
+        'bastao_queue': [], 'skip_flags': {}, 'current_status_starts': {n: get_brazil_time() for n in get_consultores()},
+        'bastao_counts': {n: 0 for n in get_consultores()}, 'priority_return_queue': [], 'daily_logs': [], 'simon_ranking': [],
         'word_buffer': None, 'aviso_duplicidade': False, 'previous_states': {}, 'quick_indicators': {}, 'view_logmein_ui': False,
         'last_cleanup': time.time(), 'last_hard_cleanup': time.time()
     }
     for k, v in defaults.items():
         if k not in st.session_state: st.session_state[k] = v
-    for n in get_consultores_list():
+    for n in get_consultores():
+        st.session_state.status_texto.setdefault(n, 'Indisponível')
+        st.session_state.current_status_starts.setdefault(n, get_brazil_time())
+        st.session_state.bastao_counts.setdefault(n, 0)
         st.session_state.skip_flags.setdefault(n, False)
-        # garante chaves por consultor (compatibilidade quando a lista muda)
-        try:
-            st.session_state.status_texto.setdefault(n, 'Indisponível')
-        except Exception:
-            st.session_state.status_texto = {n: 'Indisponível' for n in get_consultores_list()}
-        try:
-            st.session_state.bastao_counts.setdefault(n, 0)
-        except Exception:
-            st.session_state.bastao_counts = {n: 0 for n in get_consultores_list()}
-        try:
-            st.session_state.current_status_starts.setdefault(n, get_brazil_time())
-        except Exception:
-            st.session_state.current_status_starts = {n: get_brazil_time() for n in get_consultores_list()}
         st.session_state[f'check_{n}'] = n in st.session_state.bastao_queue
 
 def open_logmein_ui(): st.session_state.view_logmein_ui = True
 def close_logmein_ui(): st.session_state.view_logmein_ui = False
 
 # ============================================
-# WATCHER INTELIGENTE (ATUALIZA TODO MUNDO VIA POLLING)
-# - A cada 20s, checa um "meta" leve (updated_at ou hash parcial)
-# - Só puxa o JSON completo se houve mudança
+# WATCHER INTELIGENTE (SEM CONFLITO DE SAVE)
 # ============================================
-
-@st.cache_data(ttl=6, show_spinner=False)
-def load_state_meta(app_id: int):
-    sb = get_supabase()
-    if not sb:
-        return None
-    # 0) Tenta usar revisão leve dentro do JSON (se disponível)
-    try:
-        # PostgREST/Supabase permite selecionar subcampo de JSON (nem todo setup suporta)
-        res = sb.table("app_state").select("data->>_state_rev").eq("id", app_id).execute()
-        if res.data and len(res.data) > 0:
-            v = res.data[0].get("_state_rev") or res.data[0].get("data->>_state_rev")
-            if v is not None and str(v).strip() != "":
-                return str(v)
-    except Exception:
-        pass
-
-    # 1) Tenta usar updated_at (se existir na tabela)
-    try:
-        res = sb.table("app_state").select("updated_at").eq("id", app_id).execute()
-        if res.data and len(res.data) > 0:
-            return res.data[0].get("updated_at")
-    except Exception:
-        pass
-
-    # 2) Fallback: hash apenas de status + fila (evita baixar logs/estruturas grandes)
-    try:
-        res = sb.table("app_state").select("data").eq("id", app_id).execute()
-        if res.data and len(res.data) > 0:
-            data = res.data[0].get("data") or {}
-            if isinstance(data, str):
-                try:
-                    data = json.loads(data)
-                except Exception:
-                    data = {}
-            sig_obj = {
-                "status_texto": data.get("status_texto", {}) or {},
-                "bastao_queue": data.get("bastao_queue", []) or [],
-            }
-            raw = json.dumps(sig_obj, ensure_ascii=False, sort_keys=True, default=str)
-            return hashlib.md5(raw.encode("utf-8")).hexdigest()
-    except Exception:
-        return None
-
-    return None
-
-
 @st.fragment(run_every=20)
 def watcher_de_atualizacoes():
     try:
-        # Se acabei de salvar, não forço update agora (evita flicker / conflito)
-        if time.time() - st.session_state.get('_last_save_time', 0) < 4.0:
+        # Se salvei algo nos ultimos 5 segundos, NÃO atualize a tela agora.
+        if time.time() - st.session_state.get('_last_save_time', 0) < 5.0:
             return
 
         tid = st.session_state.get('team_id', 2)
-        remote_meta = load_state_meta(tid)
-        if not remote_meta:
-            return
-
-        last_meta = st.session_state.get('_last_remote_meta')
-        if last_meta is None:
-            st.session_state['_last_remote_meta'] = remote_meta
-            return
-
-        if remote_meta != last_meta:
-            st.session_state['_last_remote_meta'] = remote_meta
-            load_state_from_db.clear()
-            remote_data = load_state_from_db(tid) or {}
-            if remote_data:
+        sb = get_supabase()
+        if not sb: return
+        
+        # Leitura eficiente
+        res = sb.table("app_state").select("data").eq("id", tid).execute()
+        
+        if res.data and len(res.data) > 0:
+            remote_data = res.data[0].get("data", {})
+            rem_status = remote_data.get('status_texto', {})
+            rem_queue = remote_data.get('bastao_queue', [])
+            loc_status = st.session_state.get('status_texto', {})
+            loc_queue = st.session_state.get('bastao_queue', [])
+            
+            # Comparação direta de dicionários (mais segura que string)
+            if rem_status != loc_status or rem_queue != loc_queue:
+                load_state_from_db.clear()
                 st.session_state.update(remote_data)
-
-                # Segurança: se houver fila e ninguém com bastão, garante alguém com bastão
-                try:
-                    q = st.session_state.get('bastao_queue', []) or []
-                    stt = st.session_state.get('status_texto', {}) or {}
-                    tem_bastao = any(isinstance(v, str) and ('Bastão' in v) for v in stt.values())
-                    if q and not tem_bastao:
-                        check_and_assume_baton()
-                except Exception:
-                    pass
-
                 st.rerun()
-    except Exception:
-        pass
+    except: pass
 
 # ============================================
 # PONTO DE ENTRADA
 # ============================================
 def render_dashboard(team_id: int, team_name: str, consultores_list: list, webhook_key: str, app_url: str, other_team_id: int, other_team_name: str, usuario_logado: str):
+    
+    # 0) Configura contexto da equipe (ANTES de inicializar) — evita mistura entre equipes/usuários
+    if st.session_state.get('_active_team_id') != team_id:
+        st.session_state['_active_team_id'] = team_id
+        # força recarregar o app_state da equipe correta
+        st.session_state.pop('db_loaded', None)
+        load_state_from_db.clear()
+        carregar_dados_grafico.clear()
 
-    # ⚡ Performance: define equipe/consultores ANTES de inicializar estado (evita misturar equipes)
-    if consultores_list:
-        set_consultores_list(consultores_list)
-    else:
-        set_consultores_list(CONSULTORES_DEFAULT)
-    st.session_state["app_url"] = app_url or st.session_state.get("app_url")
+    st.session_state['team_id'] = team_id
+    st.session_state['team_name'] = team_name
+    st.session_state['other_team_id'] = other_team_id
+    st.session_state['other_team_name'] = other_team_name
+    st.session_state['webhook_key'] = webhook_key
+    st.session_state['app_url_cloud'] = app_url or st.session_state.get('app_url_cloud') or APP_URL_CLOUD
+    st.session_state['consultores_list'] = list(consultores_list or [])
 
-    prev_team_id = st.session_state.get("team_id")
-    if prev_team_id != team_id:
-        st.session_state["team_id"] = team_id
-        # limpa chaves sensíveis à equipe (evita "misturar" estados entre Eproc/Legados na MESMA sessão)
-        for _k in [
-            "status_texto","bastao_queue","skip_flags","current_status_starts","bastao_counts",
-            "priority_return_queue","daily_logs","simon_ranking","previous_states","quick_indicators",
-            "bastao_start_time","rotation_gif_start_time","report_last_run_date",
-            "_last_remote_meta"
-        ]:
-            st.session_state.pop(_k, None)
-        # força recarregar estado desta equipe
-        st.session_state.pop("db_loaded", None)
-        try:
-            load_state_from_db.clear()
-        except Exception:
-            pass
-        try:
-            carregar_dados_grafico.clear()
-        except Exception:
-            pass
-    else:
-        st.session_state["team_id"] = team_id
-
-    # metadados da equipe
-    st.session_state["team_name"] = team_name
-    st.session_state["other_team_id"] = other_team_id
-    st.session_state["other_team_name"] = other_team_name
-    st.session_state["webhook_key"] = webhook_key
-
-    # garante usuário logado no estado
     if usuario_logado:
-        st.session_state["consultor_logado"] = usuario_logado
-        if st.session_state.get("consultor_selectbox") in (None, "", "Selecione um nome"):
-            st.session_state["consultor_selectbox"] = usuario_logado
+        st.session_state['consultor_logado'] = usuario_logado
+        if st.session_state.get('consultor_selectbox') in (None, '', 'Selecione um nome'):
+            st.session_state['consultor_selectbox'] = usuario_logado
 
-    # Inicializa estado DEPOIS (agora com equipe/consultores corretos)
+    # 1) Inicializa estado (já com team_id/consultores definidos)
     init_session_state()
     memory_sweeper()
     auto_manage_time()
 
-    # Watcher depois de inicializar (evita rerun em cascata)
+    # 2) Watcher (atualiza tela de todo mundo se mudar no app_state)
     watcher_de_atualizacoes()
+    # 2.1) Watcher periódico (20s): atualiza todos se houver mudança no app_state
+    try:
+        @st.fragment(run_every=20)
+        def _tick_watcher_20s():
+            watcher_de_atualizacoes()
+        _tick_watcher_20s()
+    except TypeError:
+        # Fallback (se a versão do Streamlit não suportar run_every no fragment)
+        try:
+            from streamlit_autorefresh import st_autorefresh
+            st_autorefresh(interval=20000, key='tick_watcher_20s')
+        except Exception:
+            pass
+    except Exception:
+        pass
 
     try:
         msg_toast = st.session_state.get('_toast_msg')
@@ -1470,14 +1410,14 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
     # --- HEADER FRAGMENT ---
     @st.fragment
     def render_header_info_left():
-        # sync_state_from_db()  # removido aqui (evita chamadas repetidas; sync é feito em pontos-chave)
+        sync_state_from_db()
         c_topo_esq, c_topo_dir = st.columns([2, 1], vertical_alignment="bottom")
         with c_topo_esq:
             img = get_img_as_base64_cached(PUG2026_FILENAME); src = f"data:image/png;base64,{img}" if img else GIF_BASTAO_HOLDER
             st.markdown(f"""<div style="display: flex; align-items: center; gap: 15px;"><h1 style="margin: 0; padding: 0; font-size: 2.2rem; color: #FF8C00; text-shadow: 1px 1px 2px #FF4500;">Controle Bastão Cesupe 2026 {BASTAO_EMOJI}</h1><img src="{src}" style="width: 150px; height: 150px; border-radius: 10px; border: 4px solid #FF8C00; object-fit: cover;"></div>""", unsafe_allow_html=True)
         with c_topo_dir:
             c_sub1, c_sub2 = st.columns([2, 1], vertical_alignment="bottom")
-            with c_sub1: novo_responsavel = st.selectbox("Assumir Bastão (Rápido)", options=["Selecione"] + get_consultores_list(), label_visibility="collapsed", key="quick_enter")
+            with c_sub1: novo_responsavel = st.selectbox("Assumir Bastão (Rápido)", options=["Selecione"] + get_consultores(), label_visibility="collapsed", key="quick_enter")
             with c_sub2:
                 if st.button("🚀 Entrar", use_container_width=True, key="btn_entrar_header"):
                     if novo_responsavel != "Selecione": toggle_queue(novo_responsavel); st.rerun()
@@ -1495,7 +1435,8 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
         st.header("Responsável pelo Bastão")
         if responsavel:
             st.markdown(f"""<div style="background: linear-gradient(135deg, #FFF3E0 0%, #FFFFFF 100%); border: 3px solid #FF8C00; padding: 25px; border-radius: 15px; display: flex; align-items: center; box-shadow: 0 4px 15px rgba(255, 140, 0, 0.3); margin-bottom: 20px;"><div style="flex-shrink: 0; margin-right: 25px;"><img src="{GIF_BASTAO_HOLDER}" style="width: 90px; height: 90px; border-radius: 50%; object-fit: cover; border: 2px solid #FF8C00;"></div><div><span style="font-size: 14px; color: #555; font-weight: bold; text-transform: uppercase; letter-spacing: 1.5px;">Atualmente com:</span><br><span style="font-size: 42px; font-weight: 800; color: #FF4500; line-height: 1.1;">{responsavel}</span></div></div>""", unsafe_allow_html=True)
-            dur = get_brazil_time() - (st.session_state.bastao_start_time or get_brazil_time())
+            _bst = ensure_brazil_dt(st.session_state.get('bastao_start_time')) or get_brazil_time()
+            dur = get_brazil_time() - _bst
             st.caption(f"⏱️ Tempo com o bastão: **{format_time_duration(dur)}**")
         else: st.markdown('<h2>(Ninguém com o bastão)</h2>', unsafe_allow_html=True)
     
@@ -1525,35 +1466,28 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
         other_name = st.session_state.get('other_team_name', 'Outra Equipe')
         team_name = st.session_state.get('team_name', '')
 
-        # Botão discreto para voltar ao menu (tela de login)
+        # Botão grande para voltar ao menu (tela de login)
         st.markdown(
             """
 <style>
-button[aria-label="↩️"]{
+button[aria-label="↩️ Menu"]{
   background: transparent !important;
-  color: rgba(0,0,0,.85) !important;
-  border: 0 !important;
-  font-weight: 800 !important;
-  height: 32px !important;
-  border-radius: 10px !important;
-  width: auto !important;
-  padding: 0 10px !important;
-  opacity: .75;
+  color: rgba(0,0,0,0.62) !important;
+  border: 1px solid rgba(0,0,0,0.15) !important;
+  font-weight: 600 !important;
+  height: 36px !important;
+  border-radius: 12px !important;
+  width: 100% !important;
 }
-button[aria-label="↩️"]:hover{
-  background: rgba(0,0,0,.04) !important;
-  opacity: 1;
+button[aria-label="↩️ Menu"]:hover{
+  background: rgba(0,0,0,0.04) !important;
+  border-color: rgba(0,0,0,0.25) !important;
 }
 </style>
 """,
             unsafe_allow_html=True
         )
-        c_back, c_lbl = st.columns([1, 6])
-        with c_back:
-            back_clicked = st.button("↩️", help="Voltar ao menu", key="btn_back_menu_icon")
-        with c_lbl:
-            st.caption("Voltar ao menu")
-        if back_clicked:
+        if st.button("↩️ Menu", use_container_width=True, key="btn_back_menu_top"):
             st.session_state['_force_back_to_names'] = True
             st.session_state['time_selecionado'] = None
             st.session_state['consultor_logado'] = None
@@ -1619,7 +1553,7 @@ button[aria-label="↩️"]:hover{
                     if l_in_use:
                         st.error(f"🔴 EM USO POR: **{l_user}**")
                         meu_nome = st.session_state.get('consultor_selectbox')
-                        if meu_nome == l_user or meu_nome in get_consultores_list():
+                        if meu_nome == l_user or meu_nome in get_consultores():
                             if st.button('🔓 LIBERAR AGORA', type='primary', use_container_width=True, key=f'btn_logmein_liberar_side_{uuid.uuid4().hex}'):
                                 set_logmein_status(None, False); close_logmein_ui(); st.rerun()
                         else: st.info('Aguarde a liberação.')
@@ -1641,7 +1575,7 @@ button[aria-label="↩️"]:hover{
 
         st.header('Status dos(as) Consultores(as)')
         ui_lists = {'fila': [], 'almoco': [], 'saida': [], 'ausente': [], 'atividade_especifica': [], 'sessao_especifica': [], 'projeto_especifico': [], 'reuniao_especifica': [], 'treinamento_especifico': [], 'indisponivel': [], 'presencial_especifico': []}
-        for nome in get_consultores_list():
+        for nome in get_consultores():
             if nome in st.session_state.bastao_queue: ui_lists['fila'].append(nome)
             status = st.session_state.status_texto.get(nome, 'Indisponível'); status = status if status is not None else 'Indisponível'
             if status in ('', None): pass
@@ -1728,7 +1662,7 @@ button[aria-label="↩️"]:hover{
         with c_nome:
              st.caption(f"Logado como: **{st.session_state.get('consultor_logado', st.session_state.get('consultor_selectbox', ''))}**")
              sub_nome, sub_tel, sub_cafe = st.columns([3, 1.2, 1.2], vertical_alignment='bottom')
-             with sub_nome: st.selectbox('Selecione:', ['Selecione um nome'] + get_consultores_list(), key='consultor_selectbox', label_visibility='collapsed', on_change=sync_logged_user)
+             with sub_nome: st.selectbox('Selecione:', ['Selecione um nome'] + get_consultores(), key='consultor_selectbox', label_visibility='collapsed', on_change=sync_logged_user)
              with sub_tel: render_quick_toggle_btn('telefone')
              with sub_cafe: render_quick_toggle_btn('cafe')
         with c_act1:
