@@ -37,6 +37,7 @@ from utils import (get_brazil_time, get_secret, send_to_chat)
 # ============================================
 DB_APP_ID = 2        # ID da Fila desta equipe
 LOGMEIN_DB_ID = 1    # ID do LogMeIn (COMPARTILHADO - SEMPRE 1)
+GLOBAL_STATE_VERSION_ID = 9999  # Carimbo global (qualquer equipe) para disparar refresh
 
 CONSULTORES = sorted([
     "Barbara Mara", "Bruno Glaicon", "Claudia Luiza", "Douglas Paiva", "Fábio Alves", "Glayce Torres", 
@@ -296,6 +297,41 @@ def load_state_from_db(app_id):
         return {}
     except Exception as e:
         return {}
+
+
+@st.cache_data(ttl=2, show_spinner=False)
+def load_global_state_version():
+    """Lê o carimbo de versão global (qualquer equipe)."""
+    sb = get_supabase()
+    if not sb:
+        return 0
+    try:
+        res = sb.table("app_state").select("data").eq("id", GLOBAL_STATE_VERSION_ID).execute()
+        if res.data and len(res.data) > 0:
+            data = res.data[0].get("data", {}) or {}
+            try:
+                return int(data.get("state_version") or 0)
+            except Exception:
+                return 0
+        return 0
+    except Exception:
+        return 0
+
+def bump_global_state_version(sb=None):
+    """Atualiza o carimbo global para que todos os clientes percebam mudanças."""
+    try:
+        _sb = sb or get_supabase()
+        if not _sb:
+            return
+        ver = int(time.time() * 1000)
+        _sb.table("app_state").upsert({"id": GLOBAL_STATE_VERSION_ID, "data": {"state_version": ver}}).execute()
+        try:
+            load_global_state_version.clear()
+        except Exception:
+            pass
+        st.session_state["_global_state_version_seen"] = ver
+    except Exception:
+        pass
 
 def save_state_to_db(app_id, state_data):
     sb = get_supabase()
@@ -1193,8 +1229,12 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
 
     # Auto-refresh global (a cada 20s)
     if st_autorefresh:
+        st.session_state['_using_autorefresh_lib'] = True
         st_autorefresh(interval=20000, key=f"autorefresh_{team_id}")
-    # 2. Chama watcher DEPOIS de inicializar
+    else:
+        st.session_state['_using_autorefresh_lib'] = False
+    # 2. Chama watcher (refresh + carimbo global)
+    watcher_de_atualizacoes()
     if 'team_id' not in st.session_state or st.session_state['team_id'] != team_id:
         st.session_state['team_id'] = team_id
         load_state_from_db.clear()
@@ -1230,7 +1270,17 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
         if st.session_state.get('consultor_selectbox') in (None, '', 'Selecione um nome'):
             st.session_state['consultor_selectbox'] = usuario_logado
 
-    st.markdown("""<style>div.stButton > button {width: 100%; height: 3rem;}</style>""", unsafe_allow_html=True)
+    st.markdown(
+        """
+<style>
+div.stButton > button {width: 100%; height: 3rem;}
+/* Botão de menu (⋮) bem discreto */
+button[aria-label="⋮"]{width:44px !important; height:32px !important; padding:0 !important; border-radius:12px !important; font-weight:900 !important;}
+button[aria-label="⋮"]:hover{filter: brightness(0.98);}
+</style>
+        """,
+        unsafe_allow_html=True,
+    )
     st.components.v1.html("<script>window.scrollTo(0, 0);</script>", height=0)
     st.info("🎗️ Fevereiro Laranja: Apoie a conscientização sobre leucemia.")
 
@@ -1400,6 +1450,55 @@ button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{
         responsavel = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
 
         st.header('Status dos(as) Consultores(as)')
+        # --- Filtros (apenas visual) ---
+        with st.expander("🔎 Filtros (não altera status)", expanded=False):
+            filtro_exibir = st.selectbox("Exibir", ["Todos", "Só na fila", "Só fora da fila"], key="flt_exibir", index=0)
+            opcoes_status = ["Na Fila", "Atend. Presencial", "Em Demanda", "Projetos", "Treinamento", "Reuniões", "Almoço", "Sessão", "Saída rápida", "Indisponível"]
+            mostrar_status = st.multiselect("Mostrar", options=opcoes_status, default=opcoes_status, key="flt_mostrar_status")
+
+        def _show_section(label: str) -> bool:
+            if filtro_exibir == "Só na fila" and label != "Na Fila":
+                return False
+            if filtro_exibir == "Só fora da fila" and label == "Na Fila":
+                return False
+            return (label in mostrar_status)
+
+        def _render_queue_menu(nome: str, key_base: str):
+            """Menu (⋮) para entrar/sair da fila."""
+            in_queue = (nome in st.session_state.bastao_queue)
+
+            if hasattr(st, "popover"):
+                try:
+                    with st.popover("⋮"):
+                        if in_queue:
+                            if st.button("🚪 Sair da fila", key=f"{key_base}_out", use_container_width=True):
+                                toggle_queue(nome)
+                                st.session_state['_skip_db_sync_until'] = time.time() + 3
+                                st.rerun()
+                        else:
+                            if st.button("➕ Entrar na fila", key=f"{key_base}_in", use_container_width=True):
+                                toggle_queue(nome)
+                                st.session_state['_skip_db_sync_until'] = time.time() + 3
+                                st.rerun()
+                    return
+                except Exception:
+                    pass
+
+            # Fallback (sem popover): dropdown pequeno
+            opts = ["⋮", "Entrar na fila", "Sair da fila"]
+            choice_key = f"{key_base}_dd"
+            choice = st.selectbox("", options=opts, key=choice_key, label_visibility="collapsed")
+            if choice == "Entrar na fila" and not in_queue:
+                st.session_state[choice_key] = "⋮"
+                toggle_queue(nome)
+                st.session_state['_skip_db_sync_until'] = time.time() + 3
+                st.rerun()
+            if choice == "Sair da fila" and in_queue:
+                st.session_state[choice_key] = "⋮"
+                toggle_queue(nome)
+                st.session_state['_skip_db_sync_until'] = time.time() + 3
+                st.rerun()
+
         ui_lists = {'fila': [], 'almoco': [], 'saida': [], 'ausente': [], 'atividade_especifica': [], 'sessao_especifica': [], 'projeto_especifico': [], 'reuniao_especifica': [], 'treinamento_especifico': [], 'indisponivel': [], 'presencial_especifico': []}
         for nome in CONSULTORES:
             if nome in st.session_state.bastao_queue: ui_lists['fila'].append(nome)
@@ -1416,58 +1515,71 @@ button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{
                 if 'Atividade:' in status or status.strip() == 'Atendimento': ui_lists['atividade_especifica'].append((nome, status.replace('Atividade:', '').strip()))
                 if 'Atendimento Presencial:' in status: ui_lists['presencial_especifico'].append((nome, status.replace('Atendimento Presencial:', '').strip()))
 
-        st.subheader(f'✅ Na Fila ({len(ui_lists["fila"])})')
-        render_order = get_ordered_visual_queue(queue, st.session_state.status_texto)
-        if not render_order and queue: render_order = list(queue)
-        if not render_order: st.markdown('_Ninguém na fila._')
+        if _show_section("Na Fila"):
+            st.subheader(f'✅ Na Fila ({len(ui_lists["fila"])})')
+            render_order = get_ordered_visual_queue(queue, st.session_state.status_texto)
+            if not render_order and queue:
+                render_order = list(queue)
+            if not render_order:
+                st.markdown('_Ninguém na fila._')
+            else:
+                for i, nome in enumerate(render_order, 1):
+                    if nome not in ui_lists['fila']:
+                        continue
+                    col_nome, col_menu = st.columns([0.86, 0.14], vertical_alignment='center')
+                    with col_menu:
+                        _render_queue_menu(nome, key_base=f"fila_{nome}_frag")
+                    skip_flag = skips.get(nome, False)
+                    status_atual = st.session_state.status_texto.get(nome, '') or ''
+                    extra = ''
+                    indic_icons = _icons_telefone_cafe(st.session_state.get('quick_indicators', {}).get(nome, {}))
+                    if 'Atividade' in status_atual:
+                        extra += ' 📋'
+                    if 'Projeto' in status_atual:
+                        extra += ' 🏗️'
+                    if nome == responsavel:
+                        display = f'<span style="background-color: #FF8C00; color: #FFF; padding: 2px 6px; border-radius: 5px; font-weight: 800;">🎭 {i}º {nome}{indic_icons}</span>'
+                    elif skip_flag:
+                        display = f'<strong>{i}º {nome}{indic_icons}</strong>{extra} <span style="background-color: #FEF3C7; padding: 2px 8px; border-radius: 10px;">Pulando ⏭️</span>'
+                    else:
+                        display = f'<strong>{i}º {nome}{indic_icons}</strong>{extra} <span style="background-color: #FFEDD5; padding: 2px 8px; border-radius: 10px;">Aguardando</span>'
+                    col_nome.markdown(display, unsafe_allow_html=True)
         else:
-            for i, nome in enumerate(render_order, 1):  # fila começa em 1º lugar
-                if nome not in ui_lists['fila']:
-                    continue
-                col_nome, col_check = st.columns([0.85, 0.15], vertical_alignment='center')
-                # Botão "Sair" (❌) no lugar do checkbox (permite remover da fila)
-                if col_check.button('❌', key=f'btn_sair_fila_{nome}_frag', help="Remover da fila"):
-                    toggle_queue(nome)
-                    st.session_state['_skip_db_sync_until'] = time.time() + 3
-                    st.rerun()
-                skip_flag = skips.get(nome, False); status_atual = st.session_state.status_texto.get(nome, '') or ''; extra = ''
-                indic_icons = _icons_telefone_cafe(st.session_state.get('quick_indicators', {}).get(nome, {}))
-                if 'Atividade' in status_atual: extra += ' 📋'
-                if 'Projeto' in status_atual: extra += ' 🏗️'
-                if nome == responsavel: display = f'<span style="background-color: #FF8C00; color: #FFF; padding: 2px 6px; border-radius: 5px; font-weight: 800;">🎭 {i}º {nome}{indic_icons}</span>'
-                elif skip_flag: display = f'<strong>{i}º {nome}{indic_icons}</strong>{extra} <span style="background-color: #FEF3C7; padding: 2px 8px; border-radius: 10px;">Pulando ⏭️</span>'
-                else: display = f'<strong>{i}º {nome}{indic_icons}</strong>{extra} <span style="background-color: #FFEDD5; padding: 2px 8px; border-radius: 10px;">Aguardando</span>'
-                col_nome.markdown(display, unsafe_allow_html=True)
+            st.markdown('_Seção Na Fila oculta pelos filtros._')
+
         st.markdown('---')
 
-        def _render_section(titulo, icon, itens, cor, key_rm):
+        def _render_section(label, titulo, icon, itens, cor, key_rm):
+            if not _show_section(label):
+                return
             colors = {'orange': '#FFF1E6', 'blue': '#E7F1FF', 'teal': '#E6FFFB', 'violet': '#F3E8FF', 'green': '#ECFDF3', 'red': '#FFE4E6', 'grey': '#F3F4F6', 'yellow': '#FEF9C3'}
-            bg_hex = colors.get(cor, '#EEEEEE'); st.subheader(f'{icon} {titulo} ({len(itens)})')
-            if not itens: st.markdown(f'_Nenhum._')
+            bg_hex = colors.get(cor, '#EEEEEE')
+            st.subheader(f'{icon} {titulo} ({len(itens)})')
+            if not itens:
+                st.markdown(f'_Nenhum._')
             else:
                 for item in itens:
                     nome = item[0] if isinstance(item, tuple) else item
                     desc = item[1] if isinstance(item, tuple) else titulo
-                    col_n, col_c = st.columns([0.85, 0.15], vertical_alignment='center')
-                    if titulo == 'Indisponível':
-                        # CORREÇÃO 4: Botão em vez de Checkbox para reativar
-                        if col_c.button('⬆️', key=f'btn_back_{titulo}_{nome}', help="Voltar para a fila"):
-                            enter_from_indisponivel(nome)
-                            st.session_state['_skip_db_sync_until'] = time.time() + 3
-                            st.rerun()
+                    col_n, col_menu = st.columns([0.86, 0.14], vertical_alignment='center')
+                    with col_menu:
+                        _render_queue_menu(nome, key_base=f"{key_rm}_{nome}")
                     indic_icons = _icons_telefone_cafe(st.session_state.get('quick_indicators', {}).get(nome, {}))
-                    col_n.markdown(f"<div style='font-size: 16px; margin: 2px 0;'><strong>{nome}{indic_icons}</strong><span style='background-color: {bg_hex}; color: #333; padding: 2px 8px; border-radius: 12px; font-size: 14px; margin-left: 8px;'>{desc}</span></div>", unsafe_allow_html=True)
+                    col_n.markdown(
+                        f"<div style='font-size: 16px; margin: 2px 0;'><strong>{nome}{indic_icons}</strong><span style='background-color: {bg_hex}; color: #333; padding: 2px 8px; border-radius: 12px; font-size: 14px; margin-left: 8px;'>{desc}</span></div>",
+                        unsafe_allow_html=True
+                    )
             st.markdown('---')
-        
-        _render_section('Atend. Presencial', '🤝', ui_lists['presencial_especifico'], 'yellow', 'Atendimento Presencial')
-        _render_section('Em Demanda', '📋', ui_lists['atividade_especifica'], 'orange', 'Atividade')
-        _render_section('Projetos', '🏗️', ui_lists['projeto_especifico'], 'blue', 'Projeto')
-        _render_section('Treinamento', '🎓', ui_lists['treinamento_especifico'], 'teal', 'Treinamento')
-        _render_section('Reuniões', '📅', ui_lists['reuniao_especifica'], 'violet', 'Reunião')
-        _render_section('Almoço', '🍽️', ui_lists['almoco'], 'red', 'Almoço')
-        _render_section('Sessão', '🎙️', ui_lists['sessao_especifica'], 'green', 'Sessão')
-        _render_section('Saída rápida', '🚶', ui_lists['saida'], 'red', 'Saída rápida')
-        _render_section('Indisponível', '❌', ui_lists['indisponivel'], 'grey', '')
+
+        _render_section('Atend. Presencial', 'Atend. Presencial', '🤝', ui_lists['presencial_especifico'], 'yellow', 'presencial')
+        _render_section('Em Demanda', 'Em Demanda', '📋', ui_lists['atividade_especifica'], 'orange', 'atividade')
+        _render_section('Projetos', 'Projetos', '🏗️', ui_lists['projeto_especifico'], 'blue', 'projeto')
+        _render_section('Treinamento', 'Treinamento', '🎓', ui_lists['treinamento_especifico'], 'teal', 'treinamento')
+        _render_section('Reuniões', 'Reuniões', '📅', ui_lists['reuniao_especifica'], 'violet', 'reuniao')
+        _render_section('Almoço', 'Almoço', '🍽️', ui_lists['almoco'], 'red', 'almoco')
+        _render_section('Sessão', 'Sessão', '🎙️', ui_lists['sessao_especifica'], 'green', 'sessao')
+        _render_section('Saída rápida', 'Saída rápida', '🚶', ui_lists['saida'], 'red', 'saida')
+        _render_section('Indisponível', 'Indisponível', '❌', ui_lists['indisponivel'], 'grey', 'indisp')
 
     # =========================================================================
     # LAYOUT PRINCIPAL
