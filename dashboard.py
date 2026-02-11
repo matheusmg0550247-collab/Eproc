@@ -1,11 +1,12 @@
-# -- coding utf-8 --
+# -*- coding: utf-8 -*-
 import streamlit as st
 
 # Auto-refresh (opcional)
-try
+try:
     from streamlit_autorefresh import st_autorefresh
-except Exception
+except Exception:
     st_autorefresh = None
+
 import requests
 import time
 import gc
@@ -23,76 +24,75 @@ from docx.shared import Pt, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 # Importação condicional
-try
+try:
     from streamlit_javascript import st_javascript
-except ImportError
+except ImportError:
     st_javascript = None
 
 # Importações de utilitários
-from utils import (get_brazil_time, get_secret, send_to_chat)
+from utils import get_brazil_time, get_secret, send_to_chat
 
 # ============================================
 # 1. CONFIGURAÇÕES E CONSTANTES (EQUIPE ID 2 - CESUPE)
 # ============================================
-DB_APP_ID = 2        # ID da Fila desta equipe
-LOGMEIN_DB_ID = 1    # ID do LogMeIn (COMPARTILHADO - SEMPRE 1)
+DB_APP_ID = 2        # ID da Fila desta equipe [cite: 844, 845]
+LOGMEIN_DB_ID = 1    # ID do LogMeIn (COMPARTILHADO - SEMPRE 1) 
 
 CONSULTORES = sorted([
-    Barbara Mara, Bruno Glaicon, Claudia Luiza, Douglas Paiva, Fábio Alves, Glayce Torres, 
-    Isabela Dias, Isac Candido, Ivana Guimarães, Leonardo Damaceno, Marcelo PenaGuerra, 
-    Michael Douglas, Morôni, Pablo Mol, Ranyer Segal, Sarah Leal, Victoria Lisboa
-])
+    "Barbara Mara", "Bruno Glaicon", "Claudia Luiza", "Douglas Paiva", "Fábio Alves", "Glayce Torres", 
+    "Isabela Dias", "Isac Candido", "Ivana Guimarães", "Leonardo Damaceno", "Marcelo PenaGuerra", 
+    "Michael Douglas", "Morôni", "Pablo Mol", "Ranyer Segal", "Sarah Leal", "Victoria Lisboa"
+]) [cite: 845]
 
 # Listas de Opções
-REG_USUARIO_OPCOES = [Cartório, Gabinete, Externo]
-REG_SISTEMA_OPCOES = [Conveniados, Outros, Eproc, Themis, JPE, SIAP]
-REG_CANAL_OPCOES = [Presencial, Telefone, Email, Whatsapp, Outros]
-REG_DESFECHO_OPCOES = [Resolvido - Cesupe, Escalonado]
+REG_USUARIO_OPCOES = ["Cartório", "Gabinete", "Externo"] [cite: 845]
+REG_SISTEMA_OPCOES = ["Conveniados", "Outros", "Eproc", "Themis", "JPE", "SIAP"] [cite: 845]
+REG_CANAL_OPCOES = ["Presencial", "Telefone", "Email", "Whatsapp", "Outros"] [cite: 845]
+REG_DESFECHO_OPCOES = ["Resolvido - Cesupe", "Escalonado"] [cite: 845]
 
-OPCOES_ATIVIDADES_STATUS = [HP, E-mail, WhatsApp Plantão, Homologação, Redação Documentos, Outros]
+OPCOES_ATIVIDADES_STATUS = ["HP", "E-mail", "WhatsApp Plantão", "Homologação", "Redação Documentos", "Outros"] [cite: 845]
 
-# URLs e Visuais
-GIF_BASTAO_HOLDER = httpsmedia2.giphy.commediav1.Y2lkPTc5MGI3NjExa3Uwazd5cnNra2oxdDkydjZkcHdqcWN2cng0Y2N0cmNmN21vYXVzMiZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc3rXs5J0hZkXwTZjuvMgiphy.gif
-GIF_LOGMEIN_TARGET = httpsmedia1.giphy.commediav1.Y2lkPTc5MGI3NjExZjFvczlzd3ExMWc2cWJrZ3EwNmplM285OGFqOHE1MXlzdnd4cndibiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9ZwmcsPU3SkKrYDdW3aAUgiphy.gif
-BASTAO_EMOJI = 🎭 
-PUG2026_FILENAME = Carnaval.gif 
+# URLs e Visuais (Usando código Unicode para o emoji para evitar erro de sintaxe)
+GIF_BASTAO_HOLDER = "https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExa3Uwazd5cnNra2oxdDkydjZkcHdqcWN2cng0Y2N0cmNmN21vYXVzMiZlcD12MV9pbnRlcm5uYWxfZ2lmX2J5X2lkJmN0PWc/rXs5J0hZkXwTZjuvM/giphy.gif" [cite: 846]
+GIF_LOGMEIN_TARGET = "https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExZjFvczlzd3ExMWc2cWJrZ3EwNmplM285OGFqOHE1MXlzdnd4cndibiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Z/wmcsPU3SkKrYDdW3aA/giphy.gif" [cite: 846]
+BASTAO_EMOJI = "\U0001F3AD" # Emoji 🎭 
+PUG2026_FILENAME = "Carnaval.gif" [cite: 846]
 
 # ============================================
-# RAMAIS CESUPE (BADGE AO LADO DO NOME)
+# RAMAIS CESUPE
 # ============================================
 RAMAIS_CESUPE = {
-    # Chave normalizada (sem acento, minúscula). Priorize combinações específicas antes do primeiro nome.
-    'douglas paiva' '2663',
-    'alex' '2510',
-    'barbara' '2517',
-    'bruno' '2644',
-    'claudio' '2667',
-    'claudia' '2667',  # variação comum
-    'dirceu' '2666',
-    'douglas' '2659',
-    'fabio' '2665',
-    'farley' '2651',
-    'gilberto' '2654',
-    'gleis' '2536',
-    'gleissiane' '2536',
-    'gleyce' '2647',
-    'glayce' '2647',  # variação comum
-    'hugo' '2650',
-    'jerry' '2654',
-    'jonatas' '2656',
-    'leandro' '2652',
-    'leonardo' '2655',
-    'ivana' '2653',
-    'marcelo' '2655',
-    'matheus' '2664',
-    'michael' '2638',
-    'pablo' '2643',
-    'ranier' '2669',
-    'ranyer' '2669',  # variação comum
-    'vanessa' '2607',
-    'victoria' '2660',
-    'victória' '2660',  # caso venha com acento
-}
+    "douglas paiva": "2663",
+    "alex": "2510",
+    "barbara": "2517",
+    "bruno": "2644",
+    "claudio": "2667",
+    "claudia": "2667",
+    "dirceu": "2666",
+    "douglas": "2659",
+    "fabio": "2665",
+    "farley": "2651",
+    "gilberto": "2654",
+    "gleis": "2536",
+    "gleissiane": "2536",
+    "gleyce": "2647",
+    "glayce": "2647",
+    "hugo": "2650",
+    "jerry": "2654",
+    "jonatas": "2656",
+    "leandro": "2652",
+    "leonardo": "2655",
+    "ivana": "2653",
+    "marcelo": "2655",
+    "matheus": "2664",
+    "michael": "2638",
+    "pablo": "2643",
+    "ranier": "2669",
+    "ranyer": "2669",
+    "vanessa": "2607",
+    "victoria": "2660",
+    "victória": "2660",
+} [cite: 847, 848]
 
 
 # ============================================
