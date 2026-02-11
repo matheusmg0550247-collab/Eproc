@@ -341,6 +341,11 @@ def save_state_to_db(app_id, state_data):
     try:
         sanitized_data = clean_data_for_db(state_data)
         sb.table("app_state").upsert({"id": app_id, "data": sanitized_data}).execute()
+
+        # 🔔 Importante: qualquer alteração em qualquer equipe deve atualizar
+        # um "carimbo" global para que TODOS os clientes percebam a mudança.
+        # Isso evita depender de refresh manual.
+        bump_global_state_version(sb)
         
         # --- CORREÇÃO 2: Marca o tempo do salvamento para o Watcher não conflitar
         st.session_state['_last_save_time'] = time.time() 
@@ -1190,31 +1195,46 @@ def close_logmein_ui(): st.session_state.view_logmein_ui = False
 # ============================================
 @st.fragment(run_every=20)
 def watcher_de_atualizacoes():
+    """Watcher global: a cada 20s, verifica se QUALQUER equipe salvou algo.
+
+    Observação importante: para o `run_every` funcionar de forma consistente,
+    o fragment precisa renderizar ao menos 1 elemento. Por isso há um marcador
+    invisível.
+    """
+
+    # Elemento invisível (garante que o fragment exista e seja re-executado)
+    st.markdown("<div style='display:none'>watcher</div>", unsafe_allow_html=True)
+
     try:
-        # Se salvei algo nos ultimos 5 segundos, NÃO atualize a tela agora.
-        if time.time() - st.session_state.get('_last_save_time', 0) < 5.0:
+        # Se acabei de salvar, não conflita com o pull do banco.
+        if time.time() - st.session_state.get('_last_save_time', 0) < 3.0:
             return
 
-        tid = st.session_state.get('team_id', 2)
-        sb = get_supabase()
-        if not sb: return
-        
-        # Leitura eficiente
-        res = sb.table("app_state").select("data").eq("id", tid).execute()
-        
-        if res.data and len(res.data) > 0:
-            remote_data = res.data[0].get("data", {})
-            rem_status = remote_data.get('status_texto', {})
-            rem_queue = remote_data.get('bastao_queue', [])
-            loc_status = st.session_state.get('status_texto', {})
-            loc_queue = st.session_state.get('bastao_queue', [])
-            
-            # Comparação direta de dicionários (mais segura que string)
-            if rem_status != loc_status or rem_queue != loc_queue:
+        # Poll leve (1 leitura): carimbo global
+        ver_atual = load_global_state_version()
+        ver_visto = st.session_state.get('_global_state_version_seen')
+
+        # Primeira execução: só registra e segue.
+        if ver_visto is None:
+            st.session_state['_global_state_version_seen'] = ver_atual
+            return
+
+        # Se mudou, alguém salvou em qualquer equipe -> recarrega
+        if ver_atual != ver_visto:
+            st.session_state['_global_state_version_seen'] = ver_atual
+            try:
                 load_state_from_db.clear()
-                st.session_state.update(remote_data)
-                st.rerun()
-    except: pass
+            except Exception:
+                pass
+            # Limpa cache auxiliar da outra equipe (recarrega no próximo render)
+            try:
+                st.session_state.pop('_other_state_cache', None)
+            except Exception:
+                pass
+            st.rerun()
+
+    except Exception:
+        pass
 
 # ============================================
 # PONTO DE ENTRADA
@@ -1379,8 +1399,22 @@ button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{
                 st.rerun()
 
             if other_id:
-                try: other_state = load_state_from_db(other_id) or {}
-                except: other_state = {}
+                # Cache leve da outra equipe: evita bater no banco a cada render
+                # quando nada mudou (controlado pelo carimbo global).
+                other_state = {}
+                try:
+                    ver_visto = st.session_state.get('_global_state_version_seen', 0)
+                    cache = st.session_state.get('_other_state_cache') or {}
+                    if cache.get('id') == other_id and cache.get('ver') == ver_visto and isinstance(cache.get('data'), dict):
+                        other_state = cache.get('data') or {}
+                    else:
+                        other_state = load_state_from_db(other_id) or {}
+                        st.session_state['_other_state_cache'] = {'id': other_id, 'ver': ver_visto, 'data': other_state}
+                except Exception:
+                    try:
+                        other_state = load_state_from_db(other_id) or {}
+                    except Exception:
+                        other_state = {}
                 other_queue = other_state.get('bastao_queue', []) or []
                 other_skips = other_state.get('skip_flags', {}) or {}
                 other_status = other_state.get('status_texto', {}) or {}
@@ -1526,7 +1560,8 @@ button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{
                 for i, nome in enumerate(render_order, 1):
                     if nome not in ui_lists['fila']:
                         continue
-                    col_nome, col_menu = st.columns([0.86, 0.14], vertical_alignment='center')
+                    # Coluna do menu (⋮) bem estreita para não criar "buraco" visual
+                    col_nome, col_menu = st.columns([0.94, 0.06], vertical_alignment='center')
                     with col_menu:
                         _render_queue_menu(nome, key_base=f"fila_{nome}_frag")
                     skip_flag = skips.get(nome, False)
@@ -1561,7 +1596,8 @@ button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{
                 for item in itens:
                     nome = item[0] if isinstance(item, tuple) else item
                     desc = item[1] if isinstance(item, tuple) else titulo
-                    col_n, col_menu = st.columns([0.86, 0.14], vertical_alignment='center')
+                    # Coluna do menu (⋮) bem estreita para não criar "buraco" visual
+                    col_n, col_menu = st.columns([0.94, 0.06], vertical_alignment='center')
                     with col_menu:
                         _render_queue_menu(nome, key_base=f"{key_rm}_{nome}")
                     indic_icons = _icons_telefone_cafe(st.session_state.get('quick_indicators', {}).get(nome, {}))
