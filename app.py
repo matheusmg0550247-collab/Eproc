@@ -1,5 +1,4 @@
 import streamlit as st
-from dashboard import render_dashboard
 
 # ============================================================
 # Central Unificada de Bastão - Tela de Entrada (Login)
@@ -96,8 +95,8 @@ st.markdown(
 }
 
 /* reduz gaps entre colunas/linhas (deixa os botões mais juntos) */
-div[data-testid="stHorizontalBlock"]{ gap: .45rem; }
-div[data-testid="stVerticalBlock"] > div{ gap: .45rem; }
+div[data-testid="stHorizontalBlock"]{ gap: .24rem; }
+div[data-testid="stVerticalBlock"] > div{ gap: .24rem; }
 div[data-testid="stButton"]{ margin: 0; }
 
 /* ---------- Hero ---------- */
@@ -129,6 +128,7 @@ div[data-testid="stButton"]{ margin: 0; }
 }
 .team-banner .t-title{
   font-weight: 900;
+  font-size: .96rem;
   margin: 0;
 }
 .team-banner .t-sub{
@@ -145,10 +145,11 @@ div[data-testid="stButton"]{ margin: 0; }
 
 /* ---------- Cards (botões) ---------- */
 .card-grid [data-testid="stButton"] > button{
-  height: 48px;
-  border-radius: 16px;
+  height: 44px;
+  border-radius: 14px;
   border: 0;
   font-weight: 900;
+  font-size: .96rem;
   letter-spacing: .15px;
   transition: transform .10s ease, box-shadow .10s ease, filter .10s ease;
   padding: .45rem .7rem;
@@ -208,27 +209,25 @@ if cfg is None:
     )
 
     st.write("")
-
     # Tabs APENAS com os nomes
     tab_eproc, tab_legados = st.tabs(["Eproc", "Legados"])
 
-    def render_cards(lista, equipe_nome: str, wrap_class: str, emoji_prefix: str):
-        # Mais compacto: 5 colunas em telas largas
+    def render_cards(lista, equipe_nome: str, wrap_class: str, emoji_cycle: list[str]):
+        # Mais compacto: 6 colunas em telas largas
         try:
-            cols = st.columns(5, gap="small")
+            cols = st.columns(6, gap="small")
         except TypeError:
-            cols = st.columns(5)
+            cols = st.columns(6)
 
         for i, nome in enumerate(lista):
-            label = f"{emoji_prefix} {nome}"
-            with cols[i % 5]:
-                st.markdown(f'<div class="{wrap_class}"><div class="card-grid">', unsafe_allow_html=True)
+            emj = emoji_cycle[i % len(emoji_cycle)] if emoji_cycle else "⚖️"
+            label = f"{emj} {nome}"
+            with cols[i % 6]:
                 if st.button(label, use_container_width=True, key=f"login_{equipe_nome}_{nome}"):
                     # Salva NOME CANÔNICO no estado (sem emoji)
                     st.session_state["time_selecionado"] = equipe_nome
                     st.session_state["consultor_logado"] = nome
                     st.rerun()
-                st.markdown("</div></div>", unsafe_allow_html=True)
 
     with tab_eproc:
         st.markdown(
@@ -240,9 +239,9 @@ if cfg is None:
 """,
             unsafe_allow_html=True,
         )
-        st.markdown('<div class="team-eproc">', unsafe_allow_html=True)
-        render_cards(CONSULTORES_EPROC, "Eproc", "team-eproc", "🟦")
-        st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown('<div class="team-eproc"><div class="card-grid">', unsafe_allow_html=True)
+        render_cards(CONSULTORES_EPROC, "Eproc", "team-eproc", ["⚖️", "🧑‍⚖️", "📜", "🔎"])
+        st.markdown("</div></div>", unsafe_allow_html=True)
 
     with tab_legados:
         st.markdown(
@@ -254,14 +253,15 @@ if cfg is None:
 """,
             unsafe_allow_html=True,
         )
-        st.markdown('<div class="team-legados">', unsafe_allow_html=True)
-        render_cards(CONSULTORES_LEGADOS, "Legados", "team-legados", "🟫")
-        st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown('<div class="team-legados"><div class="card-grid">', unsafe_allow_html=True)
+        render_cards(CONSULTORES_LEGADOS, "Legados", "team-legados", ["🏛️", "⚖️", "📜", "🗂️"])
+        st.markdown("</div></div>", unsafe_allow_html=True)
 
     st.markdown("</div>", unsafe_allow_html=True)
 
 else:
     # Entrou no Dashboard
+    from dashboard import render_dashboard  # lazy import (melhora performance no login)
     render_dashboard(
         team_id=cfg["team_id"],
         team_name=cfg["team_name"],
