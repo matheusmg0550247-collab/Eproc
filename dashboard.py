@@ -1,6 +1,12 @@
 
 # -*- coding: utf-8 -*-
 import streamlit as st
+
+# Auto-refresh (opcional)
+try:
+    from streamlit_autorefresh import st_autorefresh
+except Exception:
+    st_autorefresh = None
 import requests
 import time
 import gc
@@ -13,6 +19,10 @@ import unicodedata
 import base64
 import io
 from supabase import create_client
+from docx import Document
+from docx.shared import Pt, Cm
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+
 # Importação condicional
 try:
     from streamlit_javascript import st_javascript
@@ -33,13 +43,6 @@ CONSULTORES = sorted([
     "Isabela Dias", "Isac Candido", "Ivana Guimarães", "Leonardo Damaceno", "Marcelo PenaGuerra", 
     "Michael Douglas", "Morôni", "Pablo Mol", "Ranyer Segal", "Sarah Leal", "Victoria Lisboa"
 ])
-
-# Consultores por sessão (evita mistura entre equipes)
-def get_consultores():
-    lst = st.session_state.get('_consultores_list')
-    if isinstance(lst, list) and lst:
-        return lst
-    return CONSULTORES
 
 # Listas de Opções
 REG_USUARIO_OPCOES = ["Cartório", "Gabinete", "Externo"]
@@ -197,10 +200,9 @@ def get_ramal_nome(nome: str):
     return RAMAIS_CESUPE.get(first)
 
 def _badge_ramal_html(ramal):
-    """Badge de ramal que funciona bem em tema claro e escuro."""
     if not ramal:
         return ''
-    return f"<span class='ramal-badge'>☎ {ramal}</span>"
+    return f"<span style='margin-left:8px; padding:2px 8px; border-radius:999px; border:1px solid #ddd; font-size:12px; background:#f7f7f7;'>☎ {ramal}</span>"
 
 def _icons_telefone_cafe(indic: dict):
     if not isinstance(indic, dict):
@@ -209,157 +211,6 @@ def _icons_telefone_cafe(indic: dict):
     if indic.get('telefone'): parts.append('📞')
     if indic.get('cafe'): parts.append('☕')
     return (' ' + ' '.join(parts)) if parts else ''
-
-def ensure_brazil_dt(value):
-    """Converte value (datetime/str/epoch) em datetime compatível com get_brazil_time()."""
-    if value is None or value == '':
-        return None
-    now = get_brazil_time()
-    # datetime
-    if isinstance(value, datetime):
-        dt = value
-    # epoch
-    elif isinstance(value, (int, float)):
-        try:
-            dt = datetime.fromtimestamp(value, tz=now.tzinfo) if getattr(now, 'tzinfo', None) else datetime.fromtimestamp(value)
-        except Exception:
-            return None
-    # string (iso)
-    elif isinstance(value, str):
-        v = value.strip()
-        try:
-            dt = datetime.fromisoformat(v)
-        except Exception:
-            # tenta formatos comuns
-            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
-                try:
-                    dt = datetime.strptime(v, fmt)
-                    break
-                except Exception:
-                    dt = None
-            if dt is None:
-                return None
-    else:
-        return None
-
-    # harmoniza tzinfo com now
-    try:
-        if getattr(now, 'tzinfo', None) is None and getattr(dt, 'tzinfo', None) is not None:
-            dt = dt.replace(tzinfo=None)
-        elif getattr(now, 'tzinfo', None) is not None and getattr(dt, 'tzinfo', None) is None:
-            dt = dt.replace(tzinfo=now.tzinfo)
-    except Exception:
-        pass
-    return dt
-
-def inject_dashboard_css(team_id: int):
-    """CSS para padronizar botões/ramais e reduzir poluição visual."""
-    # Paleta por equipe
-    if int(team_id) == 2:  # Eproc
-        a1, a2 = "#2563eb", "#38bdf8"
-        soft = "rgba(37,99,235,0.12)"
-    else:  # Legados
-        a1, a2 = "#92400e", "#f59e0b"
-        soft = "rgba(245,158,11,0.14)"
-
-    st.markdown(f"""
-<style>
-:root {{
-  --accent1: {a1};
-  --accent2: {a2};
-  --accentSoft: {soft};
-}}
-
-.ramal-badge {{
-  margin-left: 8px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 12px;
-  border: 1px solid rgba(0,0,0,0.10);
-  background: rgba(255,255,255,0.85);
-  color: #111827;
-  display: inline-block;
-}}
-@media (prefers-color-scheme: dark) {{
-  .ramal-badge {{
-    border: 1px solid rgba(255,255,255,0.25);
-    background: rgba(255,255,255,0.10);
-    color: rgba(255,255,255,0.92);
-  }}
-}}
-
-button[kind="secondary"] {{
-  border-radius: 14px !important;
-}}
-
-button[aria-label="🎭 Entrar/Sair Fila"],
-button[aria-label="🎯 Passar"],
-button[aria-label="⏭️ Pular"],
-button[aria-label="🚀 Entrar"],
-button[aria-label="🆘 Chamados"],
-button[aria-label="📝 Atendimentos"],
-button[aria-label="⏰ H. Extras"],
-button[aria-label="🐛 Erro/Novidade"],
-button[aria-label="🖨️ Certidão"],
-button[aria-label="💡 Sugestão"] {{
-  background: linear-gradient(135deg, var(--accent1) 0%, var(--accent2) 100%) !important;
-  color: white !important;
-  border: 0 !important;
-  font-weight: 700 !important;
-  border-radius: 14px !important;
-  box-shadow: 0 10px 24px rgba(0,0,0,0.10);
-}}
-button[aria-label="🎭 Entrar/Sair Fila"]:hover,
-button[aria-label="🎯 Passar"]:hover,
-button[aria-label="⏭️ Pular"]:hover,
-button[aria-label="🚀 Entrar"]:hover,
-button[aria-label="🆘 Chamados"]:hover,
-button[aria-label="📝 Atendimentos"]:hover,
-button[aria-label="⏰ H. Extras"]:hover,
-button[aria-label="🐛 Erro/Novidade"]:hover,
-button[aria-label="🖨️ Certidão"]:hover,
-button[aria-label="💡 Sugestão"]:hover {{
-  filter: brightness(1.05);
-  transform: translateY(-1px);
-}}
-
-button[aria-label="↩️ Menu"] {{
-  background: transparent !important;
-  color: var(--accent1) !important;
-  border: 1px solid rgba(0,0,0,0.12) !important;
-  border-radius: 12px !important;
-  height: 34px !important;
-  padding: 0 10px !important;
-  font-weight: 700 !important;
-}}
-@media (prefers-color-scheme: dark) {{
-  button[aria-label="↩️ Menu"] {{
-    border: 1px solid rgba(255,255,255,0.18) !important;
-  }}
-}}
-
-button[aria-label="❌"] {{
-  width: 34px !important;
-  height: 34px !important;
-  padding: 0 !important;
-  border-radius: 12px !important;
-  background: transparent !important;
-  border: 1px solid rgba(0,0,0,0.10) !important;
-}}
-button[aria-label="❌"]:hover {{
-  background: rgba(239,68,68,0.10) !important;
-  border-color: rgba(239,68,68,0.35) !important;
-}}
-@media (prefers-color-scheme: dark) {{
-  button[aria-label="❌"] {{
-    border: 1px solid rgba(255,255,255,0.16) !important;
-  }}
-}}
-
-</style>
-""", unsafe_allow_html=True)
-
-
 APP_URL_CLOUD = 'https://controle-bastao-cesupe.streamlit.app'
 
 # Secrets
@@ -405,112 +256,12 @@ def get_supabase():
         st.cache_resource.clear()
         return None
 
-# MUDANÇA 1: Cache de 24 horas (86400 segundos) para o gráfico não pesar a CPU
-@st.cache_data(ttl=86400, show_spinner=False)
-def carregar_dados_grafico(app_id):
-    import pandas as pd
-    sb = get_supabase()
-    if not sb: return None, None
-    
-    # ESTRATÉGIA DE BUSCA DO GRÁFICO:
-    # 1. Tenta o ID da equipe atual.
-    # 2. Se falhar, tenta o ID 2 (Eproc), pois ele costuma ter o consolidado "Operacional".
-    # 3. Se falhar, tenta o ID 1.
-    ids_tentar = [app_id]
-    if 2 not in ids_tentar: ids_tentar.append(2)
-    if 1 not in ids_tentar: ids_tentar.append(1)
-
-    try:
-        for tid in ids_tentar:
-            res = sb.table("atendimentos_resumo").select("*").eq("id", tid).execute()
-            
-            if res.data and len(res.data) > 0:
-                json_data = res.data[0].get('data') or {}
-                
-                # Tratamento de string JSON
-                if isinstance(json_data, str):
-                    try: json_data = json.loads(json_data)
-                    except: json_data = {}
-                
-                # VERIFICA SE O JSON TEM OS DADOS DO GRÁFICO
-                # Se tiver a chave 'totais_por_relatorio', achamos o gráfico certo!
-                if 'totais_por_relatorio' in json_data:
-                    df = pd.DataFrame(json_data.get('totais_por_relatorio', []))
-                    if not df.empty and 'relatorio' not in df.columns:
-                         df = df.rename(columns={df.columns[0]: 'relatorio'})
-                    
-                    # Retorna imediatamente ao encontrar dados válidos
-                    return df, json_data.get('gerado_em', '-')
-                    
-    except Exception as e:
-        print(f"Erro ao carregar gráfico: {e}")
-
-    return None, None
-
 def render_operational_summary():
-    import altair as alt
-    """Renderiza o Resumo Operacional (gráficos)"""
+    """Resumo Operacional: link externo (sem gráfico no app)."""
     st.subheader("📊 Resumo Operacional")
+    st.markdown('🔗 **Dados Semanais Cesupe** — [Abrir no Looker Studio](https://lookerstudio.google.com/reporting/8adc4cf8-94f6-4333-b808-4a300151af09)', unsafe_allow_html=False)
 
-    # Correção: alinhado com 4 espaços
-    tid = st.session_state.get('team_id')
-    df_chart, gerado_em = carregar_dados_grafico(tid)
 
-    # Correção: O 'if' deve estar na mesma direção do 'df_chart' acima (4 espaços)
-    if df_chart is not None:
-        try:
-            # ---------------------------
-            # CARDS (TOTALIZADORES)
-            # ---------------------------
-            total_eproc = int(df_chart.get("Eproc", 0).fillna(0).sum()) if hasattr(df_chart.get("Eproc", 0), "fillna") else 0
-            total_legados = int(df_chart.get("Legados", 0).fillna(0).sum()) if hasattr(df_chart.get("Legados", 0), "fillna") else 0
-            total_geral = int(total_eproc + total_legados)
-
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                st.metric("⚖️ Eproc", f"{total_eproc}")
-            with c2:
-                st.metric("🏛️ Legados", f"{total_legados}")
-            with c3:
-                st.metric("📌 Total", f"{total_geral}")
-
-            st.caption(f"Dados do dia: {gerado_em} (Atualização diária)")
-
-            # ---------------------------
-            # GRÁFICO (AGRUPADO POR RELATÓRIO)
-            # ---------------------------
-            df_long = df_chart.melt(
-                id_vars=['relatorio'],
-                value_vars=['Eproc', 'Legados'],
-                var_name='Sistema',
-                value_name='Qtd'
-            )
-
-            base = alt.Chart(df_long).encode(
-                x=alt.X('relatorio', title=None, axis=alt.Axis(labels=True, labelAngle=0)),
-                y=alt.Y('Qtd', title='Quantidade'),
-                color=alt.Color('Sistema', legend=alt.Legend(title="Sistema")),
-                xOffset='Sistema'
-            )
-
-            bars = base.mark_bar()
-            text = base.mark_text(dy=-5, color='black').encode(text='Qtd')
-            final_chart = (bars + text).properties(height=320)
-
-            st.altair_chart(final_chart, use_container_width=True)
-
-            # ---------------------------
-            # DETALHADO (EXPANDER)
-            # ---------------------------
-            with st.expander("📄 Dados detalhados", expanded=False):
-                st.dataframe(df_chart, use_container_width=True)
-
-        except Exception as e:
-            st.error(f"Erro gráfico: {e}")
-    else:
-        st.info("Sem dados de resumo disponíveis.")
-
-@st.cache_data
 def get_img_as_base64_cached(file_path):
     try:
         with open(file_path, "rb") as f:
@@ -655,7 +406,7 @@ def get_ordered_visual_queue(queue, status_dict):
 
 def reset_day_state():
     st.session_state.bastao_queue = []
-    st.session_state.status_texto = {n: 'Indisponível' for n in get_consultores()}
+    st.session_state.status_texto = {n: 'Indisponível' for n in CONSULTORES}
     st.session_state.daily_logs = []
     st.session_state.report_last_run_date = get_brazil_time()
 
@@ -737,9 +488,6 @@ def salvar_certidao_db(dados):
         return False
 
 def gerar_docx_certidao_internal(tipo, numero, data, consultor, motivo, chamado="", hora="", nome_parte=""):
-    from docx import Document
-    from docx.shared import Pt, Cm
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
     try:
         doc = Document()
         section = doc.sections[0]
@@ -989,7 +737,7 @@ def check_and_assume_baton(forced_successor=None, immune_consultant=None):
         
     changed = False; now = get_brazil_time()
     
-    for c in get_consultores():
+    for c in CONSULTORES:
         if c != immune_consultant: 
             if c != target and 'Bastão' in st.session_state.status_texto.get(c, ''):
                 log_status_change(c, 'Bastão', 'Indisponível', now - st.session_state.current_status_starts.get(c, now))
@@ -1366,70 +1114,37 @@ def toggle_view(v):
     else: st.session_state.active_view = v
 
 def init_session_state():
-    """Inicializa o estado da sessão com base no app_state do time atual.
-    Usa lista de consultores por sessão (st.session_state['_consultores_list']) para evitar mistura entre equipes.
-    """
     dev = get_browser_id()
-    if dev:
+    if dev: 
         st.session_state['device_id_val'] = dev
-
-    cons = get_consultores()
-
-    # Carrega do banco apenas 1x por sessão/time (chave db_loaded)
+    
     if 'db_loaded' not in st.session_state:
-        tid = int(st.session_state.get('team_id', 2))
+        tid = st.session_state.get('team_id', 2)
         db = load_state_from_db(tid)
         if db:
-            # datas podem vir como string
-            if 'report_last_run_date' in db and isinstance(db.get('report_last_run_date'), str):
-                try:
+            if 'report_last_run_date' in db and isinstance(db['report_last_run_date'], str):
+                try: 
                     db['report_last_run_date'] = datetime.fromisoformat(db['report_last_run_date'])
-                except Exception:
+                except: 
                     db['report_last_run_date'] = datetime.min
             st.session_state.update(db)
         st.session_state['db_loaded'] = True
-
+    
     defaults = {
-        'bastao_start_time': None,
-        'report_last_run_date': datetime.min,
-        'rotation_gif_start_time': None,
-        'play_sound': False,
-        'gif_warning': False,
-        'lunch_warning_info': None,
-        'last_reg_status': None,
-        'chamado_guide_step': 0,
-        'auxilio_ativo': False,
-        'active_view': None,
-        'consultor_selectbox': "Selecione um nome",
-        'bastao_queue': [],
-        'skip_flags': {},
-        'status_texto': {},
-        'current_status_starts': {},
-        'bastao_counts': {},
-        'priority_return_queue': [],
-        'daily_logs': [],
-        'simon_ranking': [],
-        'word_buffer': None,
-        'aviso_duplicidade': False,
-        'previous_states': {},
-        'quick_indicators': {},
-        'view_logmein_ui': False,
-        'last_cleanup': time.time(),
-        'last_hard_cleanup': time.time(),
-        '_skip_db_sync_until': 0.0,
+        'bastao_start_time': None, 'report_last_run_date': datetime.min, 'rotation_gif_start_time': None,
+        'play_sound': False, 'gif_warning': False, 'lunch_warning_info': None, 'last_reg_status': None,
+        'chamado_guide_step': 0, 'auxilio_ativo': False, 'active_view': None,
+        'consultor_selectbox': "Selecione um nome", 'status_texto': {n: 'Indisponível' for n in CONSULTORES},
+        'bastao_queue': [], 'skip_flags': {}, 'current_status_starts': {n: get_brazil_time() for n in CONSULTORES},
+        'bastao_counts': {n: 0 for n in CONSULTORES}, 'priority_return_queue': [], 'daily_logs': [], 'simon_ranking': [],
+        'word_buffer': None, 'aviso_duplicidade': False, 'previous_states': {}, 'quick_indicators': {}, 'view_logmein_ui': False,
+        'last_cleanup': time.time(), 'last_hard_cleanup': time.time()
     }
-
     for k, v in defaults.items():
-        if k not in st.session_state:
-            st.session_state[k] = v
-
-    # Garante chaves por consultor
-    for n in cons:
-        st.session_state.status_texto.setdefault(n, 'Indisponível')
-        st.session_state.current_status_starts.setdefault(n, get_brazil_time())
-        st.session_state.bastao_counts.setdefault(n, 0)
+        if k not in st.session_state: st.session_state[k] = v
+    for n in CONSULTORES:
         st.session_state.skip_flags.setdefault(n, False)
-        st.session_state[f'check_{n}'] = n in (st.session_state.bastao_queue or [])
+        st.session_state[f'check_{n}'] = n in st.session_state.bastao_queue
 
 def open_logmein_ui(): st.session_state.view_logmein_ui = True
 def close_logmein_ui(): st.session_state.view_logmein_ui = False
@@ -1469,40 +1184,24 @@ def watcher_de_atualizacoes():
 # PONTO DE ENTRADA
 # ============================================
 def render_dashboard(team_id: int, team_name: str, consultores_list: list, webhook_key: str, app_url: str, other_team_id: int, other_team_name: str, usuario_logado: str):
-
-    # ---------------------------------------------------------------------
-    # Contexto do time/sessão (define ANTES de carregar o estado do banco)
-    # ---------------------------------------------------------------------
-    prev_team = st.session_state.get('team_id')
-    st.session_state['team_id'] = int(team_id)
-    st.session_state['team_name'] = team_name
-    st.session_state['usuario_logado'] = usuario_logado
-
-    if consultores_list:
-        st.session_state['_consultores_list'] = list(consultores_list)
-    else:
-        st.session_state.setdefault('_consultores_list', list(CONSULTORES))
-
-    st.session_state['other_team_id'] = int(other_team_id) if other_team_id else None
-    st.session_state['other_team_name'] = other_team_name
-
-    global APP_URL_CLOUD
-    APP_URL_CLOUD = app_url or APP_URL_CLOUD
-
-    # Se mudou de equipe, forçar recarga do state e limpar caches pesados (gráfico)
-    if prev_team is not None and int(prev_team) != int(team_id):
-        st.session_state.pop('db_loaded', None)
-        load_state_from_db.clear()
-        carregar_dados_grafico.clear()
-
-    # CSS/tema (gradientes, hover, ramais, botões)
-    inject_dashboard_css(int(team_id))
-
-    # Inicializa estado e rotinas
+    
+    # 1. Inicializa estado PRIMEIRO para garantir que tudo existe
     init_session_state()
     memory_sweeper()
     auto_manage_time()
-    watcher_de_atualizacoes()
+
+
+    # Auto-refresh global (a cada 20s)
+    if st_autorefresh:
+        st_autorefresh(interval=20000, key=f"autorefresh_{team_id}")
+    # 2. Chama watcher DEPOIS de inicializar
+    if 'team_id' not in st.session_state or st.session_state['team_id'] != team_id:
+        st.session_state['team_id'] = team_id
+        load_state_from_db.clear()
+    global APP_URL_CLOUD, CONSULTORES
+    APP_URL_CLOUD = app_url or APP_URL_CLOUD
+    if consultores_list:
+        CONSULTORES = list(consultores_list)
 
     try:
         msg_toast = st.session_state.get('_toast_msg')
@@ -1545,7 +1244,7 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
             st.markdown(f"""<div style="display: flex; align-items: center; gap: 15px;"><h1 style="margin: 0; padding: 0; font-size: 2.2rem; color: #FF8C00; text-shadow: 1px 1px 2px #FF4500;">Controle Bastão Cesupe 2026 {BASTAO_EMOJI}</h1><img src="{src}" style="width: 150px; height: 150px; border-radius: 10px; border: 4px solid #FF8C00; object-fit: cover;"></div>""", unsafe_allow_html=True)
         with c_topo_dir:
             c_sub1, c_sub2 = st.columns([2, 1], vertical_alignment="bottom")
-            with c_sub1: novo_responsavel = st.selectbox("Assumir Bastão (Rápido)", options=["Selecione"] + get_consultores(), label_visibility="collapsed", key="quick_enter")
+            with c_sub1: novo_responsavel = st.selectbox("Assumir Bastão (Rápido)", options=["Selecione"] + CONSULTORES, label_visibility="collapsed", key="quick_enter")
             with c_sub2:
                 if st.button("🚀 Entrar", use_container_width=True, key="btn_entrar_header"):
                     if novo_responsavel != "Selecione": toggle_queue(novo_responsavel); st.rerun()
@@ -1563,8 +1262,7 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
         st.header("Responsável pelo Bastão")
         if responsavel:
             st.markdown(f"""<div style="background: linear-gradient(135deg, #FFF3E0 0%, #FFFFFF 100%); border: 3px solid #FF8C00; padding: 25px; border-radius: 15px; display: flex; align-items: center; box-shadow: 0 4px 15px rgba(255, 140, 0, 0.3); margin-bottom: 20px;"><div style="flex-shrink: 0; margin-right: 25px;"><img src="{GIF_BASTAO_HOLDER}" style="width: 90px; height: 90px; border-radius: 50%; object-fit: cover; border: 2px solid #FF8C00;"></div><div><span style="font-size: 14px; color: #555; font-weight: bold; text-transform: uppercase; letter-spacing: 1.5px;">Atualmente com:</span><br><span style="font-size: 42px; font-weight: 800; color: #FF4500; line-height: 1.1;">{responsavel}</span></div></div>""", unsafe_allow_html=True)
-            bst = ensure_brazil_dt(st.session_state.get('bastao_start_time')) or get_brazil_time()
-            dur = get_brazil_time() - bst
+            dur = get_brazil_time() - (st.session_state.bastao_start_time or get_brazil_time())
             st.caption(f"⏱️ Tempo com o bastão: **{format_time_duration(dur)}**")
         else: st.markdown('<h2>(Ninguém com o bastão)</h2>', unsafe_allow_html=True)
     
@@ -1594,8 +1292,28 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
         other_name = st.session_state.get('other_team_name', 'Outra Equipe')
         team_name = st.session_state.get('team_name', '')
 
-        # Menu (discreto) - volta para a tela de nomes (sem poluir a lateral)
-        if st.button("↩️ Menu", use_container_width=False, key="btn_menu_discreto", help="Voltar à tela de nomes"):
+        # Botão grande para voltar ao menu (tela de login)
+        st.markdown(
+            """
+<style>
+button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]{
+  background: #ef4444 !important;
+  color: white !important;
+  border: 1px solid #ef4444 !important;
+  font-weight: 800 !important;
+  height: 52px !important;
+  border-radius: 14px !important;
+  width: 100% !important;
+}
+button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{
+  background: #dc2626 !important;
+  border-color: #dc2626 !important;
+}
+</style>
+""",
+            unsafe_allow_html=True
+        )
+        if st.button("⬅️ SAIR / VOLTAR AO MENU", use_container_width=True, key="btn_back_menu_top"):
             st.session_state['_force_back_to_names'] = True
             st.session_state['time_selecionado'] = None
             st.session_state['consultor_logado'] = None
@@ -1603,6 +1321,12 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
             st.rerun()
 
         with st.expander('🧭 Painel (outra equipe / LogMeIn / trocar consultor)', expanded=False):
+            if st.button('🔙 Voltar à tela de nomes', use_container_width=True, key=f'btn_voltar_nomes_{uuid.uuid4().hex}'):
+                st.session_state['_force_back_to_names'] = True
+                st.session_state['time_selecionado'] = None
+                st.session_state['consultor_logado'] = None
+                st.session_state['consultor_selectbox'] = 'Selecione um nome'
+                st.rerun()
 
             if other_id:
                 try: other_state = load_state_from_db(other_id) or {}
@@ -1655,7 +1379,7 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
                     if l_in_use:
                         st.error(f"🔴 EM USO POR: **{l_user}**")
                         meu_nome = st.session_state.get('consultor_selectbox')
-                        if meu_nome == l_user or meu_nome in get_consultores():
+                        if meu_nome == l_user or meu_nome in CONSULTORES:
                             if st.button('🔓 LIBERAR AGORA', type='primary', use_container_width=True, key=f'btn_logmein_liberar_side_{uuid.uuid4().hex}'):
                                 set_logmein_status(None, False); close_logmein_ui(); st.rerun()
                         else: st.info('Aguarde a liberação.')
@@ -1677,7 +1401,7 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
 
         st.header('Status dos(as) Consultores(as)')
         ui_lists = {'fila': [], 'almoco': [], 'saida': [], 'ausente': [], 'atividade_especifica': [], 'sessao_especifica': [], 'projeto_especifico': [], 'reuniao_especifica': [], 'treinamento_especifico': [], 'indisponivel': [], 'presencial_especifico': []}
-        for nome in get_consultores():
+        for nome in CONSULTORES:
             if nome in st.session_state.bastao_queue: ui_lists['fila'].append(nome)
             status = st.session_state.status_texto.get(nome, 'Indisponível'); status = status if status is not None else 'Indisponível'
             if status in ('', None): pass
@@ -1764,7 +1488,7 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
         with c_nome:
              st.caption(f"Logado como: **{st.session_state.get('consultor_logado', st.session_state.get('consultor_selectbox', ''))}**")
              sub_nome, sub_tel, sub_cafe = st.columns([3, 1.2, 1.2], vertical_alignment='bottom')
-             with sub_nome: st.selectbox('Selecione:', ['Selecione um nome'] + get_consultores(), key='consultor_selectbox', label_visibility='collapsed', on_change=sync_logged_user)
+             with sub_nome: st.selectbox('Selecione:', ['Selecione um nome'] + CONSULTORES, key='consultor_selectbox', label_visibility='collapsed', on_change=sync_logged_user)
              with sub_tel: render_quick_toggle_btn('telefone')
              with sub_cafe: render_quick_toggle_btn('cafe')
         with c_act1:
@@ -1774,66 +1498,36 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
         with c_act3:
             if st.button('⏭️ Pular', use_container_width=True): toggle_skip(); st.rerun()
     
+        st.markdown("**📌 Status**")
+        r2c1, r2c2, r2c3, r2c4, r2c5 = st.columns(5)
+        if r2c1.button('📋 Atividades', use_container_width=True): toggle_view('menu_atividades'); st.rerun()
+        if r2c2.button('🏗️ Projeto', use_container_width=True): toggle_view('menu_projetos'); st.rerun()
+        if r2c3.button('🎓 Treinamento', use_container_width=True): toggle_view('menu_treinamento'); st.rerun()
+        if r2c4.button('📅 Reunião', use_container_width=True): toggle_view('menu_reuniao'); st.rerun()
+    
+        almoco_label = '🍽️ Voltar' if (st.session_state.get('consultor_selectbox') and st.session_state.status_texto.get(st.session_state.get('consultor_selectbox'), '') == 'Almoço') else '🍽️ Almoço'
+        if r2c5.button(almoco_label, use_container_width=True): handle_almoco_toggle(); st.rerun()
+    
+        r3c1, r3c2, r3c3, r3c4 = st.columns(4)
+        if r3c1.button('🎙️ Sessão', use_container_width=True): toggle_view('menu_sessao'); st.rerun()
+        if r3c2.button('🚶 Saída', use_container_width=True): update_status('Saída rápida', True); st.rerun()
+        if r3c3.button('🏃 Sair', use_container_width=True): handle_sair(); st.rerun()
+        if r3c4.button("🤝 Atend. Presencial", use_container_width=True): toggle_view('menu_presencial'); st.rerun()
+    
+        st.markdown("<hr style='border: 1px solid #FF8C00;'>", unsafe_allow_html=True)
+        st.markdown("#### Ferramentas")
+    
+        c_t1, c_t2, c_t3, c_t4 = st.columns(4)
+        c_t1.button("📑 Checklist", use_container_width=True, on_click=toggle_view, args=("checklist",))
+        c_t2.button("🆘 Chamados", use_container_width=True, on_click=toggle_view, args=("chamados",))
+        c_t3.button("📝 Atendimentos", use_container_width=True, on_click=toggle_view, args=("atendimentos",))
+        c_t4.button("⏰ H. Extras", use_container_width=True, on_click=toggle_view, args=("hextras",))
+    
+        c_t5, c_t6, c_t7 = st.columns(3)
+        c_t5.button("🐛 Erro/Novidade", use_container_width=True, on_click=toggle_view, args=("erro_novidade",))
+        c_t6.button("🖨️ Certidão", use_container_width=True, on_click=toggle_view, args=("certidao",))
+        c_t7.button("💡 Sugestão", use_container_width=True, on_click=toggle_view, args=("sugestao",))
 
-        # ---------------------------
-        # 📌 STATUS (menu suspenso)
-        # ---------------------------
-        with st.expander("📌 Status", expanded=True):
-            _sel = st.session_state.get('consultor_selectbox')
-            _is_lunch = bool(_sel and _sel != 'Selecione um nome' and (st.session_state.status_texto.get(_sel, '') == 'Almoço'))
-            _almoco_label = "🍽️ Voltar do Almoço" if _is_lunch else "🍽️ Almoço"
-
-            _status_opts = [
-                "— Selecionar status —",
-                "📋 Atividades",
-                "🏗️ Projeto",
-                "🎓 Treinamento",
-                "📅 Reunião",
-                _almoco_label,
-                "🎙️ Sessão",
-                "🤝 Atend. Presencial",
-                "🚶 Saída rápida",
-                "🏃 Sair",
-            ]
-
-            def _on_status_select():
-                choice = st.session_state.get('status_dropdown') or ""
-                if choice.startswith("—"):
-                    return
-                if choice.startswith("🍽️"):
-                    handle_almoco_toggle()
-                    st.session_state.active_view = None
-                    st.session_state['status_dropdown'] = "— Selecionar status —"
-                    return
-                if choice.startswith("🚶"):
-                    update_status("Saída rápida", True)
-                    st.session_state.active_view = None
-                    st.session_state['status_dropdown'] = "— Selecionar status —"
-                    return
-                if choice.startswith("🏃"):
-                    handle_sair()
-                    st.session_state.active_view = None
-                    st.session_state['status_dropdown'] = "— Selecionar status —"
-                    return
-
-                mapping = {
-                    "📋 Atividades": "menu_atividades",
-                    "🏗️ Projeto": "menu_projetos",
-                    "🎓 Treinamento": "menu_treinamento",
-                    "📅 Reunião": "menu_reuniao",
-                    "🎙️ Sessão": "menu_sessao",
-                    "🤝 Atend. Presencial": "menu_presencial",
-                }
-                st.session_state.active_view = mapping.get(choice, None)
-
-            st.selectbox(
-                "Status",
-                _status_opts,
-                key="status_dropdown",
-                index=_status_opts.index(st.session_state.get('status_dropdown', "— Selecionar status —")) if st.session_state.get('status_dropdown', "— Selecionar status —") in _status_opts else 0,
-                label_visibility="collapsed",
-                on_change=_on_status_select,
-            )
         # --- MENUS DE AÇÃO ---
         if st.session_state.active_view == 'menu_atividades':
             with st.container(border=True):
@@ -1917,19 +1611,11 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
                 with c_cancel:
                     if st.button('❌ Cancelar', use_container_width=True): st.session_state.active_view = None; st.rerun()
 
-        
-        st.markdown("<hr style='border: 1px solid #FF8C00;'>", unsafe_allow_html=True)
-        st.markdown("#### Ferramentas")
-    
-        c_t1, c_t2, c_t3, c_t4 = st.columns(4)
-        c_t2.button("🆘 Chamados", use_container_width=True, on_click=toggle_view, args=("chamados",))
-        c_t3.button("📝 Atendimentos", use_container_width=True, on_click=toggle_view, args=("atendimentos",))
-        c_t4.button("⏰ H. Extras", use_container_width=True, on_click=toggle_view, args=("hextras",))
-    
-        c_t5, c_t6, c_t7 = st.columns(3)
-        c_t5.button("🐛 Erro/Novidade", use_container_width=True, on_click=toggle_view, args=("erro_novidade",))
-        c_t6.button("🖨️ Certidão", use_container_width=True, on_click=toggle_view, args=("certidao",))
-        c_t7.button("💡 Sugestão", use_container_width=True, on_click=toggle_view, args=("sugestao",))
+        if st.session_state.active_view == "checklist":
+            with st.container(border=True):
+                st.header("Gerador de Checklist"); data_eproc = st.date_input("Data:", value=get_brazil_time().date()); camara_eproc = st.text_input("Câmara:")
+                if st.button("Gerar HTML"): st.success("Checklist gerado!")
+                if st.button("❌ Cancelar"): st.session_state.active_view = None; st.rerun()
 
         if st.session_state.active_view == "chamados":
             with st.container(border=True):
