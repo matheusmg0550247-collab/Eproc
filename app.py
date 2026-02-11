@@ -13,8 +13,8 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-TEAM_ID_EPROC = 2     # App State: Eproc = ID 02 (Supabase)
-TEAM_ID_LEGADOS = 1   # App State: Legados = ID 01 (Supabase)
+TEAM_ID_EPROC = 2
+TEAM_ID_LEGADOS = 1
 
 EQUIPE_EPROC = [
     "Barbara Mara", "Bruno Glaicon", "Claudia Luiza", "Douglas Paiva", "Fábio Alves",
@@ -103,7 +103,7 @@ button[data-baseweb="tab"] { padding: 10px 14px !important; }
 
 /* banners de equipe */
 .banner {
-  border:1px solid rgba(0,0,0,0.06);
+  border: 1px solid rgba(0,0,0,0.06);
   border-radius: 14px;
   padding: 12px 14px;
   margin-bottom: 10px;
@@ -117,7 +117,6 @@ button[data-baseweb="tab"] { padding: 10px 14px !important; }
     )
 
 def _read_query_params() -> Tuple[str, str]:
-    # Compatível com versões diferentes do Streamlit
     team = None
     user = None
     try:
@@ -138,12 +137,16 @@ def _clear_query_params():
     except Exception:
         st.experimental_set_query_params()
 
+# ==========================================================
+# OTIMIZAÇÃO 1: Login direto sem double-rerun
+# Antes: clique -> query params -> rerun -> seta session -> rerun (2 ciclos)
+# Agora: clique -> query params -> seta session -> renderiza dashboard (1 ciclo)
+# ==========================================================
 def _enter_dashboard(team_name: str, user_name: str):
     st.session_state["time_selecionado"] = team_name
     st.session_state["consultor_logado"] = user_name
     st.session_state["_force_enter_dashboard"] = True
     _clear_query_params()
-    st.rerun()
 
 def _render_card_grid(team_name: str, nomes: List[str], css_class: str):
     cards = []
@@ -151,12 +154,12 @@ def _render_card_grid(team_name: str, nomes: List[str], css_class: str):
         emoji = _emoji_for(nome)
         href = f"?team={quote(team_name)}&user={quote(nome)}"
         cards.append(f'<a class="card {css_class}" href="{href}">{emoji} {nome}</a>')
-    st.markdown('<div class="grid">' + "".join(cards) + "</div>", unsafe_allow_html=True)
+    st.markdown('<div class="grid">' + ''.join(cards) + '</div>', unsafe_allow_html=True)
 
 def main():
     _inject_css()
 
-    # --- captura clique via query params (mais leve que st.button) ---
+    # --- captura clique via query params ---
     q_team, q_user = _read_query_params()
     if q_team and q_user:
         if q_team == "Eproc" and q_user in EQUIPE_EPROC:
@@ -164,9 +167,8 @@ def main():
         if q_team == "Legados" and q_user in EQUIPE_LEGADOS:
             _enter_dashboard("Legados", q_user)
 
-    # Se já logado, vai direto pro dashboard
+    # Se já logado, vai direto pro dashboard (sem rerun extra)
     if st.session_state.get("_force_enter_dashboard") and st.session_state.get("consultor_logado"):
-        # Import lazy (evita lentidão/ram na tela de login)
         from dashboard import render_dashboard
 
         nome = st.session_state.get("consultor_logado")
@@ -212,7 +214,7 @@ def main():
     with tab_eproc:
         st.markdown(
             """<div class="banner" style="background: linear-gradient(135deg, rgba(30,136,229,0.14), rgba(255,255,255,0.65));">
-                  <b>Equipe Eproc</b> <small>(2ª Instância)</small><br/>
+                  <b>Equipe Eproc</b> <small>(2ª Instância)</small><br>
                   <small>Passe o mouse para ver o efeito de luz.</small>
                 </div>""",
             unsafe_allow_html=True,
@@ -222,7 +224,7 @@ def main():
     with tab_legados:
         st.markdown(
             """<div class="banner" style="background: linear-gradient(135deg, rgba(121,85,72,0.16), rgba(255,255,255,0.70));">
-                  <b>Equipe Legados</b><br/>
+                  <b>Equipe Legados</b><br>
                   <small>Passe o mouse para ver o efeito de luz.</small>
                 </div>""",
             unsafe_allow_html=True,
