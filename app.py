@@ -7,8 +7,8 @@ from typing import List, Tuple
 # CONFIG
 # ============================================
 st.set_page_config(
-    page_title=Central Unificada de Bastão,
-    page_icon=🔐,
+    page_title=Central Unificada de BastÃ£o,
+    page_icon=ðŸ”,
     layout=wide,
     initial_sidebar_state=collapsed,
 )
@@ -17,26 +17,26 @@ TEAM_ID_EPROC = 2     # App State Eproc = ID 02 (Supabase)
 TEAM_ID_LEGADOS = 1   # App State Legados = ID 01 (Supabase)
 
 EQUIPE_EPROC = [
-    Barbara Mara, Bruno Glaicon, Claudia Luiza, Douglas Paiva, Fábio Alves,
-    Glayce Torres, Isabela Dias, Isac Candido, Ivana Guimarães, Leonardo Damaceno,
-    Marcelo PenaGuerra, Michael Douglas, Morôni, Pablo Mol, Ranyer Segal,
+    Barbara Mara, Bruno Glaicon, Claudia Luiza, Douglas Paiva, FÃ¡bio Alves,
+    Glayce Torres, Isabela Dias, Isac Candido, Ivana GuimarÃ£es, Leonardo Damaceno,
+    Marcelo PenaGuerra, Michael Douglas, MorÃ´ni, Pablo Mol, Ranyer Segal,
     Sarah Leal, Victoria Lisboa,
 ]
 
 EQUIPE_LEGADOS = [
-    Alex Paulo, Dirceu Gonçalves, Douglas De Souza, Farley, Gleis, Hugo Leonardo,
+    Alex Paulo, Dirceu GonÃ§alves, Douglas De Souza, Farley, Gleis, Hugo Leonardo,
     Jerry Marcos, Jonatas, Leandro, Luiz Henrique, Marcelo dos Santos Dutra,
     Marina, Mariana Silva, Marina Torres, Vanessa Ligiane,
 ]
 
-JUSTICE_EMOJIS = [⚖️, 🧑‍⚖️, 🏛️, 📜, 🔎, 🗂️, 🔏, 🪪]
+JUSTICE_EMOJIS = [âš–ï¸, ðŸ§‘â€âš–ï¸, ðŸ›ï¸, ðŸ“œ, ðŸ”Ž, ðŸ—‚ï¸, ðŸ”, ðŸªª]
 
 def _emoji_for(name str) - str
     try
         idx = sum(ord(c) for c in name) % len(JUSTICE_EMOJIS)
         return JUSTICE_EMOJIS[idx]
     except Exception
-        return ⚖️
+        return âš–ï¸
 
 def _inject_css()
     st.markdown(
@@ -46,7 +46,7 @@ style
 .block-container { padding-top 1.2rem !important; max-width 1500px; }
 footer, header { visibility hidden; height 0; }
 
- cabeçalho 
+ cabeÃ§alho 
 .hero {
   background linear-gradient(135deg, rgba(255,140,0,0.10), rgba(255,255,255,0.7));
   border 1px solid rgba(0,0,0,0.06);
@@ -117,7 +117,7 @@ style
     )
 
 def _read_query_params() - Tuple[str, str]
-    # Compatível com versões diferentes do Streamlit
+    # CompatÃ­vel com versÃµes diferentes do Streamlit
     team = None
     user = None
     try
@@ -164,9 +164,9 @@ def main()
         if q_team == Legados and q_user in EQUIPE_LEGADOS
             _enter_dashboard(Legados, q_user)
 
-    # Se já logado, vai direto pro dashboard
+    # Se jÃ¡ logado, vai direto pro dashboard
     if st.session_state.get(_force_enter_dashboard) and st.session_state.get(consultor_logado)
-        # Import lazy (evita lentidãoram na tela de login)
+        # Import lazy (evita lentidÃ£oram na tela de login)
         from dashboard import render_dashboard
 
         nome = st.session_state.get(consultor_logado)
@@ -200,7 +200,7 @@ def main()
     st.markdown(
         
 div class=hero
-  h1🔐 Central Unificada de Bastãoh1
+  h1ðŸ” Central Unificada de BastÃ£oh1
   pEscolha a equipe e clique no seu nome para entrar no painel.p
 div
         ,
@@ -212,7 +212,7 @@ div
     with tab_eproc
         st.markdown(
             div class=banner style=background linear-gradient(135deg, rgba(30,136,229,0.14), rgba(255,255,255,0.65));
-                  bEquipe Eprocb small(2ª Instância)smallbr
+                  bEquipe Eprocb small(2Âª InstÃ¢ncia)smallbr
                   smallPasse o mouse para ver o efeito de luz.small
                 div,
             unsafe_allow_html=True,
