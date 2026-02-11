@@ -42,7 +42,7 @@ CONSULTORES_EPROC = [
     "Victoria Lisboa",
 ]
 
-# Legados (Equipe 1) – mantendo nomes “canônicos” (curtos) usados no dashboard
+# Legados (Equipe 1) – nomes canônicos usados no dashboard
 CONSULTORES_LEGADOS = [
     "Alex Paulo",
     "Dirceu Gonçalves",
@@ -91,18 +91,18 @@ st.markdown(
 <style>
 /* ---------- Layout geral ---------- */
 .main .block-container{
-  padding-top: 1.2rem;
-  padding-bottom: 2rem;
+  padding-top: 1.05rem;
+  padding-bottom: 2.2rem;
 }
 
-/* reduz gaps entre colunas/linhas */
-div[data-testid="stHorizontalBlock"]{ gap: .6rem; }
-div[data-testid="stVerticalBlock"] > div{ gap: .55rem; }
+/* reduz gaps entre colunas/linhas (deixa os botões mais juntos) */
+div[data-testid="stHorizontalBlock"]{ gap: .45rem; }
+div[data-testid="stVerticalBlock"] > div{ gap: .45rem; }
 div[data-testid="stButton"]{ margin: 0; }
 
 /* ---------- Hero ---------- */
 .login-wrap{
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
 }
 .hero{
@@ -120,7 +120,7 @@ div[data-testid="stButton"]{ margin: 0; }
   color: rgba(0,0,0,.65);
 }
 
-/* ---------- Banners por equipe (cor de fundo como no Excel) ---------- */
+/* ---------- Banners por equipe (cores: azul = Eproc / marrom = Legados) ---------- */
 .team-banner{
   border-radius: 14px;
   padding: 10px 12px;
@@ -128,7 +128,7 @@ div[data-testid="stButton"]{ margin: 0; }
   border: 1px solid rgba(0,0,0,.06);
 }
 .team-banner .t-title{
-  font-weight: 800;
+  font-weight: 900;
   margin: 0;
 }
 .team-banner .t-sub{
@@ -137,26 +137,28 @@ div[data-testid="stButton"]{ margin: 0; }
   font-size: .92rem;
 }
 .team-eproc-banner{
-  background: linear-gradient(135deg, rgba(33,150,243,.18), rgba(33,150,243,.06));
+  background: linear-gradient(135deg, rgba(33,150,243,.22), rgba(33,150,243,.06));
 }
 .team-legados-banner{
-  background: linear-gradient(135deg, rgba(141,110,99,.22), rgba(141,110,99,.06));
+  background: linear-gradient(135deg, rgba(141,110,99,.24), rgba(141,110,99,.06));
 }
 
 /* ---------- Cards (botões) ---------- */
 .card-grid [data-testid="stButton"] > button{
-  height: 54px;
+  height: 48px;
   border-radius: 16px;
-  border: 1px solid rgba(0,0,0,.08);
-  font-weight: 800;
-  letter-spacing: .2px;
+  border: 0;
+  font-weight: 900;
+  letter-spacing: .15px;
   transition: transform .10s ease, box-shadow .10s ease, filter .10s ease;
+  padding: .45rem .7rem;
+  white-space: normal;          /* permite quebrar linha quando necessário */
+  line-height: 1.05;
 }
 
 /* Eproc (azul) */
 .team-eproc .card-grid [data-testid="stButton"] > button{
   color: #ffffff;
-  border: 0;
   background: linear-gradient(135deg, #1E88E5 0%, #64B5F6 100%);
   box-shadow: 0 2px 10px rgba(30,136,229,.18);
 }
@@ -164,7 +166,6 @@ div[data-testid="stButton"]{ margin: 0; }
 /* Legados (marrom) */
 .team-legados .card-grid [data-testid="stButton"] > button{
   color: #ffffff;
-  border: 0;
   background: linear-gradient(135deg, #6D4C41 0%, #A1887F 100%);
   box-shadow: 0 2px 10px rgba(109,76,65,.18);
 }
@@ -172,19 +173,12 @@ div[data-testid="stButton"]{ margin: 0; }
 /* Hover / Active */
 .card-grid [data-testid="stButton"] > button:hover{
   transform: translateY(-2px);
-  filter: brightness(1.05);
+  filter: brightness(1.06);
   box-shadow: 0 10px 22px rgba(0,0,0,.14);
 }
 .card-grid [data-testid="stButton"] > button:active{
   transform: translateY(0px) scale(.995);
   filter: brightness(.98);
-}
-
-/* Nota pequena */
-.small-note{
-  color: rgba(0,0,0,.55);
-  font-size: .92rem;
-  margin-top: -2px;
 }
 </style>
 """,
@@ -215,18 +209,22 @@ if cfg is None:
 
     st.write("")
 
-    tab_eproc, tab_legados = st.tabs(["⚖️ Eproc", "🏛️ Legados"])
+    # Tabs APENAS com os nomes
+    tab_eproc, tab_legados = st.tabs(["Eproc", "Legados"])
 
-    def render_cards(lista, equipe_nome: str, wrap_class: str):
-        # gap="small" deixa os botões mais “colados”
+    def render_cards(lista, equipe_nome: str, wrap_class: str, emoji_prefix: str):
+        # Mais compacto: 5 colunas em telas largas
         try:
-            cols = st.columns(4, gap="small")
+            cols = st.columns(5, gap="small")
         except TypeError:
-            cols = st.columns(4)
+            cols = st.columns(5)
+
         for i, nome in enumerate(lista):
-            with cols[i % 4]:
+            label = f"{emoji_prefix} {nome}"
+            with cols[i % 5]:
                 st.markdown(f'<div class="{wrap_class}"><div class="card-grid">', unsafe_allow_html=True)
-                if st.button(nome, use_container_width=True, key=f"login_{equipe_nome}_{nome}"):
+                if st.button(label, use_container_width=True, key=f"login_{equipe_nome}_{nome}"):
+                    # Salva NOME CANÔNICO no estado (sem emoji)
                     st.session_state["time_selecionado"] = equipe_nome
                     st.session_state["consultor_logado"] = nome
                     st.rerun()
@@ -236,28 +234,28 @@ if cfg is None:
         st.markdown(
             """
 <div class="team-banner team-eproc-banner">
-  <div class="t-title">Equipe Eproc (2ª Instância)</div>
+  <div class="t-title">Eproc</div>
   <div class="t-sub">Clique no seu nome para entrar no painel.</div>
 </div>
 """,
             unsafe_allow_html=True,
         )
         st.markdown('<div class="team-eproc">', unsafe_allow_html=True)
-        render_cards(CONSULTORES_EPROC, "Eproc", "team-eproc")
+        render_cards(CONSULTORES_EPROC, "Eproc", "team-eproc", "🟦")
         st.markdown("</div>", unsafe_allow_html=True)
 
     with tab_legados:
         st.markdown(
             """
 <div class="team-banner team-legados-banner">
-  <div class="t-title">Equipe Legados (Themis/JPe/SIAP etc.)</div>
+  <div class="t-title">Legados</div>
   <div class="t-sub">Clique no seu nome para entrar no painel.</div>
 </div>
 """,
             unsafe_allow_html=True,
         )
         st.markdown('<div class="team-legados">', unsafe_allow_html=True)
-        render_cards(CONSULTORES_LEGADOS, "Legados", "team-legados")
+        render_cards(CONSULTORES_LEGADOS, "Legados", "team-legados", "🟫")
         st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("</div>", unsafe_allow_html=True)
