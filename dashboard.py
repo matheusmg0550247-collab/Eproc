@@ -1193,6 +1193,8 @@ def close_logmein_ui(): st.session_state.view_logmein_ui = False
 @st.fragment(run_every=20)
 def watcher_de_atualizacoes():
     try:
+        # marcador invisível para garantir execução periódica do fragment
+        st.markdown("<div style='display:none'>refresh</div>", unsafe_allow_html=True)
         # Se salvei algo nos ultimos 5 segundos, NÃO atualize a tela agora.
         if time.time() - st.session_state.get('_last_save_time', 0) < 5.0:
             return
@@ -1337,6 +1339,54 @@ button[aria-label="⋮"]{
   margin-right:0 !important;
 }
 button[aria-label="⋮"]:hover{filter: brightness(0.98);}
+
+/* Cores por botão (alvos por aria-label) */
+button[aria-label="📋 Atividades"],
+button[aria-label="🏗️ Projeto"],
+button[aria-label="🎓 Treinamento"],
+button[aria-label="📅 Reunião"],
+button[aria-label="🍽️ Almoço"],
+button[aria-label="🎙️ Sessão"],
+button[aria-label="🚶 Saída"],
+button[aria-label="🏃 Sair"],
+button[aria-label="🤝 Atend. Presencial"],
+button[aria-label="🎭 Entrar/Sair Fila"],
+button[aria-label="🎯 Passar"],
+button[aria-label="⏭️ Pular"]{
+  color:#fff !important;
+  border:0 !important;
+  background-size: 220% 220%;
+  background-position: 0% 50%;
+}
+button[aria-label="📋 Atividades"]{ background-image: linear-gradient(135deg, #22c55e, #16a34a); }
+button[aria-label="🏗️ Projeto"]{ background-image: linear-gradient(135deg, #f59e0b, #f97316); }
+button[aria-label="🎓 Treinamento"]{ background-image: linear-gradient(135deg, #8b5cf6, #a78bfa); }
+button[aria-label="📅 Reunião"]{ background-image: linear-gradient(135deg, #3b82f6, #60a5fa); }
+button[aria-label="🍽️ Almoço"]{ background-image: linear-gradient(135deg, #eab308, #facc15); color:#1f2937 !important; }
+button[aria-label="🎙️ Sessão"]{ background-image: linear-gradient(135deg, #6366f1, #818cf8); }
+button[aria-label="🚶 Saída"]{ background-image: linear-gradient(135deg, #64748b, #94a3b8); }
+button[aria-label="🏃 Sair"]{ background-image: linear-gradient(135deg, #ef4444, #dc2626); }
+button[aria-label="🤝 Atend. Presencial"]{ background-image: linear-gradient(135deg, #06b6d4, #22c55e); }
+button[aria-label="🎭 Entrar/Sair Fila"]{ background-image: linear-gradient(135deg, #fb923c, #f97316); }
+button[aria-label="🎯 Passar"]{ background-image: linear-gradient(135deg, #0ea5e9, #3b82f6); }
+button[aria-label="⏭️ Pular"]{ background-image: linear-gradient(135deg, #94a3b8, #64748b); }
+
+button[aria-label="📋 Atividades"]:hover,
+button[aria-label="🏗️ Projeto"]:hover,
+button[aria-label="🎓 Treinamento"]:hover,
+button[aria-label="📅 Reunião"]:hover,
+button[aria-label="🍽️ Almoço"]:hover,
+button[aria-label="🎙️ Sessão"]:hover,
+button[aria-label="🚶 Saída"]:hover,
+button[aria-label="🏃 Sair"]:hover,
+button[aria-label="🤝 Atend. Presencial"]:hover,
+button[aria-label="🎭 Entrar/Sair Fila"]:hover,
+button[aria-label="🎯 Passar"]:hover,
+button[aria-label="⏭️ Pular"]:hover{
+  background-position: 100% 50%;
+  filter: brightness(1.03);
+}
+
 
 /* Grupos coloridos (envolva as linhas com <div class="btn-row ...">) */
 .btn-row{ margin: 8px 0 10px 0; }
@@ -1730,41 +1780,6 @@ button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{
         if r3c3.button('🏃 Sair', use_container_width=True): handle_sair(); st.rerun()
         if r3c4.button("🤝 Atend. Presencial", use_container_width=True): toggle_view('menu_presencial'); st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
-
-        # --- Resumo/Legenda (preenche o lado esquerdo e ajuda na leitura) ---
-        with st.container(border=True):
-            st.markdown("#### 📊 Resumo rápido")
-            try:
-                _queue = st.session_state.get('bastao_queue', []) or []
-                _status = st.session_state.get('status_texto', {}) or {}
-                _resp = next((c for c, s in _status.items() if isinstance(s, str) and 'Bastão' in s), None)
-                def _count(pred):
-                    return sum(1 for n, s in _status.items() if pred(n, s))
-                c_almoco = _count(lambda n,s: (s == 'Almoço'))
-                c_saida  = _count(lambda n,s: (s == 'Saída rápida'))
-                c_sessao = _count(lambda n,s: isinstance(s,str) and ('Sessão:' in s or s == 'Sessão'))
-                c_proj   = _count(lambda n,s: isinstance(s,str) and ('Projeto:' in s or s == 'Projeto'))
-                c_ativ   = _count(lambda n,s: isinstance(s,str) and ('Atividade:' in s or s == 'Atendimento'))
-                c_pres   = _count(lambda n,s: isinstance(s,str) and ('Atendimento Presencial:' in s))
-                c_indisp = _count(lambda n,s: (s == 'Indisponível' and n not in _queue))
-
-                m1,m2,m3 = st.columns(3)
-                m1.metric("✅ Na fila", len(_queue))
-                m2.metric("🍽️ Almoço", c_almoco)
-                m3.metric("❌ Indisp.", c_indisp)
-
-                m4,m5,m6 = st.columns(3)
-                m4.metric("🤝 Presencial", c_pres)
-                m5.metric("🏗️ Projetos", c_proj)
-                m6.metric("🎙️ Sessão", c_sessao)
-
-                st.caption(
-                    f"🎭 Com o bastão: **{_resp or 'Ninguém'}**  |  "
-                    f"📋 Demanda: **{c_ativ}**  |  🚶 Saída: **{c_saida}**"
-                )
-                st.caption("Legenda: ☎️ = telefone | ☕ = café | ⋮ = entrar/sair da fila")
-            except Exception:
-                st.caption("Resumo indisponível neste momento.")
 
         # --- MENUS DE AÇÃO ---
         if st.session_state.active_view == 'menu_atividades':
