@@ -341,12 +341,9 @@ def save_state_to_db(app_id, state_data):
     try:
         sanitized_data = clean_data_for_db(state_data)
         sb.table("app_state").upsert({"id": app_id, "data": sanitized_data}).execute()
-
-        # 🔔 Importante: qualquer alteração em qualquer equipe deve atualizar
-        # um "carimbo" global para que TODOS os clientes percebam a mudança.
-        # Isso evita depender de refresh manual.
+        # Dispara refresh global para todos os clientes (qualquer equipe)
         bump_global_state_version(sb)
-        
+
         # --- CORREÇÃO 2: Marca o tempo do salvamento para o Watcher não conflitar
         st.session_state['_last_save_time'] = time.time() 
         
@@ -1195,46 +1192,59 @@ def close_logmein_ui(): st.session_state.view_logmein_ui = False
 # ============================================
 @st.fragment(run_every=20)
 def watcher_de_atualizacoes():
-    """Watcher global: a cada 20s, verifica se QUALQUER equipe salvou algo.
-
-    Observação importante: para o `run_every` funcionar de forma consistente,
-    o fragment precisa renderizar ao menos 1 elemento. Por isso há um marcador
-    invisível.
-    """
-
-    # Elemento invisível (garante que o fragment exista e seja re-executado)
-    st.markdown("<div style='display:none'>watcher</div>", unsafe_allow_html=True)
-
     try:
-        # Se acabei de salvar, não conflita com o pull do banco.
-        if time.time() - st.session_state.get('_last_save_time', 0) < 3.0:
+        # Se salvei algo nos ultimos 5 segundos, NÃO atualize a tela agora.
+        if time.time() - st.session_state.get('_last_save_time', 0) < 5.0:
             return
 
-        # Poll leve (1 leitura): carimbo global
-        ver_atual = load_global_state_version()
-        ver_visto = st.session_state.get('_global_state_version_seen')
+        tid = st.session_state.get('team_id', 2)
+        sb = get_supabase()
+        if not sb: return
+        
+        # 0) Verifica carimbo global (mudou em qualquer equipe => todos percebem)
+        gver = load_global_state_version()
+        seen = int(st.session_state.get('_global_state_version_seen') or 0)
+        if gver and gver != seen:
+            # Se o usuário estiver em formulário, evita perder preenchimento: adia refresh.
+            if st.session_state.get('active_view'):
+                st.session_state['_pending_global_refresh'] = True
+                st.session_state['_global_state_version_seen'] = gver
+                return
+            st.session_state['_global_state_version_seen'] = gver
+            try:
+                load_state_from_db.clear()
+                load_global_state_version.clear()
+            except Exception:
+                pass
+            sync_state_from_db()
+            st.rerun()
 
-        # Primeira execução: só registra e segue.
-        if ver_visto is None:
-            st.session_state['_global_state_version_seen'] = ver_atual
-            return
-
-        # Se mudou, alguém salvou em qualquer equipe -> recarrega
-        if ver_atual != ver_visto:
-            st.session_state['_global_state_version_seen'] = ver_atual
+        # Se havia refresh pendente e não há mais formulário, executa agora
+        if st.session_state.get('_pending_global_refresh') and not st.session_state.get('active_view'):
+            st.session_state['_pending_global_refresh'] = False
             try:
                 load_state_from_db.clear()
             except Exception:
                 pass
-            # Limpa cache auxiliar da outra equipe (recarrega no próximo render)
-            try:
-                st.session_state.pop('_other_state_cache', None)
-            except Exception:
-                pass
+            sync_state_from_db()
             st.rerun()
 
-    except Exception:
-        pass
+        # Leitura eficiente
+        res = sb.table("app_state").select("data").eq("id", tid).execute()
+        
+        if res.data and len(res.data) > 0:
+            remote_data = res.data[0].get("data", {})
+            rem_status = remote_data.get('status_texto', {})
+            rem_queue = remote_data.get('bastao_queue', [])
+            loc_status = st.session_state.get('status_texto', {})
+            loc_queue = st.session_state.get('bastao_queue', [])
+            
+            # Comparação direta de dicionários (mais segura que string)
+            if rem_status != loc_status or rem_queue != loc_queue:
+                load_state_from_db.clear()
+                st.session_state.update(remote_data)
+                st.rerun()
+    except: pass
 
 # ============================================
 # PONTO DE ENTRADA
@@ -1293,10 +1303,80 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
     st.markdown(
         """
 <style>
-div.stButton > button {width: 100%; height: 3rem;}
-/* Botão de menu (⋮) bem discreto */
-button[aria-label="⋮"]{width:44px !important; height:32px !important; padding:0 !important; border-radius:12px !important; font-weight:900 !important;}
+/* ocupa melhor a largura (reduz “buraco” lateral) */
+.block-container{padding-top:1rem !important; padding-left:1rem !important; padding-right:1rem !important; max-width: 1850px !important;}
+
+/* Base dos botões (efeitos) */
+div.stButton > button{
+  width:100%;
+  height:3rem;
+  border-radius:14px !important;
+  font-weight:800 !important;
+  letter-spacing:.2px;
+  transition: transform .12s ease, box-shadow .12s ease, filter .12s ease;
+  box-shadow: 0 10px 24px rgba(0,0,0,0.08);
+  user-select:none;
+}
+div.stButton > button:hover{
+  transform: translateY(-1px);
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.40) inset, 0 14px 34px rgba(0,0,0,0.12);
+  filter: brightness(1.04);
+}
+div.stButton > button:active{ transform: translateY(0px) scale(0.995); filter: brightness(0.98); }
+
+/* Botão de menu (⋮) compacto e alinhado */
+button[aria-label="⋮"]{
+  width:100% !important;
+  max-width:44px !important;
+  min-width:34px !important;
+  height:32px !important;
+  padding:0 !important;
+  border-radius:12px !important;
+  font-weight:900 !important;
+  margin-left:auto !important;
+  margin-right:0 !important;
+}
 button[aria-label="⋮"]:hover{filter: brightness(0.98);}
+
+/* Grupos coloridos (envolva as linhas com <div class="btn-row ...">) */
+.btn-row{ margin: 8px 0 10px 0; }
+
+.btn-row.bastao div.stButton > button{
+  color:#fff !important;
+  border:0 !important;
+  background-image: linear-gradient(135deg, rgba(255,140,0,.98), rgba(255,69,0,.96));
+  background-size: 220% 220%;
+  background-position: 0% 50%;
+}
+.btn-row.bastao div.stButton > button:hover{ background-position: 100% 50%; }
+
+.btn-row.status div.stButton > button{
+  color:#fff !important;
+  border:0 !important;
+  background-image: linear-gradient(135deg, rgba(30,136,229,.98), rgba(144,202,249,.92));
+  background-size: 220% 220%;
+  background-position: 0% 50%;
+}
+.btn-row.status div.stButton > button:hover{ background-position: 100% 50%; }
+
+.btn-row.tools div.stButton > button{
+  color: rgba(17,24,39,1) !important;
+  border: 1px solid rgba(0,0,0,0.10) !important;
+  background: linear-gradient(180deg, #ffffff, #f7f7f7);
+}
+
+/* Botões de perigo (Sair/Voltar) - continua vermelho, mas mais elegante */
+button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]{
+  background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+  color: white !important;
+  border: 0 !important;
+  font-weight: 900 !important;
+  height: 48px !important;
+  border-radius: 14px !important;
+  width: 100% !important;
+}
+button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{filter: brightness(1.04);} 
+
 </style>
         """,
         unsafe_allow_html=True,
@@ -1399,22 +1479,8 @@ button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{
                 st.rerun()
 
             if other_id:
-                # Cache leve da outra equipe: evita bater no banco a cada render
-                # quando nada mudou (controlado pelo carimbo global).
-                other_state = {}
-                try:
-                    ver_visto = st.session_state.get('_global_state_version_seen', 0)
-                    cache = st.session_state.get('_other_state_cache') or {}
-                    if cache.get('id') == other_id and cache.get('ver') == ver_visto and isinstance(cache.get('data'), dict):
-                        other_state = cache.get('data') or {}
-                    else:
-                        other_state = load_state_from_db(other_id) or {}
-                        st.session_state['_other_state_cache'] = {'id': other_id, 'ver': ver_visto, 'data': other_state}
-                except Exception:
-                    try:
-                        other_state = load_state_from_db(other_id) or {}
-                    except Exception:
-                        other_state = {}
+                try: other_state = load_state_from_db(other_id) or {}
+                except: other_state = {}
                 other_queue = other_state.get('bastao_queue', []) or []
                 other_skips = other_state.get('skip_flags', {}) or {}
                 other_status = other_state.get('status_texto', {}) or {}
@@ -1560,8 +1626,7 @@ button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{
                 for i, nome in enumerate(render_order, 1):
                     if nome not in ui_lists['fila']:
                         continue
-                    # Coluna do menu (⋮) bem estreita para não criar "buraco" visual
-                    col_nome, col_menu = st.columns([0.94, 0.06], vertical_alignment='center')
+                    col_nome, col_menu = st.columns([0.88, 0.12], vertical_alignment='center')
                     with col_menu:
                         _render_queue_menu(nome, key_base=f"fila_{nome}_frag")
                     skip_flag = skips.get(nome, False)
@@ -1596,8 +1661,7 @@ button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{
                 for item in itens:
                     nome = item[0] if isinstance(item, tuple) else item
                     desc = item[1] if isinstance(item, tuple) else titulo
-                    # Coluna do menu (⋮) bem estreita para não criar "buraco" visual
-                    col_n, col_menu = st.columns([0.94, 0.06], vertical_alignment='center')
+                    col_n, col_menu = st.columns([0.88, 0.12], vertical_alignment='center')
                     with col_menu:
                         _render_queue_menu(nome, key_base=f"{key_rm}_{nome}")
                     indic_icons = _icons_telefone_cafe(st.session_state.get('quick_indicators', {}).get(nome, {}))
@@ -1620,7 +1684,7 @@ button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{
     # =========================================================================
     # LAYOUT PRINCIPAL
     # =========================================================================
-    col_principal, col_disponibilidade = st.columns([1.5, 1])
+    col_principal, col_disponibilidade = st.columns([1.25, 1.05])
 
     with col_principal:
         render_header_info_left()
@@ -1631,6 +1695,7 @@ button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{
 
     with col_principal:
         st.markdown("### 🎮 Painel de Ação")
+        st.markdown('<div class="btn-row bastao">', unsafe_allow_html=True)
         st.markdown("**🎭 Ações do Bastão**")
         c_nome, c_act1, c_act2, c_act3 = st.columns([2, 1, 1, 1], vertical_alignment="bottom")
         with c_nome:
@@ -1645,8 +1710,11 @@ button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{
             if st.button('🎯 Passar', use_container_width=True): rotate_bastao(); st.rerun()
         with c_act3:
             if st.button('⏭️ Pular', use_container_width=True): toggle_skip(); st.rerun()
-    
+
+        st.markdown('</div>', unsafe_allow_html=True)
         st.markdown("**📌 Status**")
+        st.markdown('<div class="btn-row status">', unsafe_allow_html=True)
+
         r2c1, r2c2, r2c3, r2c4, r2c5 = st.columns(5)
         if r2c1.button('📋 Atividades', use_container_width=True): toggle_view('menu_atividades'); st.rerun()
         if r2c2.button('🏗️ Projeto', use_container_width=True): toggle_view('menu_projetos'); st.rerun()
@@ -1661,20 +1729,42 @@ button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{
         if r3c2.button('🚶 Saída', use_container_width=True): update_status('Saída rápida', True); st.rerun()
         if r3c3.button('🏃 Sair', use_container_width=True): handle_sair(); st.rerun()
         if r3c4.button("🤝 Atend. Presencial", use_container_width=True): toggle_view('menu_presencial'); st.rerun()
-    
-        st.markdown("<hr style='border: 1px solid #FF8C00;'>", unsafe_allow_html=True)
-        st.markdown("#### Ferramentas")
-    
-        c_t1, c_t2, c_t3, c_t4 = st.columns(4)
-        c_t1.button("📑 Checklist", use_container_width=True, on_click=toggle_view, args=("checklist",))
-        c_t2.button("🆘 Chamados", use_container_width=True, on_click=toggle_view, args=("chamados",))
-        c_t3.button("📝 Atendimentos", use_container_width=True, on_click=toggle_view, args=("atendimentos",))
-        c_t4.button("⏰ H. Extras", use_container_width=True, on_click=toggle_view, args=("hextras",))
-    
-        c_t5, c_t6, c_t7 = st.columns(3)
-        c_t5.button("🐛 Erro/Novidade", use_container_width=True, on_click=toggle_view, args=("erro_novidade",))
-        c_t6.button("🖨️ Certidão", use_container_width=True, on_click=toggle_view, args=("certidao",))
-        c_t7.button("💡 Sugestão", use_container_width=True, on_click=toggle_view, args=("sugestao",))
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # --- Resumo/Legenda (preenche o lado esquerdo e ajuda na leitura) ---
+        with st.container(border=True):
+            st.markdown("#### 📊 Resumo rápido")
+            try:
+                _queue = st.session_state.get('bastao_queue', []) or []
+                _status = st.session_state.get('status_texto', {}) or {}
+                _resp = next((c for c, s in _status.items() if isinstance(s, str) and 'Bastão' in s), None)
+                def _count(pred):
+                    return sum(1 for n, s in _status.items() if pred(n, s))
+                c_almoco = _count(lambda n,s: (s == 'Almoço'))
+                c_saida  = _count(lambda n,s: (s == 'Saída rápida'))
+                c_sessao = _count(lambda n,s: isinstance(s,str) and ('Sessão:' in s or s == 'Sessão'))
+                c_proj   = _count(lambda n,s: isinstance(s,str) and ('Projeto:' in s or s == 'Projeto'))
+                c_ativ   = _count(lambda n,s: isinstance(s,str) and ('Atividade:' in s or s == 'Atendimento'))
+                c_pres   = _count(lambda n,s: isinstance(s,str) and ('Atendimento Presencial:' in s))
+                c_indisp = _count(lambda n,s: (s == 'Indisponível' and n not in _queue))
+
+                m1,m2,m3 = st.columns(3)
+                m1.metric("✅ Na fila", len(_queue))
+                m2.metric("🍽️ Almoço", c_almoco)
+                m3.metric("❌ Indisp.", c_indisp)
+
+                m4,m5,m6 = st.columns(3)
+                m4.metric("🤝 Presencial", c_pres)
+                m5.metric("🏗️ Projetos", c_proj)
+                m6.metric("🎙️ Sessão", c_sessao)
+
+                st.caption(
+                    f"🎭 Com o bastão: **{_resp or 'Ninguém'}**  |  "
+                    f"📋 Demanda: **{c_ativ}**  |  🚶 Saída: **{c_saida}**"
+                )
+                st.caption("Legenda: ☎️ = telefone | ☕ = café | ⋮ = entrar/sair da fila")
+            except Exception:
+                st.caption("Resumo indisponível neste momento.")
 
         # --- MENUS DE AÇÃO ---
         if st.session_state.active_view == 'menu_atividades':
@@ -1852,6 +1942,23 @@ button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{
                         else: st.error("Erro ao enviar.")
                 with c2:
                     if st.button("Cancelar", use_container_width=True): st.session_state.active_view = None; st.rerun()
+
+
+        st.markdown("<hr style='border: 1px solid #FF8C00;'>", unsafe_allow_html=True)
+        st.markdown("#### Ferramentas")
+        st.markdown('<div class="btn-row tools">', unsafe_allow_html=True)
+    
+        c_t1, c_t2, c_t3, c_t4 = st.columns(4)
+        c_t1.button("📑 Checklist", use_container_width=True, on_click=toggle_view, args=("checklist",))
+        c_t2.button("🆘 Chamados", use_container_width=True, on_click=toggle_view, args=("chamados",))
+        c_t3.button("📝 Atendimentos", use_container_width=True, on_click=toggle_view, args=("atendimentos",))
+        c_t4.button("⏰ H. Extras", use_container_width=True, on_click=toggle_view, args=("hextras",))
+    
+        c_t5, c_t6, c_t7 = st.columns(3)
+        c_t5.button("🐛 Erro/Novidade", use_container_width=True, on_click=toggle_view, args=("erro_novidade",))
+        c_t6.button("🖨️ Certidão", use_container_width=True, on_click=toggle_view, args=("certidao",))
+        c_t7.button("💡 Sugestão", use_container_width=True, on_click=toggle_view, args=("sugestao",))
+        st.markdown('</div>', unsafe_allow_html=True)
 
         # CORREÇÃO 4: GRÁFICO MOVIDO PARA O FINAL (Fica abaixo de todos os formulários)
         with st.container(border=True):
