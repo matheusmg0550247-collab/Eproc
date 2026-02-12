@@ -257,12 +257,6 @@ def get_supabase():
         st.cache_resource.clear()
         return None
 
-def render_operational_summary():
-    """Resumo Operacional: link externo (sem gráfico no app)."""
-    st.subheader("📊 Resumo Operacional")
-    st.markdown('🔗 **Dados Semanais Cesupe** — [Abrir no Looker Studio](https://lookerstudio.google.com/reporting/8adc4cf8-94f6-4333-b808-4a300151af09)', unsafe_allow_html=False)
-
-
 def get_img_as_base64_cached(file_path):
     try:
         with open(file_path, "rb") as f:
@@ -1192,79 +1186,57 @@ def close_logmein_ui(): st.session_state.view_logmein_ui = False
 # ============================================
 @st.fragment(run_every=20)
 def watcher_de_atualizacoes():
+    """
+    Watcher leve (a cada 20s): lê um 'carimbo global' no banco e, se mudou,
+    força um reload do navegador. Isso evita usar st.rerun() dentro de fragment
+    (que costuma gerar warnings/instabilidades).
+    """
     try:
-        # marcador invisível para garantir execução periódica do fragment
-        st.markdown("<div style='display:none'>refresh</div>", unsafe_allow_html=True)
-        # Se salvei algo nos ultimos 5 segundos, NÃO atualize a tela agora.
-        if time.time() - st.session_state.get('_last_save_time', 0) < 5.0:
+        # Evita refresh imediato após salvar (o clique já deu rerun)
+        if time.time() - st.session_state.get('_last_save_time', 0) < 2.0:
             return
 
-        tid = st.session_state.get('team_id', 2)
-        sb = get_supabase()
-        if not sb: return
-        
-        # 0) Verifica carimbo global (mudou em qualquer equipe => todos percebem)
+        # Se usuário estiver em um formulário/modal, não interrompe (deixa pra próxima rodada)
+        if st.session_state.get('active_view'):
+            return
+
         gver = load_global_state_version()
-        seen = int(st.session_state.get('_global_state_version_seen') or 0)
-        if gver and gver != seen:
-            # Se o usuário estiver em formulário, evita perder preenchimento: adia refresh.
-            if st.session_state.get('active_view'):
-                st.session_state['_pending_global_refresh'] = True
-                st.session_state['_global_state_version_seen'] = gver
-                return
-            st.session_state['_global_state_version_seen'] = gver
-            try:
-                load_state_from_db.clear()
-                load_global_state_version.clear()
-            except Exception:
-                pass
-            sync_state_from_db()
-            st.rerun()
+        if not gver:
+            return
 
-        # Se havia refresh pendente e não há mais formulário, executa agora
-        if st.session_state.get('_pending_global_refresh') and not st.session_state.get('active_view'):
-            st.session_state['_pending_global_refresh'] = False
-            try:
-                load_state_from_db.clear()
-            except Exception:
-                pass
-            sync_state_from_db()
-            st.rerun()
+        st.components.v1.html(f"""
+<script>
+(function() {{
+  try {{
+    const key = "bastao_global_state_version";
+    const cur = "{gver}";
+    const last = window.localStorage.getItem(key);
 
-        # Leitura eficiente
-        res = sb.table("app_state").select("data").eq("id", tid).execute()
-        
-        if res.data and len(res.data) > 0:
-            remote_data = res.data[0].get("data", {})
-            rem_status = remote_data.get('status_texto', {})
-            rem_queue = remote_data.get('bastao_queue', [])
-            loc_status = st.session_state.get('status_texto', {})
-            loc_queue = st.session_state.get('bastao_queue', [])
-            
-            # Comparação direta de dicionários (mais segura que string)
-            if rem_status != loc_status or rem_queue != loc_queue:
-                load_state_from_db.clear()
-                st.session_state.update(remote_data)
-                st.rerun()
-    except: pass
+    // Primeira vez: só grava e não recarrega
+    if (last === null) {{
+      window.localStorage.setItem(key, cur);
+      return;
+    }}
 
-# ============================================
-# PONTO DE ENTRADA
-# ============================================
+    // Mudou: grava e recarrega a página pai
+    if (last !== cur) {{
+      window.localStorage.setItem(key, cur);
+      window.parent.location.reload();
+    }}
+  }} catch (e) {{}}
+}})();
+</script>
+""", height=0)
+    except Exception:
+        return
+
 def render_dashboard(team_id: int, team_name: str, consultores_list: list, webhook_key: str, app_url: str, other_team_id: int, other_team_name: str, usuario_logado: str):
     
     # 1. Inicializa estado PRIMEIRO para garantir que tudo existe
     init_session_state()
     memory_sweeper()
     auto_manage_time()
-
-
-    # Auto-refresh global (a cada 20s)
-    if st_autorefresh:
-        st.session_state['_using_autorefresh_lib'] = True
-        st_autorefresh(interval=20000, key=f"autorefresh_{team_id}")
-    else:
-        st.session_state['_using_autorefresh_lib'] = False
+    # Watcher global (a cada 20s)
     # 2. Chama watcher (refresh + carimbo global)
     watcher_de_atualizacoes()
     if 'team_id' not in st.session_state or st.session_state['team_id'] != team_id:
@@ -1666,15 +1638,16 @@ button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{
                 if 'Atendimento Presencial:' in status: ui_lists['presencial_especifico'].append((nome, status.replace('Atendimento Presencial:', '').strip()))
 
         if _show_section("Na Fila"):
-            st.subheader(f'✅ Na Fila ({len(ui_lists["fila"])})')
-            render_order = get_ordered_visual_queue(queue, st.session_state.status_texto)
-            if not render_order and queue:
-                render_order = list(queue)
+            fila_visual = [n for n in ui_lists["fila"] if n != responsavel]
+            st.subheader(f'✅ Na Fila ({len(fila_visual)})')
+            render_order = [n for n in get_ordered_visual_queue(queue, st.session_state.status_texto) if n in fila_visual]
+            if not render_order and fila_visual:
+                render_order = list(fila_visual)
             if not render_order:
                 st.markdown('_Ninguém na fila._')
             else:
                 for i, nome in enumerate(render_order, 1):
-                    if nome not in ui_lists['fila']:
+                    if nome not in fila_visual:
                         continue
                     col_nome, col_menu = st.columns([0.88, 0.12], vertical_alignment='center')
                     with col_menu:
@@ -1974,7 +1947,3 @@ button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{
         c_t6.button("🖨️ Certidão", use_container_width=True, on_click=toggle_view, args=("certidao",))
         c_t7.button("💡 Sugestão", use_container_width=True, on_click=toggle_view, args=("sugestao",))
         st.markdown('</div>', unsafe_allow_html=True)
-
-        # CORREÇÃO 4: GRÁFICO MOVIDO PARA O FINAL (Fica abaixo de todos os formulários)
-        with st.container(border=True):
-            render_operational_summary()
