@@ -1190,7 +1190,7 @@ def close_logmein_ui(): st.session_state.view_logmein_ui = False
 # ============================================
 # WATCHER INTELIGENTE (SEM CONFLITO DE SAVE)
 # ============================================
-@st.fragment(run_every=20)
+# @st.fragment(run_every=20)  # DESATIVADO (Opção A)
 def watcher_de_atualizacoes():
     try:
         # marcador invisível para garantir execução periódica do fragment
@@ -1265,8 +1265,41 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
         st_autorefresh(interval=20000, key=f"autorefresh_{team_id}")
     else:
         st.session_state['_using_autorefresh_lib'] = False
+    # ==========================================================
+    # OPÇÃO A: Sync por carimbo global (state_version) + autorefresh
+    # - Autorefresh só provoca rerun. O que "faz atualizar" de verdade
+    #   é puxar do banco quando o carimbo global muda.
+    # - Isso evita reload pesado a cada 20s quando ninguém mexeu.
+    # ==========================================================
+    try:
+        gver = load_global_state_version()
+        seen = int(st.session_state.get('_global_state_version_seen') or 0)
+
+        # Se há formulário aberto, evita perder preenchimento: adia o sync.
+        if gver and gver != seen:
+            st.session_state['_global_state_version_seen'] = gver
+            if st.session_state.get('active_view'):
+                st.session_state['_pending_global_refresh'] = True
+            else:
+                try:
+                    load_state_from_db.clear()
+                except Exception:
+                    pass
+                sync_state_from_db()
+
+        # Executa refresh pendente quando usuário sai do formulário
+        if st.session_state.get('_pending_global_refresh') and not st.session_state.get('active_view'):
+            st.session_state['_pending_global_refresh'] = False
+            try:
+                load_state_from_db.clear()
+            except Exception:
+                pass
+            sync_state_from_db()
+    except Exception:
+        pass
+
     # 2. Chama watcher (refresh + carimbo global)
-    watcher_de_atualizacoes()
+    # watcher_de_atualizacoes()  # DESATIVADO (Opção A: só autorefresh + state_version)
     if 'team_id' not in st.session_state or st.session_state['team_id'] != team_id:
         st.session_state['team_id'] = team_id
         load_state_from_db.clear()
