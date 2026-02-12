@@ -1221,8 +1221,7 @@ def watcher_de_atualizacoes():
     except Exception:
         return
 
-def render_dashboard
-(team_id: int, team_name: str, consultores_list: list, webhook_key: str, app_url: str, other_team_id: int, other_team_name: str, usuario_logado: str):
+def render_dashboard(team_id: int, team_name: str, consultores_list: list, webhook_key: str, app_url: str, other_team_id: int, other_team_name: str, usuario_logado: str):
     
     # 1. Inicializa estado PRIMEIRO para garantir que tudo existe
     init_session_state()
