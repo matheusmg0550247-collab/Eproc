@@ -13,6 +13,7 @@ import gc
 from datetime import datetime, timedelta, date
 from operator import itemgetter
 import json
+import hashlib
 import re
 import uuid
 import unicodedata
@@ -1190,7 +1191,7 @@ def close_logmein_ui(): st.session_state.view_logmein_ui = False
 # ============================================
 # WATCHER INTELIGENTE (SEM CONFLITO DE SAVE)
 # ============================================
-# @st.fragment(run_every=20)  # DESATIVADO (Opção A)
+# @st.fragment  # DESATIVADO (autorefresh full-run)
 def watcher_de_atualizacoes():
     try:
         # marcador invisível para garantir execução periódica do fragment
@@ -1252,62 +1253,61 @@ def watcher_de_atualizacoes():
 # PONTO DE ENTRADA
 # ============================================
 def render_dashboard(team_id: int, team_name: str, consultores_list: list, webhook_key: str, app_url: str, other_team_id: int, other_team_name: str, usuario_logado: str):
-    
     # 1. Inicializa estado PRIMEIRO para garantir que tudo existe
     init_session_state()
     memory_sweeper()
     auto_manage_time()
 
-
-    # Auto-refresh global (a cada 20s)
-    if st_autorefresh:
-        st.session_state['_using_autorefresh_lib'] = True
-        st_autorefresh(interval=20000, key=f"autorefresh_{team_id}")
-    else:
-        st.session_state['_using_autorefresh_lib'] = False
-    # ==========================================================
-    # OPÇÃO A: Sync por carimbo global (state_version) + autorefresh
-    # - Autorefresh só provoca rerun. O que "faz atualizar" de verdade
-    #   é puxar do banco quando o carimbo global muda.
-    # - Isso evita reload pesado a cada 20s quando ninguém mexeu.
-    # ==========================================================
-    try:
-        gver = load_global_state_version()
-        seen = int(st.session_state.get('_global_state_version_seen') or 0)
-
-        # Se há formulário aberto, evita perder preenchimento: adia o sync.
-        if gver and gver != seen:
-            st.session_state['_global_state_version_seen'] = gver
-            if st.session_state.get('active_view'):
-                st.session_state['_pending_global_refresh'] = True
-            else:
-                try:
-                    load_state_from_db.clear()
-                except Exception:
-                    pass
-                sync_state_from_db()
-
-        # Executa refresh pendente quando usuário sai do formulário
-        if st.session_state.get('_pending_global_refresh') and not st.session_state.get('active_view'):
-            st.session_state['_pending_global_refresh'] = False
-            try:
-                load_state_from_db.clear()
-            except Exception:
-                pass
-            sync_state_from_db()
-    except Exception:
-        pass
-
-    # 2. Chama watcher (refresh + carimbo global)
-    # watcher_de_atualizacoes()  # DESATIVADO (Opção A: só autorefresh + state_version)
-    if 'team_id' not in st.session_state or st.session_state['team_id'] != team_id:
+    # 1.1) Garante que o team_id/other_team_id ficam disponíveis ANTES de qualquer sync
+    if 'team_id' not in st.session_state or st.session_state.get('team_id') != team_id:
         st.session_state['team_id'] = team_id
-        load_state_from_db.clear()
+        # Força recarregar logo na primeira vez que trocar de equipe
+        try:
+            load_state_from_db.clear()
+        except Exception:
+            pass
+
+    st.session_state['team_name'] = team_name
+    st.session_state['other_team_id'] = other_team_id
+    st.session_state['other_team_name'] = other_team_name
+
+    # 1.2) Variáveis globais
     global APP_URL_CLOUD, CONSULTORES
     APP_URL_CLOUD = app_url or APP_URL_CLOUD
     if consultores_list:
         CONSULTORES = list(consultores_list)
 
+    # 2) Auto-refresh global (20s) — com "jitter" para não derrubar CPU quando vários usuários abrem ao mesmo tempo.
+    #    (espalha os reruns no tempo e reduz picos)
+    if st_autorefresh:
+        st.session_state['_using_autorefresh_lib'] = True
+        device_seed = str(st.session_state.get('device_id_val') or usuario_logado or team_id)
+        jitter_ms = int(hashlib.sha256(device_seed.encode('utf-8')).hexdigest(), 16) % 4000  # 0..3999ms
+        interval_ms = 20000 + jitter_ms  # ~20s
+        tick = st_autorefresh(interval=interval_ms, key=f"autorefresh_{team_id}")
+        last_tick = st.session_state.get('_autorefresh_tick')
+        pulse = (last_tick is None) or (tick != last_tick)
+        st.session_state['_autorefresh_tick'] = tick
+    else:
+        st.session_state['_using_autorefresh_lib'] = False
+        pulse = False
+
+    # 3) Sincronização: no pulso do autorefresh, puxa do banco.
+    #    Se o usuário estiver com um "menu" aberto (active_view), não sobrescreve campos; marca pendente.
+    if pulse:
+        st.session_state['_last_autorefresh_ts'] = time.time()
+        if st.session_state.get('active_view'):
+            st.session_state['_pending_global_refresh'] = True
+        else:
+            st.session_state['_pending_global_refresh'] = False
+            # Atualiza o estado da equipe atual (cache TTL já ajuda, mas aqui garantimos o "puxar" a cada pulso)
+            sync_state_from_db()
+
+    # Se tinha refresh pendente e o usuário fechou o menu, aplica já
+    if st.session_state.get('_pending_global_refresh') and not st.session_state.get('active_view'):
+        st.session_state['_pending_global_refresh'] = False
+        sync_state_from_db()
+    # global APP_URL_CLOUD  # já declarado acima
     try:
         msg_toast = st.session_state.get('_toast_msg')
         if msg_toast:
@@ -1468,7 +1468,7 @@ button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{filter: brightness(1.04)
     st.info("🎗️ Fevereiro Laranja: Apoie a conscientização sobre leucemia.")
 
     # --- HEADER FRAGMENT ---
-    @st.fragment
+    # @st.fragment  # DESATIVADO (autorefresh full-run)
     def render_header_info_left():
         sync_state_from_db()
         c_topo_esq, c_topo_dir = st.columns([2, 1], vertical_alignment="bottom")
@@ -1519,7 +1519,7 @@ button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{filter: brightness(1.04)
         if lista_pularam: st.markdown(f"**Consultor(es) pulou(pularam) o bastão:** {', '.join(lista_pularam)}")
 
     # --- SIDEBAR FRAGMENT ---
-    @st.fragment
+    # @st.fragment  # DESATIVADO (autorefresh full-run)
     def render_right_sidebar():
         other_id = st.session_state.get('other_team_id')
         other_name = st.session_state.get('other_team_name', 'Outra Equipe')
