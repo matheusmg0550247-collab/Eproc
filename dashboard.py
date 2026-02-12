@@ -1184,12 +1184,18 @@ def close_logmein_ui(): st.session_state.view_logmein_ui = False
 # ============================================
 # WATCHER INTELIGENTE (SEM CONFLITO DE SAVE)
 # ============================================
+# ============================================
+# WATCHER INTELIGENTE (SEM RECARREGAR A PÁGINA)
+# ============================================
 @st.fragment(run_every=20)
 def watcher_de_atualizacoes():
     """
     Watcher leve (a cada 20s): lê um 'carimbo global' no banco e, se mudou,
-    força um reload do navegador. Isso evita usar st.rerun() dentro de fragment
-    (que costuma gerar warnings/instabilidades).
+    sinaliza um rerun do app.
+
+    IMPORTANTE:
+    - NÃO chama st.rerun() aqui dentro (evita warnings do tipo "fragment id ...").
+    - NÃO recarrega o navegador (evita voltar para a tela de nomes).
     """
     try:
         # Evita refresh imediato após salvar (o clique já deu rerun)
@@ -1204,33 +1210,19 @@ def watcher_de_atualizacoes():
         if not gver:
             return
 
-        st.components.v1.html(f"""
-<script>
-(function() {{
-  try {{
-    const key = "bastao_global_state_version";
-    const cur = "{gver}";
-    const last = window.localStorage.getItem(key);
+        last = st.session_state.get('_last_global_state_version')
+        if last is None:
+            st.session_state['_last_global_state_version'] = str(gver)
+            return
 
-    // Primeira vez: só grava e não recarrega
-    if (last === null) {{
-      window.localStorage.setItem(key, cur);
-      return;
-    }}
-
-    // Mudou: grava e recarrega a página pai
-    if (last !== cur) {{
-      window.localStorage.setItem(key, cur);
-      window.parent.location.reload();
-    }}
-  }} catch (e) {{}}
-}})();
-</script>
-""", height=0)
+        if str(last) != str(gver):
+            st.session_state['_last_global_state_version'] = str(gver)
+            st.session_state['_needs_refresh'] = True
     except Exception:
         return
 
-def render_dashboard(team_id: int, team_name: str, consultores_list: list, webhook_key: str, app_url: str, other_team_id: int, other_team_name: str, usuario_logado: str):
+def render_dashboard
+(team_id: int, team_name: str, consultores_list: list, webhook_key: str, app_url: str, other_team_id: int, other_team_name: str, usuario_logado: str):
     
     # 1. Inicializa estado PRIMEIRO para garantir que tudo existe
     init_session_state()
@@ -1239,6 +1231,10 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
     # Watcher global (a cada 20s)
     # 2. Chama watcher (refresh + carimbo global)
     watcher_de_atualizacoes()
+    if st.session_state.pop('_needs_refresh', False):
+        # força recarregar do banco só quando houve mudança global
+        load_state_from_db.clear()
+        st.rerun()
     if 'team_id' not in st.session_state or st.session_state['team_id'] != team_id:
         st.session_state['team_id'] = team_id
         load_state_from_db.clear()
@@ -1427,6 +1423,8 @@ button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{filter: brightness(1.04)
         queue = st.session_state.bastao_queue
         skips = st.session_state.skip_flags
         responsavel = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
+        if (not responsavel) and queue:
+            responsavel = queue[0]
         curr_idx = queue.index(responsavel) if responsavel in queue else -1
         prox_idx = find_next_holder_index(curr_idx, queue, skips)
         proximo = queue[prox_idx] if prox_idx != -1 else None
