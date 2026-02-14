@@ -266,56 +266,64 @@ def get_supabase():
 def setup_realtime_watcher():
     """
     Watcher inteligente: só atualiza quando há mudança real no banco.
-    Substitui o auto-refresh de 20 segundos.
-    Economiza 90% das queries ao detectar mudanças via state_version.
     """
-    # DEBUG: Mostrar na sidebar
-    st.sidebar.info("🔍 WATCHER RODANDO")
+    # DEBUG: Mostrar NO TOPO DA PÁGINA (bem visível)
+    debug_container = st.container()
     
-    if "realtime_setup" in st.session_state:
-        st.sidebar.write("✅ Já configurado")
-        return  # Já configurado
-    
-    st.sidebar.warning("⚙️ Configurando pela primeira vez...")
-    st.session_state["realtime_setup"] = True
-    st.session_state["last_known_version"] = load_global_state_version()
-    
-    if "last_version_check" not in st.session_state:
-        st.session_state["last_version_check"] = 0
-    
-    now = time.time()
-    time_since_last = now - st.session_state["last_version_check"]
-    
-    # DEBUG: Mostrar timing
-    st.sidebar.write(f"⏱️ Segundos desde último check: {time_since_last:.1f}")
-    
-    if time_since_last > 5:  # Verifica a cada 5s
-        st.session_state["last_version_check"] = now
-        current_version = load_global_state_version()
-        last_known = st.session_state["last_known_version"]
+    with debug_container:
+        st.error("🔴 DEBUG ATIVO - WATCHER FUNCIONANDO")
         
-        # DEBUG: Mostrar versões
-        st.sidebar.write(f"📊 Versão conhecida: {last_known}")
-        st.sidebar.write(f"📊 Versão atual DB: {current_version}")
-        
-        # Se versão mudou E não foi este cliente que salvou
-        if current_version != last_known:
-            last_save = st.session_state.get("_last_save_time", 0)
-            time_since_save = time.time() - last_save
-            
-            # DEBUG: Mostrar lógica de decisão
-            st.sidebar.write(f"🔔 VERSÃO MUDOU!")
-            st.sidebar.write(f"⏱️ Segundos desde último save: {time_since_save:.1f}")
-            
-            if time_since_save > 2:  # Ignora se salvou há < 2s
-                st.sidebar.success("✅ VAI ATUALIZAR AGORA!")
-                st.session_state["last_known_version"] = current_version
-                time.sleep(0.5)  # Pequeno delay para ler debug
-                st.rerun()  # SÓ atualiza quando detecta mudança
-            else:
-                st.sidebar.warning("⏭️ Ignorando (salvou recentemente)")
+        if "realtime_setup" in st.session_state:
+            st.info("✅ Watcher já configurado anteriormente")
         else:
-            st.sidebar.write("😴 Nenhuma mudança detectada")
+            st.warning("⚙️ Configurando watcher pela PRIMEIRA VEZ...")
+            st.session_state["realtime_setup"] = True
+            st.session_state["last_known_version"] = load_global_state_version()
+        
+        if "last_version_check" not in st.session_state:
+            st.session_state["last_version_check"] = 0
+        
+        now = time.time()
+        time_since_last = now - st.session_state["last_version_check"]
+        
+        # Mostrar timing
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("⏱️ Segundos desde último check", f"{time_since_last:.1f}s")
+        
+        if time_since_last > 5:  # Verifica a cada 5s
+            st.session_state["last_version_check"] = now
+            current_version = load_global_state_version()
+            last_known = st.session_state.get("last_known_version", 0)
+            
+            # Mostrar versões
+            with col2:
+                st.metric("📊 Versão conhecida", last_known)
+            with col3:
+                st.metric("📊 Versão atual (DB)", current_version)
+            
+            # Se versão mudou
+            if current_version != last_known:
+                last_save = st.session_state.get("_last_save_time", 0)
+                time_since_save = time.time() - last_save
+                
+                st.success(f"🔔 VERSÃO MUDOU! ({last_known} → {current_version})")
+                st.info(f"⏱️ Tempo desde último save: {time_since_save:.1f}s")
+                
+                if time_since_save > 2:
+                    st.balloons()  # Efeito visual
+                    st.success("✅ ATUALIZANDO AGORA EM 1 SEGUNDO...")
+                    time.sleep(1)
+                    st.session_state["last_known_version"] = current_version
+                    st.rerun()
+                else:
+                    st.warning("⏭️ Não vai atualizar (você acabou de salvar)")
+            else:
+                st.info("😴 Nenhuma mudança detectada - tudo em sincronia")
+        else:
+            st.warning(f"⏸️ Aguardando... faltam {5 - time_since_last:.1f}s para próximo check")
+        
+        st.markdown("---")  # Linha separadora
 
 
 def render_operational_summary():
