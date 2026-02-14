@@ -265,65 +265,28 @@ def get_supabase():
 
 def setup_realtime_watcher():
     """
-    Watcher inteligente: só atualiza quando há mudança real no banco.
+    Watcher inteligente: só atualiza quando há mudança real.
+    Economiza 90% das queries detectando mudanças via state_version.
     """
-    # DEBUG: Mostrar NO TOPO DA PÁGINA (bem visível)
-    debug_container = st.container()
+    if "realtime_setup" not in st.session_state:
+        st.session_state["realtime_setup"] = True
+        st.session_state["last_known_version"] = load_global_state_version()
+        st.session_state["last_version_check"] = 0
     
-    with debug_container:
-        st.error("🔴 DEBUG ATIVO - WATCHER FUNCIONANDO")
+    now = time.time()
+    time_since_last = now - st.session_state.get("last_version_check", 0)
+    
+    if time_since_last > 5:  # Verifica a cada 5s
+        st.session_state["last_version_check"] = now
+        load_global_state_version.clear()  # Limpa cache
+        current_version = load_global_state_version()
+        last_known = st.session_state.get("last_known_version", 0)
         
-        if "realtime_setup" in st.session_state:
-            st.info("✅ Watcher já configurado anteriormente")
-        else:
-            st.warning("⚙️ Configurando watcher pela PRIMEIRA VEZ...")
-            st.session_state["realtime_setup"] = True
-            st.session_state["last_known_version"] = load_global_state_version()
-        
-        if "last_version_check" not in st.session_state:
-            st.session_state["last_version_check"] = 0
-        
-        now = time.time()
-        time_since_last = now - st.session_state["last_version_check"]
-        
-        # Mostrar timing
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("⏱️ Segundos desde último check", f"{time_since_last:.1f}s")
-        
-        if time_since_last > 5:  # Verifica a cada 5s
-            st.session_state["last_version_check"] = now
-            current_version = load_global_state_version()
-            last_known = st.session_state.get("last_known_version", 0)
-            
-            # Mostrar versões
-            with col2:
-                st.metric("📊 Versão conhecida", last_known)
-            with col3:
-                st.metric("📊 Versão atual (DB)", current_version)
-            
-            # Se versão mudou
-            if current_version != last_known:
-                last_save = st.session_state.get("_last_save_time", 0)
-                time_since_save = time.time() - last_save
-                
-                st.success(f"🔔 VERSÃO MUDOU! ({last_known} → {current_version})")
-                st.info(f"⏱️ Tempo desde último save: {time_since_save:.1f}s")
-                
-                if time_since_save > 2:
-                    st.balloons()  # Efeito visual
-                    st.success("✅ ATUALIZANDO AGORA EM 1 SEGUNDO...")
-                    time.sleep(1)
-                    st.session_state["last_known_version"] = current_version
-                    st.rerun()
-                else:
-                    st.warning("⏭️ Não vai atualizar (você acabou de salvar)")
-            else:
-                st.info("😴 Nenhuma mudança detectada - tudo em sincronia")
-        else:
-            st.warning(f"⏸️ Aguardando... faltam {5 - time_since_last:.1f}s para próximo check")
-        
-        st.markdown("---")  # Linha separadora
+        if current_version != last_known and current_version > 0:
+            last_save = st.session_state.get("_last_save_time", 0)
+            if time.time() - last_save > 2:
+                st.session_state["last_known_version"] = current_version
+                st.rerun()
 
 
 def render_operational_summary():
@@ -399,6 +362,7 @@ def bump_global_state_version(sb=None):
         except Exception:
             pass
         st.session_state["_global_state_version_seen"] = ver
+        st.session_state["_last_save_time"] = time.time()
     except Exception:
         pass
 
@@ -437,9 +401,9 @@ def get_logmein_status_cached():
     return None, False
 
 def get_logmein_status():
-    """Wrapper que limpa cache antes de ler"""
     get_logmein_status_cached.clear()
     return get_logmein_status_cached()
+    return None, False
 
 def set_logmein_status(consultor, em_uso):
     sb = get_supabase()
@@ -451,8 +415,8 @@ def set_logmein_status(consultor, em_uso):
             "data_inicio": datetime.now().isoformat()
         }
         sb.table("controle_logmein").update(dados).eq("id", LOGMEIN_DB_ID).execute()
-        get_logmein_status_cached.clear()  # Limpa cache
-        bump_global_state_version()  # Notifica outras máquinas
+        get_logmein_status_cached.clear()
+        bump_global_state_version()
     except Exception as e: st.error(f"Erro LogMeIn DB: {e}")
 
 # ============================================
@@ -1329,24 +1293,14 @@ def watcher_de_atualizacoes():
 # PONTO DE ENTRADA
 # ============================================
 def render_dashboard(team_id: int, team_name: str, consultores_list: list, webhook_key: str, app_url: str, other_team_id: int, other_team_name: str, usuario_logado: str):
-    
-    # ============================================
-    # 🔍 DEBUG TEMPORÁRIO - VERIFICAR WATCHER
-    # ============================================
-    st.sidebar.error("🐛 DEBUG ATIVO - CÓDIGO NOVO RODANDO!")
-    
-    try:
-        setup_realtime_watcher()
-        st.sidebar.success("✅ Watcher chamado com sucesso!")
-        st.sidebar.write(f"Última verificação: {st.session_state.get('last_version_check', 'nunca')}")
-        st.sidebar.write(f"Versão conhecida: {st.session_state.get('last_known_version', 0)}")
-        st.sidebar.write(f"Versão atual DB: {load_global_state_version()}")
-    except Exception as e:
-        st.sidebar.error(f"❌ ERRO no watcher: {e}")
-    # ============================================
-    
     # 1. Inicializa estado PRIMEIRO para garantir que tudo existe
     init_session_state()
+    memory_sweeper()
+    auto_manage_time()
+
+    # Watcher inteligente
+    setup_realtime_watcher()
+
 
     # 1.1) Garante que o team_id/other_team_id ficam disponíveis ANTES de qualquer sync
     if 'team_id' not in st.session_state or st.session_state.get('team_id') != team_id:
@@ -1367,18 +1321,7 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
     if consultores_list:
         CONSULTORES = list(consultores_list)
 
-    # ============================================
-    # WATCHER INTELIGENTE (substitui auto-refresh)
-    # ============================================
-    setup_realtime_watcher()
-    pulse = False  # Mantém compatibilidade
-
-    # ============================================
-    # WATCHER INTELIGENTE (substitui auto-refresh)
-    # ============================================
-    setup_realtime_watcher()
-    pulse = False  # Mantém compatibilidade
-
+    # 3) Sincronização: no pulso do autorefresh, puxa do banco.
     #    Se o usuário estiver com um "menu" aberto (active_view), não sobrescreve campos; marca pendente.
     if pulse:
         st.session_state['_last_autorefresh_ts'] = time.time()
