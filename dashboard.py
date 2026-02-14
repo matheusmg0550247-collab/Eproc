@@ -1294,10 +1294,24 @@ def watcher_de_atualizacoes():
 # PONTO DE ENTRADA
 # ============================================
 def render_dashboard(team_id: int, team_name: str, consultores_list: list, webhook_key: str, app_url: str, other_team_id: int, other_team_name: str, usuario_logado: str):
+    
+    # ============================================
+    # 🔍 DEBUG TEMPORÁRIO - VERIFICAR WATCHER
+    # ============================================
+    st.sidebar.error("🐛 DEBUG ATIVO - CÓDIGO NOVO RODANDO!")
+    
+    try:
+        setup_realtime_watcher()
+        st.sidebar.success("✅ Watcher chamado com sucesso!")
+        st.sidebar.write(f"Última verificação: {st.session_state.get('last_version_check', 'nunca')}")
+        st.sidebar.write(f"Versão conhecida: {st.session_state.get('last_known_version', 0)}")
+        st.sidebar.write(f"Versão atual DB: {load_global_state_version()}")
+    except Exception as e:
+        st.sidebar.error(f"❌ ERRO no watcher: {e}")
+    # ============================================
+    
     # 1. Inicializa estado PRIMEIRO para garantir que tudo existe
     init_session_state()
-    memory_sweeper()
-    auto_manage_time()
 
     # 1.1) Garante que o team_id/other_team_id ficam disponíveis ANTES de qualquer sync
     if 'team_id' not in st.session_state or st.session_state.get('team_id') != team_id:
