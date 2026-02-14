@@ -19,14 +19,14 @@ TEAM_ID_LEGADOS = 1   # App State: Legados = ID 01 (Supabase)
 EQUIPE_EPROC = [
     "Barbara Mara", "Bruno Glaicon", "Claudia Luiza", "Douglas Paiva", "Fábio Alves",
     "Glayce Torres", "Isabela Dias", "Isac Candido", "Ivana Guimarães", "Leonardo Damaceno",
-    "Marcelo PenaGuerra", "Michael Douglas", "Morôni", "Pablo Mol", "Ranyer Segal",
+    "Marcelo Guerra", "Michael Douglas", "Morôni", "Pablo Mol", "Ranyer Segal",
     "Sarah Leal", "Victoria Lisboa",
 ]
 
 EQUIPE_LEGADOS = [
     "Alex Paulo", "Dirceu Gonçalves", "Douglas De Souza", "Farley", "Gleis", "Hugo Leonardo",
     "Jerry Marcos", "Jonatas", "Leandro", "Luiz Henrique", "Marcelo dos Santos Dutra",
-    "Marina", "Mariana Silva", "Marina Torres", "Vanessa Ligiane",
+     "Mariana Marques", "Marina Torres", "Vanessa Ligiane",
 ]
 
 JUSTICE_EMOJIS = ["⚖️", "🧑‍⚖️", "🏛️", "📜", "🔎", "🗂️", "🔏", "🪪"]
