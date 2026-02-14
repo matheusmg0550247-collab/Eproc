@@ -1300,6 +1300,7 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
 
     # Watcher inteligente
     setup_realtime_watcher()
+    pulse = False  # Mantém compatibilidade
 
 
     # 1.1) Garante que o team_id/other_team_id ficam disponíveis ANTES de qualquer sync
