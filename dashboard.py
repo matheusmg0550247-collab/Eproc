@@ -1292,63 +1292,57 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
         pulse = False
 
     # ========================================
-    # TIMER VISUAL EM TEMPO REAL (JavaScript)
+    # TIMER EM TEMPO REAL (JavaScript)
     # ========================================
-    try:
-        if st.session_state.get("_using_autorefresh_lib"):
-            # Timer em tempo real com JavaScript
-            st.markdown(
-                '''
-                <div id="timer-container" style="padding: 0.75rem 1.5rem; border-radius: 0.5rem; 
-                     margin-bottom: 1rem; text-align: center; font-weight: bold; 
-                     font-size: 1.1rem; transition: all 0.3s ease;">
-                    <span id="timer-icon">🟢</span>
-                    Próxima atualização automática em: 
-                    <span id="timer-seconds" style="font-size: 1.3rem; font-weight: bold;">30</span>s
-                </div>
-                <script>
-                (function() {
-                    let seconds = 30;
-                    const container = document.getElementById("timer-container");
-                    const icon = document.getElementById("timer-icon");
-                    const display = document.getElementById("timer-seconds");
-                    
-                    function updateTimer() {
-                        if (seconds > 20) {
-                            container.style.background = "linear-gradient(90deg, #10b981 0%, #10b98122 100%)";
-                            container.style.color = "#1f2937";
-                            icon.textContent = "🟢";
-                        } else if (seconds > 10) {
-                            container.style.background = "linear-gradient(90deg, #f59e0b 0%, #f59e0b22 100%)";
-                            container.style.color = "#1f2937";
-                            icon.textContent = "🟡";
-                        } else {
-                            container.style.background = "linear-gradient(90deg, #ef4444 0%, #ef444422 100%)";
-                            container.style.color = "#1f2937";
-                            icon.textContent = "🔴";
-                        }
-                        
-                        display.textContent = seconds;
-                        display.style.color = seconds > 20 ? "#10b981" : seconds > 10 ? "#f59e0b" : "#ef4444";
-                        
-                        if (seconds > 0) {
-                            seconds--;
-                        } else {
-                            seconds = 30;
-                        }
+    if AUTOREFRESH_AVAILABLE and st_autorefresh:
+        st.markdown(
+            '''
+            <div id="timer-container" style="padding: 0.75rem 1.5rem; border-radius: 0.5rem; 
+                 margin-bottom: 1rem; text-align: center; font-weight: bold; 
+                 font-size: 1.1rem; transition: all 0.3s ease;">
+                <span id="timer-icon">🟢</span>
+                Próxima atualização automática em: 
+                <span id="timer-seconds" style="font-size: 1.3rem; font-weight: bold;">30</span>s
+            </div>
+            <script>
+            (function() {
+                let seconds = 30;
+                const container = document.getElementById("timer-container");
+                const icon = document.getElementById("timer-icon");
+                const display = document.getElementById("timer-seconds");
+                
+                function updateTimer() {
+                    if (seconds > 20) {
+                        container.style.background = "linear-gradient(90deg, #10b981 0%, #10b98122 100%)";
+                        container.style.color = "#1f2937";
+                        icon.textContent = "🟢";
+                    } else if (seconds > 10) {
+                        container.style.background = "linear-gradient(90deg, #f59e0b 0%, #f59e0b22 100%)";
+                        container.style.color = "#1f2937";
+                        icon.textContent = "🟡";
+                    } else {
+                        container.style.background = "linear-gradient(90deg, #ef4444 0%, #ef444422 100%)";
+                        container.style.color = "#1f2937";
+                        icon.textContent = "🔴";
                     }
                     
-                    updateTimer();
-                    setInterval(updateTimer, 1000);
-                })();
-                </script>
-                ''',
-                unsafe_allow_html=True
-            )
-        else:
-            st.info("⚠️ Auto-refresh desabilitado. Atualize manualmente.")
-    except Exception:
-        pass
+                    display.textContent = seconds;
+                    display.style.color = seconds > 20 ? "#10b981" : seconds > 10 ? "#f59e0b" : "#ef4444";
+                    
+                    if (seconds > 0) {
+                        seconds--;
+                    } else {
+                        seconds = 30;
+                    }
+                }
+                
+                updateTimer();
+                setInterval(updateTimer, 1000);
+            })();
+            </script>
+            ''',
+            unsafe_allow_html=True
+        )
 
 
     # 3) Sincronização: no pulso do autorefresh, puxa do banco.
