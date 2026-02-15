@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import streamlit as st
+import streamlit.components.v1 as components
 
 # Auto-refresh (opcional)
 try:
@@ -10,85 +11,75 @@ import requests
 import time
 import gc
 from datetime import datetime, timedelta, date
-from operator import itemgetter
-import json
-import hashlib
-import re
-import uuid
-import unicodedata
-import base64
-import io
 
 
-import streamlit.components.v1 as components
-
-def _hms_from_ts(ts: float) -> str:
+# =========================================================
+# AUTO-REFRESH + CONTADOR EM TEMPO REAL (CLIENT-SIDE)
+# =========================================================
+def _format_dt_br(ts: float) -> str:
+    """Formato brasileiro: dd/mm/yyyy HH:MM:SS"""
     try:
-        return datetime.fromtimestamp(ts).strftime("%H:%M:%S")
+        return datetime.fromtimestamp(ts).strftime("%d/%m/%Y %H:%M:%S")
     except Exception:
-        return "--:--:--"
+        return "--/--/---- --:--:--"
+
 
 def autorefresh_with_realtime_countdown(
-    interval_seconds: int = 30,
+    interval_seconds: int = 40,
     key_prefix: str = "autorefresh",
-    jitter_ms_max: int = 0,
-    seed: str | None = None,
     show_box: bool = True,
 ) -> bool:
     """
-    Auto-refresh the Streamlit app every `interval_seconds` and show a real-time countdown
-    (updates on the client side with JS).
+    Controla o auto-refresh e mostra contador em tempo real.
 
-    Returns:
-        pulse (bool): True when a new refresh tick occurred.
+    Retorna:
+        pulse (bool): True quando ocorreu um novo ciclo de refresh.
     """
     interval_seconds = int(max(5, interval_seconds))
-    base_ms = interval_seconds * 1000
+    interval_ms = interval_seconds * 1000
 
-    # Jitter (optional) — spreads reruns to reduce server spikes when many users open at once.
-    jitter_ms = 0
-    if jitter_ms_max and seed:
-        try:
-            jitter_ms = int(hashlib.sha256(str(seed).encode("utf-8")).hexdigest(), 16) % int(jitter_ms_max)
-        except Exception:
-            jitter_ms = 0
-    interval_ms = base_ms + jitter_ms
-
+    # 1) Disparo de rerun (streamlit-autorefresh, se disponível)
     pulse = False
     if st_autorefresh is not None:
         tick = st_autorefresh(interval=interval_ms, key=f"{key_prefix}_tick")
         last_tick = st.session_state.get(f"{key_prefix}_last_tick")
         pulse = (last_tick is None) or (tick != last_tick)
         st.session_state[f"{key_prefix}_last_tick"] = tick
+        st.session_state['_using_autorefresh_lib'] = True
     else:
-        # No automatic rerun available; keep countdown + expose a manual refresh.
-        if show_box:
-            st.warning("⚠️ Auto-refresh indisponível: instale `streamlit-autorefresh` para atualizar sozinho a cada 30s.")
+        st.session_state['_using_autorefresh_lib'] = False
+        # fallback: botão manual
+        st.session_state.setdefault(f"{key_prefix}_last_tick", 0)
         if st.button("🔄 Atualizar agora", key=f"{key_prefix}_manual_btn"):
+            st.session_state[f"{key_prefix}_last_tick"] += 1
             pulse = True
 
-    # Compute next refresh timestamp for countdown.
+    # 2) Próximo refresh (epoch)
     now = time.time()
-    next_key = f"{key_prefix}_next_refresh_ts"
-    if (next_key not in st.session_state) or pulse:
-        # If we have the autorefresh lib, next refresh should be roughly now + interval_seconds.
-        st.session_state[next_key] = now + interval_seconds
+    next_ts_key = f"{key_prefix}_next_refresh_ts"
+    if pulse or (next_ts_key not in st.session_state):
+        st.session_state[next_ts_key] = now + interval_seconds
 
-    next_ts = float(st.session_state[next_key])
-    remaining = max(0, int(round(next_ts - now)))
+    next_refresh_ts = float(st.session_state[next_ts_key])
+    remaining = max(0, int(round(next_refresh_ts - now)))
 
+    # 3) Box com contador em tempo real (JS) — NÃO força rerun a cada segundo.
     if show_box:
-        target_ms = int(next_ts * 1000)
+        target_ms = int(next_refresh_ts * 1000)
         box_html = f"""
 <div style="
-  border:1px solid #eee; background: rgba(255,255,255,0.98);
-  padding:10px 12px; border-radius: 12px; margin: 6px 0 12px 0;
+  border: 1px solid #eee;
+  background: rgba(255,255,255,0.92);
+  padding: 10px 12px;
+  border-radius: 12px;
+  margin: 6px 0 12px 0;
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
 ">
-  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+  <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
     <div style="font-weight:800;">⏳ Próxima atualização</div>
-    <div style="font-size:13px; color:#666;">às <b>{_hms_from_ts(next_ts)}</b></div>
+    <div style="font-size:13px; color:#666;">🕒 <b>{_format_dt_br(next_refresh_ts)}</b></div>
   </div>
+
   <div style="margin-top:6px; font-size:14px;">
     Em <b><span id="{key_prefix}_cd">{remaining}</span>s</b>
   </div>
@@ -97,12 +88,13 @@ def autorefresh_with_realtime_countdown(
 (function() {{
   const el = document.getElementById("{key_prefix}_cd");
   if (!el) return;
+
   const target = {target_ms};
 
   function tick() {{
     const now = Date.now();
-    const diff = Math.max(0, Math.round((target - now) / 1000));
-    el.textContent = String(diff);
+    let diff = Math.max(0, Math.round((target - now) / 1000));
+    el.textContent = diff.toString();
     if (diff <= 0) clearInterval(timer);
   }}
 
@@ -112,9 +104,18 @@ def autorefresh_with_realtime_countdown(
 </script>
 </div>
 """
-        components.html(box_html, height=92)
+        components.html(box_html, height=100)
 
     return bool(pulse)
+
+from operator import itemgetter
+import json
+import hashlib
+import re
+import uuid
+import unicodedata
+import base64
+import io
 from supabase import create_client
 from docx import Document
 from docx.shared import Pt, Cm
@@ -1373,18 +1374,12 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
     if consultores_list:
         CONSULTORES = list(consultores_list)
 
-    # 2) Auto-refresh global (30s) + contador em tempo real
-    #    - usa streamlit_autorefresh (se instalado)
-    #    - mostra countdown em tempo real (JS no client)
-    device_seed = str(st.session_state.get('device_id_val') or usuario_logado or team_id)
+    # 2) Auto-refresh + contador (40s fixo)
     pulse = autorefresh_with_realtime_countdown(
-        interval_seconds=30,
-        key_prefix=f"team{team_id}_refresh",
-        jitter_ms_max=4000,
-        seed=device_seed,
+        interval_seconds=40,
+        key_prefix=f"autorefresh_{team_id}",
         show_box=True,
     )
-
 
 
     # 3) Sincronização: no pulso do autorefresh, puxa do banco.
