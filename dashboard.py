@@ -1291,6 +1291,35 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
         st.session_state['_using_autorefresh_lib'] = False
         pulse = False
 
+    # Atualizar timer visual
+    if st.session_state.get("_using_autorefresh_lib"):
+        last_refresh = st.session_state.get("_last_autorefresh_ts", time.time())
+        time_since = time.time() - last_refresh
+        time_remaining = max(0, 30 - int(time_since))
+        
+        # Timer com cores
+        if time_remaining > 20:
+            color = "#10b981"  # Verde
+            icon = "🟢"
+        elif time_remaining > 10:
+            color = "#f59e0b"  # Amarelo
+            icon = "🟡"
+        else:
+            color = "#ef4444"  # Vermelho
+            icon = "🔴"
+        
+        timer_placeholder.markdown(
+            f"""<div style="background: linear-gradient(90deg, {color} 0%, {color}22 100%); 
+            padding: 0.5rem 1rem; border-radius: 0.5rem; margin-bottom: 1rem; 
+            text-align: center; font-weight: bold; color: #1f2937;">
+            {icon} Próxima atualização automática em: <span style="font-size: 1.2rem; color: {color};">{time_remaining}s</span>
+            </div>""",
+            unsafe_allow_html=True
+        )
+    else:
+        timer_placeholder.info("⚠️ Auto-refresh desabilitado. Atualize manualmente.")
+
+
     # 3) Sincronização: no pulso do autorefresh, puxa do banco.
     #    Se o usuário estiver com um "menu" aberto (active_view), não sobrescreve campos; marca pendente.
     if pulse:
