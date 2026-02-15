@@ -1292,37 +1292,63 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
         pulse = False
 
     # ========================================
-    # TIMER VISUAL - Mostra quando vai atualizar
+    # TIMER VISUAL EM TEMPO REAL (JavaScript)
     # ========================================
     try:
-        timer_placeholder = st.empty()
         if st.session_state.get("_using_autorefresh_lib"):
-            last_refresh = st.session_state.get("_last_autorefresh_ts", time.time())
-            time_since = time.time() - last_refresh
-            time_remaining = max(0, 30 - int(time_since))
-            
-            if time_remaining > 20:
-                color = "#10b981"
-                icon = "🟢"
-            elif time_remaining > 10:
-                color = "#f59e0b"
-                icon = "🟡"
-            else:
-                color = "#ef4444"
-                icon = "🔴"
-            
-            timer_placeholder.markdown(
-                f"""<div style="background: linear-gradient(90deg, {color} 0%, {color}22 100%); 
-                padding: 0.5rem 1rem; border-radius: 0.5rem; margin-bottom: 1rem; 
-                text-align: center; font-weight: bold; color: #1f2937;">
-                {icon} Próxima atualização automática em: <span style="font-size: 1.2rem; color: {color};">{time_remaining}s</span>
-                </div>""",
+            # Timer em tempo real com JavaScript
+            st.markdown(
+                '''
+                <div id="timer-container" style="padding: 0.75rem 1.5rem; border-radius: 0.5rem; 
+                     margin-bottom: 1rem; text-align: center; font-weight: bold; 
+                     font-size: 1.1rem; transition: all 0.3s ease;">
+                    <span id="timer-icon">🟢</span>
+                    Próxima atualização automática em: 
+                    <span id="timer-seconds" style="font-size: 1.3rem; font-weight: bold;">30</span>s
+                </div>
+                <script>
+                (function() {
+                    let seconds = 30;
+                    const container = document.getElementById("timer-container");
+                    const icon = document.getElementById("timer-icon");
+                    const display = document.getElementById("timer-seconds");
+                    
+                    function updateTimer() {
+                        if (seconds > 20) {
+                            container.style.background = "linear-gradient(90deg, #10b981 0%, #10b98122 100%)";
+                            container.style.color = "#1f2937";
+                            icon.textContent = "🟢";
+                        } else if (seconds > 10) {
+                            container.style.background = "linear-gradient(90deg, #f59e0b 0%, #f59e0b22 100%)";
+                            container.style.color = "#1f2937";
+                            icon.textContent = "🟡";
+                        } else {
+                            container.style.background = "linear-gradient(90deg, #ef4444 0%, #ef444422 100%)";
+                            container.style.color = "#1f2937";
+                            icon.textContent = "🔴";
+                        }
+                        
+                        display.textContent = seconds;
+                        display.style.color = seconds > 20 ? "#10b981" : seconds > 10 ? "#f59e0b" : "#ef4444";
+                        
+                        if (seconds > 0) {
+                            seconds--;
+                        } else {
+                            seconds = 30;
+                        }
+                    }
+                    
+                    updateTimer();
+                    setInterval(updateTimer, 1000);
+                })();
+                </script>
+                ''',
                 unsafe_allow_html=True
             )
         else:
-            timer_placeholder.info("⚠️ Auto-refresh desabilitado. Atualize manualmente.")
+            st.info("⚠️ Auto-refresh desabilitado. Atualize manualmente.")
     except Exception:
-        pass  # Silencia erros do timer
+        pass
 
 
     # 3) Sincronização: no pulso do autorefresh, puxa do banco.
