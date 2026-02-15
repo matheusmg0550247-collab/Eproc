@@ -6,3 +6,4 @@ python-docx
 altair
 watchdog
 playwright==1.41.0
+streamlit-autorefresh==1.0.1
