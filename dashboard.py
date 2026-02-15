@@ -1,10 +1,9 @@
-
 # -*- coding: utf-8 -*-
 import streamlit as st
 
 
 # ============================================
-# OTIMIZADO: Auto-refresh de 30s (vs 20s original)
+# OTIMIZADO: Auto-refresh de 30s (vs 20s)
 # Economia: 33% menos processamento
 # ============================================
 
@@ -1299,7 +1298,7 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
         st.session_state["_using_autorefresh_lib"] = True
         device_seed = str(st.session_state.get("device_id_val") or usuario_logado or team_id)
         jitter_ms = int(hashlib.sha256(device_seed.encode("utf-8")).hexdigest(), 16) % 4000
-        interval_ms = 30000 + jitter_ms  # 30 segundos (vs 20s original)
+        interval_ms = 30000 + jitter_ms  # 30s
         tick = st_autorefresh(interval=interval_ms, key=f"autorefresh_{team_id}")
         last_tick = st.session_state.get("_autorefresh_tick")
         pulse = (last_tick is None) or (tick != last_tick)
@@ -1307,14 +1306,8 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
     else:
         st.session_state["_using_autorefresh_lib"] = False
         pulse = False
-    
-    # 3) Sincronização: no pulso do autorefresh, puxa do banco
-            st.session_state['_pending_global_refresh'] = True
-        else:
-            st.session_state['_pending_global_refresh'] = False
-            # Atualiza o estado da equipe atual (cache TTL já ajuda, mas aqui garantimos o "puxar" a cada pulso)
-            sync_state_from_db()
 
+    # 3) Sincronização no pulso do autorefresh
     # Se tinha refresh pendente e o usuário fechou o menu, aplica já
     if st.session_state.get('_pending_global_refresh') and not st.session_state.get('active_view'):
         st.session_state['_pending_global_refresh'] = False
