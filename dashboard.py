@@ -12,14 +12,23 @@ import time
 import gc
 from datetime import datetime, timedelta, date
 
+try:
+    from zoneinfo import ZoneInfo
+except Exception:
+    ZoneInfo = None
+
+
 
 # =========================================================
 # AUTO-REFRESH + CONTADOR EM TEMPO REAL (CLIENT-SIDE)
 # =========================================================
 def _format_dt_br(ts: float) -> str:
-    """Formato brasileiro: dd/mm/yyyy HH:MM:SS"""
+    """Formato brasileiro (Brasília): dd/mm/yyyy HH:MM:SS"""
     try:
-        return datetime.fromtimestamp(ts).strftime("%d/%m/%Y %H:%M:%S")
+        if ZoneInfo is not None:
+            return datetime.fromtimestamp(ts, ZoneInfo("America/Sao_Paulo")).strftime("%d/%m/%Y %H:%M:%S")
+        # Fallback: assume UTC and apply Brasília offset (-03:00)
+        return (datetime.utcfromtimestamp(ts) - timedelta(hours=3)).strftime("%d/%m/%Y %H:%M:%S")
     except Exception:
         return "--/--/---- --:--:--"
 
