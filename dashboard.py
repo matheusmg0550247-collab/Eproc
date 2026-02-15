@@ -4,9 +4,8 @@ import streamlit as st
 
 
 # ============================================
-# OTIMIZADO: Auto-refresh de 30s + verificação de versão
-# Só sincroniza quando estado realmente muda
-# Economia: ~70% de queries
+# OTIMIZADO: Auto-refresh de 30s (vs 20s original)
+# Economia: 33% menos processamento
 # ============================================
 
 # Auto-refresh (opcional)
@@ -1294,15 +1293,13 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
         CONSULTORES = list(consultores_list)
 
     # ============================================
-    # REFRESH HÍBRIDO: 30s + verificação de versão
+    # AUTO-REFRESH SIMPLES - 30 SEGUNDOS
     # ============================================
-    
-    # Auto-refresh a cada 30 segundos (vs 20s original)
     if st_autorefresh:
         st.session_state["_using_autorefresh_lib"] = True
         device_seed = str(st.session_state.get("device_id_val") or usuario_logado or team_id)
         jitter_ms = int(hashlib.sha256(device_seed.encode("utf-8")).hexdigest(), 16) % 4000
-        interval_ms = 30000 + jitter_ms  # 30s com jitter
+        interval_ms = 30000 + jitter_ms  # 30 segundos (vs 20s original)
         tick = st_autorefresh(interval=interval_ms, key=f"autorefresh_{team_id}")
         last_tick = st.session_state.get("_autorefresh_tick")
         pulse = (last_tick is None) or (tick != last_tick)
@@ -1311,41 +1308,7 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
         st.session_state["_using_autorefresh_lib"] = False
         pulse = False
     
-    # Verificar se versão do estado mudou (otimização crítica)
-    if "last_known_version" not in st.session_state:
-        try:
-            st.session_state["last_known_version"] = load_global_state_version()
-        except:
-            st.session_state["last_known_version"] = 0
-    
-    # 3) Sincronização inteligente: só puxa do banco se versão mudou
-    if pulse:
-        st.session_state["_last_autorefresh_ts"] = time.time()
-        
-        # Verifica se estado realmente mudou
-        try:
-            load_global_state_version.clear()  # Limpa cache
-            current_version = load_global_state_version()
-            last_known = st.session_state.get("last_known_version", 0)
-            
-            # SÓ sincroniza se versão mudou
-            if current_version != last_known and current_version > 0:
-                last_save = st.session_state.get("_last_save_time", 0)
-                time_since_save = time.time() - last_save
-                
-                # Ignora se foi este cliente que salvou há < 3s
-                if time_since_save > 3:
-                    st.session_state["last_known_version"] = current_version
-                    
-                    # Sincroniza dados do banco
-                    if st.session_state.get("active_view"):
-                        st.session_state["_pending_global_refresh"] = True
-                    else:
-                        st.session_state["_pending_global_refresh"] = False
-                        sync_state_from_db()
-        except Exception:
-            pass  # Ignora erros de conexão
-    
+    # 3) Sincronização: no pulso do autorefresh, puxa do banco
             st.session_state['_pending_global_refresh'] = True
         else:
             st.session_state['_pending_global_refresh'] = False
