@@ -1,12 +1,6 @@
 # -*- coding: utf-8 -*-
 import streamlit as st
 
-
-# ============================================
-# OTIMIZADO: Auto-refresh de 30s (vs 20s)
-# Economia: 33% menos processamento
-# ============================================
-
 # Auto-refresh (opcional)
 try:
     from streamlit_autorefresh import st_autorefresh
@@ -336,7 +330,6 @@ def bump_global_state_version(sb=None):
         except Exception:
             pass
         st.session_state["_global_state_version_seen"] = ver
-        st.session_state["_last_save_time"] = time.time()
     except Exception:
         pass
 
@@ -363,20 +356,14 @@ def save_state_to_db(app_id, state_data):
         st.error(f"🔥 ERRO DE ESCRITA NO BANCO: {e}")
 
 # --- LOGMEIN DB ---
-@st.cache_data(ttl=10, show_spinner=False)
-def get_logmein_status_cached():
+def get_logmein_status():
     sb = get_supabase()
     if not sb: return None, False
     try:
         res = sb.table("controle_logmein").select("*").eq("id", LOGMEIN_DB_ID).execute()
         if res.data:
-            return res.data[0].get("consultor_atual"), res.data[0].get("em_uso", False)
+            return res.data[0].get('consultor_atual'), res.data[0].get('em_uso', False)
     except: pass
-    return None, False
-
-def get_logmein_status():
-    get_logmein_status_cached.clear()
-    return get_logmein_status_cached()
     return None, False
 
 def set_logmein_status(consultor, em_uso):
@@ -389,8 +376,6 @@ def set_logmein_status(consultor, em_uso):
             "data_inicio": datetime.now().isoformat()
         }
         sb.table("controle_logmein").update(dados).eq("id", LOGMEIN_DB_ID).execute()
-        get_logmein_status_cached.clear()
-        bump_global_state_version()
     except Exception as e: st.error(f"Erro LogMeIn DB: {e}")
 
 # ============================================
@@ -1291,23 +1276,32 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
     if consultores_list:
         CONSULTORES = list(consultores_list)
 
-    # ============================================
-    # AUTO-REFRESH SIMPLES - 30 SEGUNDOS
-    # ============================================
+    # 2) Auto-refresh global (30s) — com "jitter" para não derrubar CPU quando vários usuários abrem ao mesmo tempo.
+    #    (espalha os reruns no tempo e reduz picos)
     if st_autorefresh:
-        st.session_state["_using_autorefresh_lib"] = True
-        device_seed = str(st.session_state.get("device_id_val") or usuario_logado or team_id)
-        jitter_ms = int(hashlib.sha256(device_seed.encode("utf-8")).hexdigest(), 16) % 4000
-        interval_ms = 30000 + jitter_ms  # 30s
+        st.session_state['_using_autorefresh_lib'] = True
+        device_seed = str(st.session_state.get('device_id_val') or usuario_logado or team_id)
+        jitter_ms = int(hashlib.sha256(device_seed.encode('utf-8')).hexdigest(), 16) % 4000  # 0..3999ms
+        interval_ms = 30000 + jitter_ms  # ~30s (otimizado - economia de 33%)
         tick = st_autorefresh(interval=interval_ms, key=f"autorefresh_{team_id}")
-        last_tick = st.session_state.get("_autorefresh_tick")
+        last_tick = st.session_state.get('_autorefresh_tick')
         pulse = (last_tick is None) or (tick != last_tick)
-        st.session_state["_autorefresh_tick"] = tick
+        st.session_state['_autorefresh_tick'] = tick
     else:
-        st.session_state["_using_autorefresh_lib"] = False
+        st.session_state['_using_autorefresh_lib'] = False
         pulse = False
 
-    # 3) Sincronização no pulso do autorefresh
+    # 3) Sincronização: no pulso do autorefresh, puxa do banco.
+    #    Se o usuário estiver com um "menu" aberto (active_view), não sobrescreve campos; marca pendente.
+    if pulse:
+        st.session_state['_last_autorefresh_ts'] = time.time()
+        if st.session_state.get('active_view'):
+            st.session_state['_pending_global_refresh'] = True
+        else:
+            st.session_state['_pending_global_refresh'] = False
+            # Atualiza o estado da equipe atual (cache TTL já ajuda, mas aqui garantimos o "puxar" a cada pulso)
+            sync_state_from_db()
+
     # Se tinha refresh pendente e o usuário fechou o menu, aplica já
     if st.session_state.get('_pending_global_refresh') and not st.session_state.get('active_view'):
         st.session_state['_pending_global_refresh'] = False
