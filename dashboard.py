@@ -18,6 +18,103 @@ import uuid
 import unicodedata
 import base64
 import io
+
+
+import streamlit.components.v1 as components
+
+def _hms_from_ts(ts: float) -> str:
+    try:
+        return datetime.fromtimestamp(ts).strftime("%H:%M:%S")
+    except Exception:
+        return "--:--:--"
+
+def autorefresh_with_realtime_countdown(
+    interval_seconds: int = 30,
+    key_prefix: str = "autorefresh",
+    jitter_ms_max: int = 0,
+    seed: str | None = None,
+    show_box: bool = True,
+) -> bool:
+    """
+    Auto-refresh the Streamlit app every `interval_seconds` and show a real-time countdown
+    (updates on the client side with JS).
+
+    Returns:
+        pulse (bool): True when a new refresh tick occurred.
+    """
+    interval_seconds = int(max(5, interval_seconds))
+    base_ms = interval_seconds * 1000
+
+    # Jitter (optional) — spreads reruns to reduce server spikes when many users open at once.
+    jitter_ms = 0
+    if jitter_ms_max and seed:
+        try:
+            jitter_ms = int(hashlib.sha256(str(seed).encode("utf-8")).hexdigest(), 16) % int(jitter_ms_max)
+        except Exception:
+            jitter_ms = 0
+    interval_ms = base_ms + jitter_ms
+
+    pulse = False
+    if st_autorefresh is not None:
+        tick = st_autorefresh(interval=interval_ms, key=f"{key_prefix}_tick")
+        last_tick = st.session_state.get(f"{key_prefix}_last_tick")
+        pulse = (last_tick is None) or (tick != last_tick)
+        st.session_state[f"{key_prefix}_last_tick"] = tick
+    else:
+        # No automatic rerun available; keep countdown + expose a manual refresh.
+        if show_box:
+            st.warning("⚠️ Auto-refresh indisponível: instale `streamlit-autorefresh` para atualizar sozinho a cada 30s.")
+        if st.button("🔄 Atualizar agora", key=f"{key_prefix}_manual_btn"):
+            pulse = True
+
+    # Compute next refresh timestamp for countdown.
+    now = time.time()
+    next_key = f"{key_prefix}_next_refresh_ts"
+    if (next_key not in st.session_state) or pulse:
+        # If we have the autorefresh lib, next refresh should be roughly now + interval_seconds.
+        st.session_state[next_key] = now + interval_seconds
+
+    next_ts = float(st.session_state[next_key])
+    remaining = max(0, int(round(next_ts - now)))
+
+    if show_box:
+        target_ms = int(next_ts * 1000)
+        box_html = f"""
+<div style="
+  border:1px solid #eee; background: rgba(255,255,255,0.98);
+  padding:10px 12px; border-radius: 12px; margin: 6px 0 12px 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+    <div style="font-weight:800;">⏳ Próxima atualização</div>
+    <div style="font-size:13px; color:#666;">às <b>{_hms_from_ts(next_ts)}</b></div>
+  </div>
+  <div style="margin-top:6px; font-size:14px;">
+    Em <b><span id="{key_prefix}_cd">{remaining}</span>s</b>
+  </div>
+
+<script>
+(function() {{
+  const el = document.getElementById("{key_prefix}_cd");
+  if (!el) return;
+  const target = {target_ms};
+
+  function tick() {{
+    const now = Date.now();
+    const diff = Math.max(0, Math.round((target - now) / 1000));
+    el.textContent = String(diff);
+    if (diff <= 0) clearInterval(timer);
+  }}
+
+  tick();
+  const timer = setInterval(tick, 250);
+}})();
+</script>
+</div>
+"""
+        components.html(box_html, height=92)
+
+    return bool(pulse)
 from supabase import create_client
 from docx import Document
 from docx.shared import Pt, Cm
@@ -1276,20 +1373,19 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
     if consultores_list:
         CONSULTORES = list(consultores_list)
 
-    # 2) Auto-refresh global (30s) — com "jitter" para não derrubar CPU quando vários usuários abrem ao mesmo tempo.
-    #    (espalha os reruns no tempo e reduz picos)
-    if st_autorefresh:
-        st.session_state['_using_autorefresh_lib'] = True
-        device_seed = str(st.session_state.get('device_id_val') or usuario_logado or team_id)
-        jitter_ms = int(hashlib.sha256(device_seed.encode('utf-8')).hexdigest(), 16) % 4000  # 0..3999ms
-        interval_ms = 30000 + jitter_ms  # 30s (otimizado)  # ~20s
-        tick = st_autorefresh(interval=interval_ms, key=f"autorefresh_{team_id}")
-        last_tick = st.session_state.get('_autorefresh_tick')
-        pulse = (last_tick is None) or (tick != last_tick)
-        st.session_state['_autorefresh_tick'] = tick
-    else:
-        st.session_state['_using_autorefresh_lib'] = False
-        pulse = False
+    # 2) Auto-refresh global (30s) + contador em tempo real
+    #    - usa streamlit_autorefresh (se instalado)
+    #    - mostra countdown em tempo real (JS no client)
+    device_seed = str(st.session_state.get('device_id_val') or usuario_logado or team_id)
+    pulse = autorefresh_with_realtime_countdown(
+        interval_seconds=30,
+        key_prefix=f"team{team_id}_refresh",
+        jitter_ms_max=4000,
+        seed=device_seed,
+        show_box=True,
+    )
+
+
 
     # 3) Sincronização: no pulso do autorefresh, puxa do banco.
     #    Se o usuário estiver com um "menu" aberto (active_view), não sobrescreve campos; marca pendente.
