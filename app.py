@@ -175,27 +175,27 @@ def main():
         nome = st.session_state.get("consultor_logado")
 
         secrets = _safe_secrets()
-show_other = bool(secrets.get("features", {}).get("show_other_team_queue", False))
-other_id = TEAM_ID_LEGADOS if show_other else 0
-other_name = "Legados" if show_other else ""
+        show_other = bool(secrets.get("features", {}).get("show_other_team_queue", False))
+        other_id = TEAM_ID_LEGADOS if show_other else 0
+        other_name = "Legados" if show_other else ""
 
-webhook_key = (
-    secrets.get("n8n", {}).get("bastao_giro", "")
-    or os.getenv("N8N_BASTAO_GIRO", "")
-    or os.getenv("WEBHOOK_KEY", "")
-)
-app_url = (
-    secrets.get("app", {}).get("url_cloud", "")
-    or os.getenv("APP_URL_CLOUD", "")
-    or "http://157.230.167.24:8503"
-)
+        webhook_key = (
+            secrets.get("n8n", {}).get("bastao_giro", "")
+            or os.getenv("N8N_BASTAO_GIRO", "")
+            or os.getenv("WEBHOOK_KEY", "")
+        )
+        app_url = (
+            secrets.get("app", {}).get("url_cloud", "")
+            or os.getenv("APP_URL_CLOUD", "")
+            or "http://157.230.167.24:8503"
+        )
 
-render_dashboard(
-    team_id=TEAM_ID_EPROC,
-    team_name="Eproc",
-    consultores_list=EQUIPE_EPROC,
-    webhook_key=webhook_key,
-    app_url=app_url,
+        render_dashboard(
+            team_id=TEAM_ID_EPROC,
+            team_name="Eproc",
+            consultores_list=EQUIPE_EPROC,
+            webhook_key=webhook_key,
+            app_url=app_url,
             other_team_id=other_id,
             other_team_name=other_name,
             usuario_logado=nome,
