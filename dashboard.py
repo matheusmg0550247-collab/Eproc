@@ -10,6 +10,7 @@ except Exception:
 import requests
 import time
 import gc
+import re
 from datetime import datetime, timedelta, date
 
 try:
@@ -116,6 +117,63 @@ def autorefresh_with_realtime_countdown(
         components.html(box_html, height=100)
 
     return bool(pulse)
+
+# =========================================================
+# DATETIME: NORMALIZAÇÃO (evita erros str vs datetime)
+# =========================================================
+def _parse_any_datetime_to_br_naive(val):
+    """Converte datetime/str para datetime *naive* no fuso de Brasília (quando possível)."""
+    if val is None:
+        return None
+    if isinstance(val, datetime):
+        dt = val
+    elif isinstance(val, (int, float)):
+        # epoch seconds
+        try:
+            if ZoneInfo is not None:
+                dt = datetime.fromtimestamp(float(val), ZoneInfo("America/Sao_Paulo"))
+            else:
+                dt = (datetime.utcfromtimestamp(float(val)) - timedelta(hours=3))
+        except Exception:
+            return None
+    elif isinstance(val, str):
+        s = val.strip()
+        if not s:
+            return None
+        # aceitar sufixo Z
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        # normalizar separador
+        if " " in s and "T" not in s:
+            s = s.replace(" ", "T", 1)
+        # limitar fração de segundos para 6 dígitos (fromisoformat exige <=6)
+        m = re.match(r"^(.*\.\d{1,6})\d+(.*)$", s)
+        if m:
+            s = m.group(1) + m.group(2)
+        try:
+            dt = datetime.fromisoformat(s)
+        except Exception:
+            return None
+    else:
+        return None
+
+    # converter para Brasília e remover tzinfo (naive)
+    try:
+        if getattr(dt, "tzinfo", None) is not None:
+            if ZoneInfo is not None:
+                dt = dt.astimezone(ZoneInfo("America/Sao_Paulo"))
+            else:
+                # fallback: converte para UTC e aplica offset -03:00
+                dt = dt.astimezone(None)
+                dt = dt - timedelta(hours=3)
+            dt = dt.replace(tzinfo=None)
+    except Exception:
+        try:
+            dt = dt.replace(tzinfo=None)
+        except Exception:
+            pass
+    return dt
+
 
 from operator import itemgetter
 import json
@@ -825,16 +883,16 @@ def sync_state_from_db():
                     
         if 'bastao_start_time' in db_data and db_data['bastao_start_time']:
             try:
-                if isinstance(db_data['bastao_start_time'], str): st.session_state['bastao_start_time'] = datetime.fromisoformat(db_data['bastao_start_time'])
-                else: st.session_state['bastao_start_time'] = db_data['bastao_start_time']
+                parsed_bt = _parse_any_datetime_to_br_naive(db_data['bastao_start_time'])
+                if parsed_bt is not None:
+                    st.session_state['bastao_start_time'] = parsed_bt
             except: pass
         if 'current_status_starts' in db_data:
             starts = db_data['current_status_starts']
             for nome, val in starts.items():
-                if isinstance(val, str):
-                    try: st.session_state.current_status_starts[nome] = datetime.fromisoformat(val)
-                    except: pass
-                else: st.session_state.current_status_starts[nome] = val
+                parsed_val = _parse_any_datetime_to_br_naive(val)
+                if parsed_val is not None:
+                    st.session_state.current_status_starts[nome] = parsed_val
     except Exception as e: print(f"Erro sync: {e}")
 
 def log_status_change(consultor, old_status, new_status, duration):
@@ -1732,7 +1790,15 @@ button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{filter: brightness(1.04)
         st.header("Responsável pelo Bastão")
         if responsavel:
             st.markdown(f"""<div style="background: linear-gradient(135deg, #FFF3E0 0%, #FFFFFF 100%); border: 3px solid #FF8C00; padding: 25px; border-radius: 15px; display: flex; align-items: center; box-shadow: 0 4px 15px rgba(255, 140, 0, 0.3); margin-bottom: 20px;"><div style="flex-shrink: 0; margin-right: 25px;"><img src="{GIF_BASTAO_HOLDER}" style="width: 90px; height: 90px; border-radius: 50%; object-fit: cover; border: 2px solid #FF8C00;"></div><div><span style="font-size: 14px; color: #555; font-weight: bold; text-transform: uppercase; letter-spacing: 1.5px;">Atualmente com:</span><br><span style="font-size: 42px; font-weight: 800; color: #FF4500; line-height: 1.1;">{responsavel}</span></div></div>""", unsafe_allow_html=True)
-            dur = get_brazil_time() - (st.session_state.bastao_start_time or get_brazil_time())
+            now_br = _parse_any_datetime_to_br_naive(get_brazil_time()) or get_brazil_time()
+            bt_raw = st.session_state.get('bastao_start_time')
+            bt_dt = _parse_any_datetime_to_br_naive(bt_raw)
+            if bt_dt is None:
+                bt_dt = now_br
+            else:
+                # guarda normalizado para evitar erro nas próximas execuções
+                st.session_state['bastao_start_time'] = bt_dt
+            dur = now_br - bt_dt
             st.caption(f"⏱️ Tempo com o bastão: **{format_time_duration(dur)}**")
         else: st.markdown('<h2>(Ninguém com o bastão)</h2>', unsafe_allow_html=True)
     
