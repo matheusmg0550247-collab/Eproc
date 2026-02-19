@@ -10,8 +10,7 @@ except Exception:
 import requests
 import time
 import gc
-import re
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 
 try:
     from zoneinfo import ZoneInfo
@@ -118,63 +117,6 @@ def autorefresh_with_realtime_countdown(
 
     return bool(pulse)
 
-# =========================================================
-# DATETIME: NORMALIZAÇÃO (evita erros str vs datetime)
-# =========================================================
-def _parse_any_datetime_to_br_naive(val):
-    """Converte datetime/str para datetime *naive* no fuso de Brasília (quando possível)."""
-    if val is None:
-        return None
-    if isinstance(val, datetime):
-        dt = val
-    elif isinstance(val, (int, float)):
-        # epoch seconds
-        try:
-            if ZoneInfo is not None:
-                dt = datetime.fromtimestamp(float(val), ZoneInfo("America/Sao_Paulo"))
-            else:
-                dt = (datetime.utcfromtimestamp(float(val)) - timedelta(hours=3))
-        except Exception:
-            return None
-    elif isinstance(val, str):
-        s = val.strip()
-        if not s:
-            return None
-        # aceitar sufixo Z
-        if s.endswith("Z"):
-            s = s[:-1] + "+00:00"
-        # normalizar separador
-        if " " in s and "T" not in s:
-            s = s.replace(" ", "T", 1)
-        # limitar fração de segundos para 6 dígitos (fromisoformat exige <=6)
-        m = re.match(r"^(.*\.\d{1,6})\d+(.*)$", s)
-        if m:
-            s = m.group(1) + m.group(2)
-        try:
-            dt = datetime.fromisoformat(s)
-        except Exception:
-            return None
-    else:
-        return None
-
-    # converter para Brasília e remover tzinfo (naive)
-    try:
-        if getattr(dt, "tzinfo", None) is not None:
-            if ZoneInfo is not None:
-                dt = dt.astimezone(ZoneInfo("America/Sao_Paulo"))
-            else:
-                # fallback: converte para UTC e aplica offset -03:00
-                dt = dt.astimezone(None)
-                dt = dt - timedelta(hours=3)
-            dt = dt.replace(tzinfo=None)
-    except Exception:
-        try:
-            dt = dt.replace(tzinfo=None)
-        except Exception:
-            pass
-    return dt
-
-
 from operator import itemgetter
 import json
 import hashlib
@@ -204,13 +146,159 @@ DB_APP_ID = 2        # ID da Fila desta equipe
 LOGMEIN_DB_ID = 1    # ID do LogMeIn (COMPARTILHADO - SEMPRE 1)
 GLOBAL_STATE_VERSION_ID = 9999  # Carimbo global (qualquer equipe) para disparar refresh
 
-CONSULTORES = sorted([
-    "Barbara Mara", "Bruno Glaicon", "Claudia Luiza", "Douglas Paiva", "Fábio Alves", "Glayce Torres", 
-    "Isabela Dias", "Isac Candido", "Ivana Guimarães", "Leonardo Damaceno", "Marcelo PenaGuerra", 
-    "Michael Douglas", "Morôni", "Pablo Mol", "Ranyer Segal", "Sarah Leal", "Victoria Lisboa"
-])
-
+CONSULTORES = [
+    "Barbara Mara Moreira Acacia Ribeiro Araujo",
+    "Bruno Glaicon de Souza Martins",
+    "Claudia Luiza Siqueira Jordão",
+    "Douglas Paiva Silva",
+    "Fábio Alves de Sousa",
+    "Glayce Torres Silva",
+    "Isabela Dias Homssi",
+    "Isac Candido Martins",
+    "Ivana Guimarães Bastos",
+    "Leonardo Damaceno de Lacerda",
+    "Marcelo Pena Guerra",
+    "Michael Douglas Moreira Freitas de Aguiar",
+    "Morôni Lei Oliveira Fagundes",
+    "Pablo Victor Lenti Mal",
+    "Ranyer Segal Pontes",
+    "Sarah Leal Araujo",
+    "Victoria Lisboa Orsi Guimarães",
+]
 # Listas de Opções
+
+# --- Normalização de nomes (Eproc) ---
+EQUIPE_EPROC_CANON = CONSULTORES
+
+EQUIPE_EPROC_ALIASES = {
+    "Barbara Mara": "Barbara Mara Moreira Acacia Ribeiro Araujo",
+    "Bruno Glaicon": "Bruno Glaicon de Souza Martins",
+    "Claudia Luiza": "Claudia Luiza Siqueira Jordão",
+    "Douglas Paiva": "Douglas Paiva Silva",
+    "Fábio Alves": "Fábio Alves de Sousa",
+    "Fabio Alves": "Fábio Alves de Sousa",
+    "Glayce Torres": "Glayce Torres Silva",
+    "Glayce Torres Silva": "Glayce Torres Silva",
+    "Isabela Dias": "Isabela Dias Homssi",
+    "Isac Candido": "Isac Candido Martins",
+    "Ivana Guimarães": "Ivana Guimarães Bastos",
+    "Ivana Guimaraes": "Ivana Guimarães Bastos",
+    "Leonardo Damaceno": "Leonardo Damaceno de Lacerda",
+    "Marcelo Guerra": "Marcelo Pena Guerra",
+    "Marcelo PenaGuerra": "Marcelo Pena Guerra",
+    "Marcelo Pena Guerra": "Marcelo Pena Guerra",
+    "Michael Douglas": "Michael Douglas Moreira Freitas de Aguiar",
+    "Morôni": "Morôni Lei Oliveira Fagundes",
+    "Moroni": "Morôni Lei Oliveira Fagundes",
+    "Pablo Mol": "Pablo Victor Lenti Mal",
+    "Pablo Victor": "Pablo Victor Lenti Mal",
+    "Ranyer Segal": "Ranyer Segal Pontes",
+    "Sarah Leal": "Sarah Leal Araujo",
+    "Victoria Lisboa": "Victoria Lisboa Orsi Guimarães",
+}
+
+def _slugify_nome(s: str) -> str:
+    if not s:
+        return ""
+    try:
+        s = unicodedata.normalize("NFKD", str(s))
+        s = "".join(ch for ch in s if not unicodedata.combining(ch))
+        s = s.lower()
+        s = re.sub(r"[^a-z0-9]+", " ", s).strip()
+        return re.sub(r"\s+", " ", s)
+    except Exception:
+        return str(s).strip().lower()
+
+def _build_alias_map(canon_list):
+    amap = {}
+    for full in canon_list or []:
+        full = str(full).strip()
+        if not full:
+            continue
+        amap[_slugify_nome(full)] = full
+        parts = full.split()
+        # 2 e 3 primeiros nomes (como aparecem no sistema antigo)
+        if len(parts) >= 2:
+            amap.setdefault(_slugify_nome(" ".join(parts[:2])), full)
+        if len(parts) >= 3:
+            amap.setdefault(_slugify_nome(" ".join(parts[:3])), full)
+
+    # aliases manuais (legado)
+    for k, v in EQUIPE_EPROC_ALIASES.items():
+        amap[_slugify_nome(k)] = v
+    return amap
+
+def normalize_consultor_nome(nome: str) -> str:
+    if not nome:
+        return nome
+    canon_list = st.session_state.get("consultores_list") or EQUIPE_EPROC_CANON
+    amap = st.session_state.get("_alias_map_eproc")
+    if not amap or st.session_state.get("_alias_map_eproc_len") != len(canon_list):
+        amap = _build_alias_map(canon_list)
+        st.session_state["_alias_map_eproc"] = amap
+        st.session_state["_alias_map_eproc_len"] = len(canon_list)
+    key = _slugify_nome(nome)
+    return amap.get(key, nome)
+
+def _parse_any_datetime_to_br_naive(val):
+    """Converte datetime/str(ISO)/epoch para datetime naive no fuso de Brasília.
+    Aceita strings com 'Z' no final."""
+    if val is None or val == "":
+        return None
+    try:
+        if isinstance(val, datetime):
+            dt = val
+        elif isinstance(val, (int, float)):
+            dt = datetime.fromtimestamp(val)
+        elif isinstance(val, str):
+            s = val.strip()
+            if s.endswith("Z"):
+                s = s[:-1] + "+00:00"
+            try:
+                dt = datetime.fromisoformat(s)
+            except Exception:
+                try:
+                    from dateutil import parser as _parser  # type: ignore
+                    dt = _parser.isoparse(val)
+                except Exception:
+                    return None
+        else:
+            return None
+
+        # normaliza timezone -> Brasília (naive)
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(timezone(timedelta(hours=-3))).replace(tzinfo=None)
+        return dt
+    except Exception:
+        return None
+
+def _normalize_state_names_inplace(state: dict):
+    """Normaliza nomes em chaves comuns do app_state (fila, bastao_holder, etc.)."""
+    if not isinstance(state, dict):
+        return state
+
+    # bastão holder
+    if state.get("bastao_holder"):
+        state["bastao_holder"] = normalize_consultor_nome(state["bastao_holder"])
+
+    # fila principal
+    if isinstance(state.get("bastao_queue"), list):
+        state["bastao_queue"] = [normalize_consultor_nome(x) for x in state["bastao_queue"]]
+
+    if isinstance(state.get("priority_return_queue"), list):
+        state["priority_return_queue"] = [normalize_consultor_nome(x) for x in state["priority_return_queue"]]
+
+    # indicadores/contadores
+    for k in ("skip_flags", "bastao_counts", "previous_states", "quick_indicators", "status_texto"):
+        if isinstance(state.get(k), dict):
+            newd = {}
+            for n, v in state[k].items():
+                newd[normalize_consultor_nome(n)] = v
+            state[k] = newd
+
+    # current_status_starts (vem em sync_state_from_db)
+    return state
+
 REG_USUARIO_OPCOES = ["Cartório", "Gabinete", "Externo"]
 REG_SISTEMA_OPCOES = ["Conveniados", "Outros", "Eproc", "Themis", "JPE", "SIAP"]
 REG_CANAL_OPCOES = ["Presencial", "Telefone", "Email", "Whatsapp", "Outros"]
@@ -873,6 +961,12 @@ def sync_state_from_db():
         db_data = load_state_from_db(tid)
         if not db_data: return
 
+        # Normaliza nomes (compatibilidade com versões antigas)
+        try:
+            _normalize_state_names_inplace(db_data)
+        except Exception:
+            pass
+
         keys = ['status_texto', 'bastao_queue', 'skip_flags', 'bastao_counts', 'priority_return_queue', 'daily_logs', 'simon_ranking', 'previous_states', 'quick_indicators']
         for k in keys:
             if k in db_data: 
@@ -880,19 +974,24 @@ def sync_state_from_db():
                     st.session_state[k] = db_data[k][-150:] 
                 else:
                     st.session_state[k] = db_data[k]
-                    
-        if 'bastao_start_time' in db_data and db_data['bastao_start_time']:
-            try:
-                parsed_bt = _parse_any_datetime_to_br_naive(db_data['bastao_start_time'])
-                if parsed_bt is not None:
-                    st.session_state['bastao_start_time'] = parsed_bt
-            except: pass
-        if 'current_status_starts' in db_data:
-            starts = db_data['current_status_starts']
+        bst = _parse_any_datetime_to_br_naive(db_data.get('bastao_start_time'))
+        if bst:
+            st.session_state['bastao_start_time'] = bst
+        if 'current_status_starts' in db_data and isinstance(db_data.get('current_status_starts'), dict):
+            starts = db_data.get('current_status_starts') or {}
             for nome, val in starts.items():
-                parsed_val = _parse_any_datetime_to_br_naive(val)
-                if parsed_val is not None:
-                    st.session_state.current_status_starts[nome] = parsed_val
+                nm = normalize_consultor_nome(nome)
+                dt = _parse_any_datetime_to_br_naive(val)
+                if dt:
+                    try:
+                        st.session_state.current_status_starts[nm] = dt
+                    except Exception:
+                        st.session_state['current_status_starts'][nm] = dt
+                else:
+                    try:
+                        st.session_state.current_status_starts[nm] = val
+                    except Exception:
+                        st.session_state['current_status_starts'][nm] = val
     except Exception as e: print(f"Erro sync: {e}")
 
 def log_status_change(consultor, old_status, new_status, duration):
@@ -1316,167 +1415,61 @@ def toggle_view(v):
     if st.session_state.active_view == v: st.session_state.active_view = None
     else: st.session_state.active_view = v
 
-# ============================================
-# MIGRAÇÃO DE NOMES (LEGADOS)
-# - Mantém compatibilidade com estados antigos no Supabase
-# ============================================
-LEGADOS_MIGRATION_TAG = "legados_fullnames_v1"
-LEGADOS_NAME_ALIASES = {'Alex Paulo': 'Alex Paulo da Silva', 'Dirceu Gonçalves': 'Dirceu Gonçalves Siqueira Neto', 'Douglas De Souza': 'Douglas de Souza Gonçalves', 'Douglas de Souza': 'Douglas de Souza Gonçalves', 'Hugo Leonardo': 'Hugo Leonardo Murta', 'Farley': 'Farley Leandro de Oliveira Juliano', 'Gleis': 'Gleis da Silva Rodrigues', 'Igor Dayrell': 'Igor Dayrell Gonçalves Correa', 'Jerry Marcos': 'Jerry Marcos dos Santos Neto', 'Jonatas': 'Jonatas Gomes Saraiva', 'Leandro': 'Leandro Victor Catharino', 'Luiz Henrique': 'Luiz Henrique Barros Oliveira', 'Mariana Marques': 'Marina Silva Marques', 'Marina Marques': 'Marina Silva Marques', 'Marina Torres': 'Marina Torres do Amaral', 'Vanessa Ligiane': 'Vanessa Ligiane Pimenta Santos'}
-
-def _is_legados_context():
-    try:
-        tn = (st.session_state.get("team_name") or "")
-        if isinstance(tn, str) and "legad" in tn.lower():
-            return True
-    except Exception:
-        pass
-    # fallback: detecta pelo conjunto de consultores
-    try:
-        return any("Alex Paulo da Silva" == n for n in (CONSULTORES or []))
-    except Exception:
-        return False
-
-def _map_name(name, aliases):
-    if not isinstance(name, str):
-        return name
-    return aliases.get(name, name)
-
-def _migrate_state_names(state, aliases):
-    """Migra nomes em estruturas comuns do estado (dicts/listas/logs)."""
-    if not isinstance(state, dict) or not aliases:
-        return state, False
-
-    changed = False
-    out = dict(state)
-
-    def _map_dict_keys(d):
-        nonlocal changed
-        if not isinstance(d, dict):
-            return d
-        nd = {}
-        for k, v in d.items():
-            nk = _map_name(k, aliases)
-            if nk != k:
-                changed = True
-            if nk in nd and isinstance(v, dict) and isinstance(nd.get(nk), dict):
-                nd[nk] = {**nd[nk], **v}
-            else:
-                nd[nk] = v
-        return nd
-
-    def _map_list(lst):
-        nonlocal changed
-        if not isinstance(lst, list):
-            return lst
-        nl = []
-        for it in lst:
-            if isinstance(it, str):
-                nit = _map_name(it, aliases)
-                if nit != it:
-                    changed = True
-                nl.append(nit)
-            else:
-                nl.append(it)
-        return nl
-
-    for key in ["status_texto", "skip_flags", "current_status_starts", "bastao_counts", "previous_states", "quick_indicators"]:
-        if key in out:
-            out[key] = _map_dict_keys(out.get(key))
-
-    for key in ["bastao_queue", "priority_return_queue", "simon_ranking"]:
-        if key in out:
-            out[key] = _map_list(out.get(key))
-
-    if "daily_logs" in out and isinstance(out.get("daily_logs"), list):
-        new_logs = []
-        for item in out["daily_logs"]:
-            if isinstance(item, dict):
-                ni = dict(item)
-                if "consultor" in ni:
-                    ni["consultor"] = _map_name(ni.get("consultor"), aliases)
-                    if ni["consultor"] != item.get("consultor"):
-                        changed = True
-                new_logs.append(ni)
-            else:
-                new_logs.append(item)
-        out["daily_logs"] = new_logs
-
-    if "consultor_logado" in out:
-        out["consultor_logado"] = _map_name(out.get("consultor_logado"), aliases)
-
-    if "consultor_selectbox" in out:
-        out["consultor_selectbox"] = _map_name(out.get("consultor_selectbox"), aliases)
-
-    return out, changed
-
-def init_session_state(team_id=None):
-    """Inicializa estado do Streamlit sem misturar filas entre equipes."""
+def init_session_state():
     dev = get_browser_id()
-    if dev:
-        st.session_state["device_id_val"] = dev
-
-    tid = int(team_id or st.session_state.get("team_id", 2))
-
-    if (st.session_state.get("db_loaded") is not True) or (st.session_state.get("_db_loaded_team_id") != tid):
+    if dev: 
+        st.session_state['device_id_val'] = dev
+    
+    if 'db_loaded' not in st.session_state:
+        tid = st.session_state.get('team_id', 2)
         db = load_state_from_db(tid)
-        if db and isinstance(db, dict):
-            if "report_last_run_date" in db and isinstance(db.get("report_last_run_date"), str):
-                try:
-                    db["report_last_run_date"] = datetime.fromisoformat(db["report_last_run_date"])
-                except Exception:
-                    db["report_last_run_date"] = datetime.min
-
-            if _is_legados_context() and db.get("_name_migration") != LEGADOS_MIGRATION_TAG:
-                migrated_db, changed = _migrate_state_names(db, LEGADOS_NAME_ALIASES)
-                if changed:
-                    migrated_db["_name_migration"] = LEGADOS_MIGRATION_TAG
-                    db = migrated_db
-                    try:
-                        save_state_to_db(tid, db)
-                    except Exception:
-                        pass
-
+        if db:
+            try:
+                _normalize_state_names_inplace(db)
+            except Exception:
+                pass
+            if 'report_last_run_date' in db and isinstance(db['report_last_run_date'], str):
+                try: 
+                    db['report_last_run_date'] = datetime.fromisoformat(db['report_last_run_date'])
+                except: 
+                    db['report_last_run_date'] = datetime.min
             st.session_state.update(db)
+            # Normaliza datetimes carregados do banco
+            try:
+                _bst = _parse_any_datetime_to_br_naive(st.session_state.get('bastao_start_time'))
+                if _bst:
+                    st.session_state['bastao_start_time'] = _bst
+            except Exception:
+                pass
 
-        st.session_state["db_loaded"] = True
-        st.session_state["_db_loaded_team_id"] = tid
+            try:
+                if isinstance(st.session_state.get('current_status_starts'), dict):
+                    _new = {}
+                    for _n, _v in st.session_state['current_status_starts'].items():
+                        _nn = normalize_consultor_nome(_n)
+                        _dt = _parse_any_datetime_to_br_naive(_v)
+                        _new[_nn] = _dt or _v
+                    st.session_state['current_status_starts'] = _new
+            except Exception:
+                pass
 
+        st.session_state['db_loaded'] = True
+    
     defaults = {
-        "bastao_start_time": None,
-        "report_last_run_date": datetime.min,
-        "rotation_gif_start_time": None,
-        "play_sound": False,
-        "gif_warning": False,
-        "lunch_warning_info": None,
-        "last_reg_status": None,
-        "chamado_guide_step": 0,
-        "auxilio_ativo": False,
-        "active_view": None,
-        "consultor_selectbox": "Selecione um nome",
-        "status_texto": {n: "Indisponível" for n in CONSULTORES},
-        "bastao_queue": [],
-        "skip_flags": {},
-        "current_status_starts": {n: get_brazil_time() for n in CONSULTORES},
-        "bastao_counts": {n: 0 for n in CONSULTORES},
-        "priority_return_queue": [],
-        "daily_logs": [],
-        "simon_ranking": [],
-        "word_buffer": None,
-        "aviso_duplicidade": False,
-        "previous_states": {},
-        "quick_indicators": {},
-        "view_logmein_ui": False,
-        "last_cleanup": time.time(),
-        "last_hard_cleanup": time.time(),
+        'bastao_start_time': None, 'report_last_run_date': datetime.min, 'rotation_gif_start_time': None,
+        'play_sound': False, 'gif_warning': False, 'lunch_warning_info': None, 'last_reg_status': None,
+        'chamado_guide_step': 0, 'auxilio_ativo': False, 'active_view': None,
+        'consultor_selectbox': "Selecione um nome", 'status_texto': {n: 'Indisponível' for n in CONSULTORES},
+        'bastao_queue': [], 'skip_flags': {}, 'current_status_starts': {n: get_brazil_time() for n in CONSULTORES},
+        'bastao_counts': {n: 0 for n in CONSULTORES}, 'priority_return_queue': [], 'daily_logs': [], 'simon_ranking': [],
+        'word_buffer': None, 'aviso_duplicidade': False, 'previous_states': {}, 'quick_indicators': {}, 'view_logmein_ui': False,
+        'last_cleanup': time.time(), 'last_hard_cleanup': time.time()
     }
-
     for k, v in defaults.items():
-        if k not in st.session_state:
-            st.session_state[k] = v
-
+        if k not in st.session_state: st.session_state[k] = v
     for n in CONSULTORES:
         st.session_state.skip_flags.setdefault(n, False)
-        st.session_state[f"check_{n}"] = n in st.session_state.bastao_queue
+        st.session_state[f'check_{n}'] = n in st.session_state.bastao_queue
 
 def open_logmein_ui(): st.session_state.view_logmein_ui = True
 def close_logmein_ui(): st.session_state.view_logmein_ui = False
@@ -1546,38 +1539,32 @@ def watcher_de_atualizacoes():
 # PONTO DE ENTRADA
 # ============================================
 def render_dashboard(team_id: int, team_name: str, consultores_list: list, webhook_key: str, app_url: str, other_team_id: int, other_team_name: str, usuario_logado: str):
-    # 0) Define equipe/consultores ANTES de carregar do banco (evita misturar filas entre equipes)
-    prev_team = st.session_state.get('team_id')
-
-    st.session_state['team_id'] = team_id
-    st.session_state['team_name'] = team_name
-    st.session_state['other_team_id'] = other_team_id
-    st.session_state['other_team_name'] = other_team_name
-    st.session_state['webhook_key'] = webhook_key
-
-    if usuario_logado:
-        st.session_state['consultor_logado'] = usuario_logado
-
-    # Variáveis globais (usadas por defaults do estado)
-    global APP_URL_CLOUD, CONSULTORES
-    APP_URL_CLOUD = app_url or APP_URL_CLOUD
-    if consultores_list:
-        CONSULTORES = list(consultores_list)
-
-    # Se mudou a equipe, força recarregar do banco corretamente
-    if prev_team != team_id:
-        st.session_state.pop('db_loaded', None)
-        st.session_state.pop('_db_loaded_team_id', None)
+    # 0) Contexto da equipe precisa existir ANTES do init_session_state (que lê do banco)
+    prev_tid = st.session_state.get('team_id')
+    if prev_tid != team_id:
+        st.session_state['team_id'] = team_id
+        # Se alternar equipe, limpa cache do loader para evitar misturar estado
         try:
             load_state_from_db.clear()
         except Exception:
             pass
 
-    # 1) Inicializa estado agora (já com team_id/CONSULTORES corretos)
-    init_session_state(team_id=team_id)
+    st.session_state['team_name'] = team_name
+    st.session_state['other_team_id'] = other_team_id
+    st.session_state['other_team_name'] = other_team_name
+    st.session_state['consultores_list'] = consultores_list or CONSULTORES
+
+    # 1) Inicializa estado (agora com team_id correto)
+    init_session_state()
     memory_sweeper()
     auto_manage_time()
 
+
+    # 1.2) Variáveis globais
+    global APP_URL_CLOUD, CONSULTORES
+    APP_URL_CLOUD = app_url or APP_URL_CLOUD
+    if consultores_list:
+        CONSULTORES = list(consultores_list)
 
     # 2) Auto-refresh + contador (40s fixo)
     pulse = autorefresh_with_realtime_countdown(
@@ -1790,15 +1777,10 @@ button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{filter: brightness(1.04)
         st.header("Responsável pelo Bastão")
         if responsavel:
             st.markdown(f"""<div style="background: linear-gradient(135deg, #FFF3E0 0%, #FFFFFF 100%); border: 3px solid #FF8C00; padding: 25px; border-radius: 15px; display: flex; align-items: center; box-shadow: 0 4px 15px rgba(255, 140, 0, 0.3); margin-bottom: 20px;"><div style="flex-shrink: 0; margin-right: 25px;"><img src="{GIF_BASTAO_HOLDER}" style="width: 90px; height: 90px; border-radius: 50%; object-fit: cover; border: 2px solid #FF8C00;"></div><div><span style="font-size: 14px; color: #555; font-weight: bold; text-transform: uppercase; letter-spacing: 1.5px;">Atualmente com:</span><br><span style="font-size: 42px; font-weight: 800; color: #FF4500; line-height: 1.1;">{responsavel}</span></div></div>""", unsafe_allow_html=True)
-            now_br = _parse_any_datetime_to_br_naive(get_brazil_time()) or get_brazil_time()
-            bt_raw = st.session_state.get('bastao_start_time')
-            bt_dt = _parse_any_datetime_to_br_naive(bt_raw)
-            if bt_dt is None:
-                bt_dt = now_br
-            else:
-                # guarda normalizado para evitar erro nas próximas execuções
-                st.session_state['bastao_start_time'] = bt_dt
-            dur = now_br - bt_dt
+            _bst = _parse_any_datetime_to_br_naive(st.session_state.get('bastao_start_time'))
+            if _bst:
+                st.session_state['bastao_start_time'] = _bst
+            dur = get_brazil_time() - (_bst or get_brazil_time())
             st.caption(f"⏱️ Tempo com o bastão: **{format_time_duration(dur)}**")
         else: st.markdown('<h2>(Ninguém com o bastão)</h2>', unsafe_allow_html=True)
     
