@@ -24,7 +24,7 @@ EQUIPE_EPROC = [
 ]
 
 EQUIPE_LEGADOS = [
-    "Alex Paulo", "Dirceu Gonçalves", "Douglas De Souza", "Farley", "Gleis", "Hugo Leonardo",
+    "Alex Paulo", "Dirceu Gonçalves", "Douglas De Souza", "Farley", "Gleis", "Hugo Leonardo", "Igor Dayrell",
     "Jerry Marcos", "Jonatas", "Leandro", "Luiz Henrique", "Marcelo dos Santos Dutra",
      "Mariana Marques", "Marina Torres", "Vanessa Ligiane",
 ]
