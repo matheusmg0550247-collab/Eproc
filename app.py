@@ -7,31 +7,33 @@ from typing import List, Tuple
 # CONFIG
 # ============================================
 st.set_page_config(
-    page_title="Central Bastão - Legados",
+    page_title="Bastão • Eproc",
     page_icon="🔐",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
 
-TEAM_ID = 1
-TEAM_NAME = "Legados"
+TEAM_ID_EPROC = 2     # App State: Eproc = ID 02 (Supabase)
+TEAM_ID_LEGADOS = 1   # App State: Legados = ID 01 (Supabase) (opcional: ver fila)
 
-CONSULTORES: List[str] = [
-    "Alex Paulo da Silva",
-    "Dirceu Gonçalves Siqueira Neto",
-    "Douglas de Souza Gonçalves",
-    "Hugo Leonardo Murta",
-    "Farley Leandro de Oliveira Juliano",
-    "Gleis da Silva Rodrigues",
-    "Igor Dayrell Gonçalves Correa",
-    "Jerry Marcos dos Santos Neto",
-    "Jonatas Gomes Saraiva",
-    "Leandro Victor Catharino",
-    "Luiz Henrique Barros Oliveira",
-    "Marcelo dos Santos Dutra",
-    "Marina Silva Marques",
-    "Marina Torres do Amaral",
-    "Vanessa Ligiane Pimenta Santos"
+EQUIPE_EPROC = [
+    "Barbara Mara Moreira Acacia Ribeiro Araujo",
+    "Bruno Glaicon de Souza Martins",
+    "Claudia Luiza Siqueira Jordão",
+    "Douglas Paiva Silva",
+    "Fábio Alves de Sousa",
+    "Glayce Torres Silva",
+    "Isabela Dias Homssi",
+    "Isac Candido Martins",
+    "Ivana Guimarães Bastos",
+    "Leonardo Damaceno de Lacerda",
+    "Marcelo Pena Guerra",
+    "Michael Douglas Moreira Freitas de Aguiar",
+    "Morôni Lei Oliveira Fagundes",
+    "Pablo Victor Lenti Mal",
+    "Ranyer Segal Pontes",
+    "Sarah Leal Araujo",
+    "Victoria Lisboa Orsi Guimarães"
 ]
 
 JUSTICE_EMOJIS = ["⚖️", "🧑‍⚖️", "🏛️", "📜", "🔎", "🗂️", "🔏", "🪪"]
@@ -50,8 +52,9 @@ def _inject_css():
 .block-container { padding-top: 1.2rem !important; max-width: 1500px; }
 footer, header { visibility: hidden; height: 0; }
 
+/* cabeçalho */
 .hero {
-  background: linear-gradient(135deg, rgba(121,85,72,0.16), rgba(255,255,255,0.70));
+  background: linear-gradient(135deg, rgba(30,136,229,0.12), rgba(255,255,255,0.72));
   border: 1px solid rgba(0,0,0,0.06);
   border-radius: 18px;
   padding: 18px 18px;
@@ -61,7 +64,8 @@ footer, header { visibility: hidden; height: 0; }
 .hero h1 { margin: 0; font-size: 1.55rem; }
 .hero p { margin: 6px 0 0 0; color: rgba(0,0,0,0.62); }
 
-.grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+/* cards (links) */
+.grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
 @media (max-width: 1200px){ .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @media (max-width: 850px){ .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
@@ -75,8 +79,6 @@ footer, header { visibility: hidden; height: 0; }
   font-weight: 800;
   letter-spacing: .2px;
   border: 0;
-  color: #fff !important;
-  background-image: linear-gradient(135deg, rgba(121,85,72,.95), rgba(215,204,200,.92));
   background-size: 220% 220%;
   background-position: 0% 50%;
   transition: transform .12s ease, box-shadow .12s ease, filter .12s ease, background-position .22s ease;
@@ -90,6 +92,12 @@ footer, header { visibility: hidden; height: 0; }
   filter: brightness(1.06);
 }
 
+.card-eproc{
+  color: #fff !important;
+  background-image: linear-gradient(135deg, rgba(30,136,229,.95), rgba(144,202,249,.90));
+}
+
+/* banner */
 .banner {
   border:1px solid rgba(0,0,0,0.06);
   border-radius: 14px;
@@ -125,9 +133,7 @@ def _clear_query_params():
         st.experimental_set_query_params()
 
 def _enter_dashboard(user_name: str):
-    st.session_state["time_selecionado"] = TEAM_NAME
-    st.session_state["team_id"] = TEAM_ID
-    st.session_state["team_name"] = TEAM_NAME
+    st.session_state["time_selecionado"] = "Eproc"
     st.session_state["consultor_logado"] = user_name
     st.session_state["_force_enter_dashboard"] = True
     _clear_query_params()
@@ -137,43 +143,45 @@ def _render_card_grid(nomes: List[str]):
     cards = []
     for nome in nomes:
         emoji = _emoji_for(nome)
-        href = f"?team={quote(TEAM_NAME)}&user={quote(nome)}"
-        cards.append(f'<a class="card" href="{href}">{emoji} {nome}</a>')
+        href = f"?team={quote('Eproc')}&user={quote(nome)}"
+        cards.append(f'<a class="card card-eproc" href="{href}">{emoji} {nome}</a>')
     st.markdown('<div class="grid">' + "".join(cards) + "</div>", unsafe_allow_html=True)
 
 def main():
     _inject_css()
 
-    # Clique por query params (mais leve que st.button)
+    # --- clique via query params ---
     q_team, q_user = _read_query_params()
-    if q_user and (q_team in [None, TEAM_NAME]) and (q_user in CONSULTORES):
+    if q_user and ((q_team in (None, "", "Eproc")) and (q_user in EQUIPE_EPROC)):
         _enter_dashboard(q_user)
 
     # Se já logado, vai direto pro dashboard
     if st.session_state.get("_force_enter_dashboard") and st.session_state.get("consultor_logado"):
-        from dashboard import render_dashboard  # lazy import
+        from dashboard import render_dashboard  # lazy import (mais leve na tela de nomes)
+
+        nome = st.session_state.get("consultor_logado")
 
         show_other = bool(st.secrets.get("features", {}).get("show_other_team_queue", False))
-        other_team_id = 2 if show_other else 0
-        other_team_name = "Eproc" if show_other else ""
+        other_id = TEAM_ID_LEGADOS if show_other else 0
+        other_name = "Legados" if show_other else ""
 
         render_dashboard(
-            team_id=TEAM_ID,
-            team_name=TEAM_NAME,
-            consultores_list=CONSULTORES,
+            team_id=TEAM_ID_EPROC,
+            team_name="Eproc",
+            consultores_list=EQUIPE_EPROC,
             webhook_key=st.secrets.get("n8n", {}).get("bastao_giro", ""),
-            app_url=st.secrets.get("app", {}).get("url_cloud", ""),
-            other_team_id=other_team_id,
-            other_team_name=other_team_name,
-            usuario_logado=st.session_state.get("consultor_logado"),
+            app_url=st.secrets.get("app", {}).get("url_cloud", "http://157.230.167.24:8503"),
+            other_team_id=other_id,
+            other_team_name=other_name,
+            usuario_logado=nome,
         )
         return
 
     # --- LOGIN ---
     st.markdown(
-        f"""
+        """
 <div class="hero">
-  <h1>🔐 Central de Bastão — {TEAM_NAME}</h1>
+  <h1>🔐 Bastão • Equipe Eproc</h1>
   <p>Clique no seu nome para entrar no painel.</p>
 </div>
         """,
@@ -181,13 +189,13 @@ def main():
     )
 
     st.markdown(
-        """<div class="banner">
-              <b>Equipe Legados</b><br/>
-              <small>Lista padronizada conforme planilha oficial.</small>
+        """<div class="banner" style="background: linear-gradient(135deg, rgba(30,136,229,0.14), rgba(255,255,255,0.65));">
+              <b>Equipe Eproc</b> <small>(2ª Instância)</small><br/>
+              <small>Passe o mouse para ver o efeito de luz.</small>
             </div>""",
         unsafe_allow_html=True,
     )
-    _render_card_grid(CONSULTORES)
+    _render_card_grid(EQUIPE_EPROC)
 
 if __name__ == "__main__":
     main()
