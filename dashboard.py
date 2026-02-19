@@ -1258,38 +1258,167 @@ def toggle_view(v):
     if st.session_state.active_view == v: st.session_state.active_view = None
     else: st.session_state.active_view = v
 
-def init_session_state():
+# ============================================
+# MIGRAÇÃO DE NOMES (LEGADOS)
+# - Mantém compatibilidade com estados antigos no Supabase
+# ============================================
+LEGADOS_MIGRATION_TAG = "legados_fullnames_v1"
+LEGADOS_NAME_ALIASES = {'Alex Paulo': 'Alex Paulo da Silva', 'Dirceu Gonçalves': 'Dirceu Gonçalves Siqueira Neto', 'Douglas De Souza': 'Douglas de Souza Gonçalves', 'Douglas de Souza': 'Douglas de Souza Gonçalves', 'Hugo Leonardo': 'Hugo Leonardo Murta', 'Farley': 'Farley Leandro de Oliveira Juliano', 'Gleis': 'Gleis da Silva Rodrigues', 'Igor Dayrell': 'Igor Dayrell Gonçalves Correa', 'Jerry Marcos': 'Jerry Marcos dos Santos Neto', 'Jonatas': 'Jonatas Gomes Saraiva', 'Leandro': 'Leandro Victor Catharino', 'Luiz Henrique': 'Luiz Henrique Barros Oliveira', 'Mariana Marques': 'Marina Silva Marques', 'Marina Marques': 'Marina Silva Marques', 'Marina Torres': 'Marina Torres do Amaral', 'Vanessa Ligiane': 'Vanessa Ligiane Pimenta Santos'}
+
+def _is_legados_context():
+    try:
+        tn = (st.session_state.get("team_name") or "")
+        if isinstance(tn, str) and "legad" in tn.lower():
+            return True
+    except Exception:
+        pass
+    # fallback: detecta pelo conjunto de consultores
+    try:
+        return any("Alex Paulo da Silva" == n for n in (CONSULTORES or []))
+    except Exception:
+        return False
+
+def _map_name(name, aliases):
+    if not isinstance(name, str):
+        return name
+    return aliases.get(name, name)
+
+def _migrate_state_names(state, aliases):
+    """Migra nomes em estruturas comuns do estado (dicts/listas/logs)."""
+    if not isinstance(state, dict) or not aliases:
+        return state, False
+
+    changed = False
+    out = dict(state)
+
+    def _map_dict_keys(d):
+        nonlocal changed
+        if not isinstance(d, dict):
+            return d
+        nd = {}
+        for k, v in d.items():
+            nk = _map_name(k, aliases)
+            if nk != k:
+                changed = True
+            if nk in nd and isinstance(v, dict) and isinstance(nd.get(nk), dict):
+                nd[nk] = {**nd[nk], **v}
+            else:
+                nd[nk] = v
+        return nd
+
+    def _map_list(lst):
+        nonlocal changed
+        if not isinstance(lst, list):
+            return lst
+        nl = []
+        for it in lst:
+            if isinstance(it, str):
+                nit = _map_name(it, aliases)
+                if nit != it:
+                    changed = True
+                nl.append(nit)
+            else:
+                nl.append(it)
+        return nl
+
+    for key in ["status_texto", "skip_flags", "current_status_starts", "bastao_counts", "previous_states", "quick_indicators"]:
+        if key in out:
+            out[key] = _map_dict_keys(out.get(key))
+
+    for key in ["bastao_queue", "priority_return_queue", "simon_ranking"]:
+        if key in out:
+            out[key] = _map_list(out.get(key))
+
+    if "daily_logs" in out and isinstance(out.get("daily_logs"), list):
+        new_logs = []
+        for item in out["daily_logs"]:
+            if isinstance(item, dict):
+                ni = dict(item)
+                if "consultor" in ni:
+                    ni["consultor"] = _map_name(ni.get("consultor"), aliases)
+                    if ni["consultor"] != item.get("consultor"):
+                        changed = True
+                new_logs.append(ni)
+            else:
+                new_logs.append(item)
+        out["daily_logs"] = new_logs
+
+    if "consultor_logado" in out:
+        out["consultor_logado"] = _map_name(out.get("consultor_logado"), aliases)
+
+    if "consultor_selectbox" in out:
+        out["consultor_selectbox"] = _map_name(out.get("consultor_selectbox"), aliases)
+
+    return out, changed
+
+def init_session_state(team_id=None):
+    """Inicializa estado do Streamlit sem misturar filas entre equipes."""
     dev = get_browser_id()
-    if dev: 
-        st.session_state['device_id_val'] = dev
-    
-    if 'db_loaded' not in st.session_state:
-        tid = st.session_state.get('team_id', 2)
+    if dev:
+        st.session_state["device_id_val"] = dev
+
+    tid = int(team_id or st.session_state.get("team_id", 2))
+
+    if (st.session_state.get("db_loaded") is not True) or (st.session_state.get("_db_loaded_team_id") != tid):
         db = load_state_from_db(tid)
-        if db:
-            if 'report_last_run_date' in db and isinstance(db['report_last_run_date'], str):
-                try: 
-                    db['report_last_run_date'] = datetime.fromisoformat(db['report_last_run_date'])
-                except: 
-                    db['report_last_run_date'] = datetime.min
+        if db and isinstance(db, dict):
+            if "report_last_run_date" in db and isinstance(db.get("report_last_run_date"), str):
+                try:
+                    db["report_last_run_date"] = datetime.fromisoformat(db["report_last_run_date"])
+                except Exception:
+                    db["report_last_run_date"] = datetime.min
+
+            if _is_legados_context() and db.get("_name_migration") != LEGADOS_MIGRATION_TAG:
+                migrated_db, changed = _migrate_state_names(db, LEGADOS_NAME_ALIASES)
+                if changed:
+                    migrated_db["_name_migration"] = LEGADOS_MIGRATION_TAG
+                    db = migrated_db
+                    try:
+                        save_state_to_db(tid, db)
+                    except Exception:
+                        pass
+
             st.session_state.update(db)
-        st.session_state['db_loaded'] = True
-    
+
+        st.session_state["db_loaded"] = True
+        st.session_state["_db_loaded_team_id"] = tid
+
     defaults = {
-        'bastao_start_time': None, 'report_last_run_date': datetime.min, 'rotation_gif_start_time': None,
-        'play_sound': False, 'gif_warning': False, 'lunch_warning_info': None, 'last_reg_status': None,
-        'chamado_guide_step': 0, 'auxilio_ativo': False, 'active_view': None,
-        'consultor_selectbox': "Selecione um nome", 'status_texto': {n: 'Indisponível' for n in CONSULTORES},
-        'bastao_queue': [], 'skip_flags': {}, 'current_status_starts': {n: get_brazil_time() for n in CONSULTORES},
-        'bastao_counts': {n: 0 for n in CONSULTORES}, 'priority_return_queue': [], 'daily_logs': [], 'simon_ranking': [],
-        'word_buffer': None, 'aviso_duplicidade': False, 'previous_states': {}, 'quick_indicators': {}, 'view_logmein_ui': False,
-        'last_cleanup': time.time(), 'last_hard_cleanup': time.time()
+        "bastao_start_time": None,
+        "report_last_run_date": datetime.min,
+        "rotation_gif_start_time": None,
+        "play_sound": False,
+        "gif_warning": False,
+        "lunch_warning_info": None,
+        "last_reg_status": None,
+        "chamado_guide_step": 0,
+        "auxilio_ativo": False,
+        "active_view": None,
+        "consultor_selectbox": "Selecione um nome",
+        "status_texto": {n: "Indisponível" for n in CONSULTORES},
+        "bastao_queue": [],
+        "skip_flags": {},
+        "current_status_starts": {n: get_brazil_time() for n in CONSULTORES},
+        "bastao_counts": {n: 0 for n in CONSULTORES},
+        "priority_return_queue": [],
+        "daily_logs": [],
+        "simon_ranking": [],
+        "word_buffer": None,
+        "aviso_duplicidade": False,
+        "previous_states": {},
+        "quick_indicators": {},
+        "view_logmein_ui": False,
+        "last_cleanup": time.time(),
+        "last_hard_cleanup": time.time(),
     }
+
     for k, v in defaults.items():
-        if k not in st.session_state: st.session_state[k] = v
+        if k not in st.session_state:
+            st.session_state[k] = v
+
     for n in CONSULTORES:
         st.session_state.skip_flags.setdefault(n, False)
-        st.session_state[f'check_{n}'] = n in st.session_state.bastao_queue
+        st.session_state[f"check_{n}"] = n in st.session_state.bastao_queue
 
 def open_logmein_ui(): st.session_state.view_logmein_ui = True
 def close_logmein_ui(): st.session_state.view_logmein_ui = False
@@ -1359,29 +1488,38 @@ def watcher_de_atualizacoes():
 # PONTO DE ENTRADA
 # ============================================
 def render_dashboard(team_id: int, team_name: str, consultores_list: list, webhook_key: str, app_url: str, other_team_id: int, other_team_name: str, usuario_logado: str):
-    # 1. Inicializa estado PRIMEIRO para garantir que tudo existe
-    init_session_state()
-    memory_sweeper()
-    auto_manage_time()
+    # 0) Define equipe/consultores ANTES de carregar do banco (evita misturar filas entre equipes)
+    prev_team = st.session_state.get('team_id')
 
-    # 1.1) Garante que o team_id/other_team_id ficam disponíveis ANTES de qualquer sync
-    if 'team_id' not in st.session_state or st.session_state.get('team_id') != team_id:
-        st.session_state['team_id'] = team_id
-        # Força recarregar logo na primeira vez que trocar de equipe
+    st.session_state['team_id'] = team_id
+    st.session_state['team_name'] = team_name
+    st.session_state['other_team_id'] = other_team_id
+    st.session_state['other_team_name'] = other_team_name
+    st.session_state['webhook_key'] = webhook_key
+
+    if usuario_logado:
+        st.session_state['consultor_logado'] = usuario_logado
+
+    # Variáveis globais (usadas por defaults do estado)
+    global APP_URL_CLOUD, CONSULTORES
+    APP_URL_CLOUD = app_url or APP_URL_CLOUD
+    if consultores_list:
+        CONSULTORES = list(consultores_list)
+
+    # Se mudou a equipe, força recarregar do banco corretamente
+    if prev_team != team_id:
+        st.session_state.pop('db_loaded', None)
+        st.session_state.pop('_db_loaded_team_id', None)
         try:
             load_state_from_db.clear()
         except Exception:
             pass
 
-    st.session_state['team_name'] = team_name
-    st.session_state['other_team_id'] = other_team_id
-    st.session_state['other_team_name'] = other_team_name
+    # 1) Inicializa estado agora (já com team_id/CONSULTORES corretos)
+    init_session_state(team_id=team_id)
+    memory_sweeper()
+    auto_manage_time()
 
-    # 1.2) Variáveis globais
-    global APP_URL_CLOUD, CONSULTORES
-    APP_URL_CLOUD = app_url or APP_URL_CLOUD
-    if consultores_list:
-        CONSULTORES = list(consultores_list)
 
     # 2) Auto-refresh + contador (40s fixo)
     pulse = autorefresh_with_realtime_countdown(
@@ -1653,7 +1791,7 @@ button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{
             st.rerun()
 
         with st.expander('🧭 Painel (outra equipe / LogMeIn / trocar consultor)', expanded=False):
-            if st.button('🔙 Voltar à tela de nomes', use_container_width=True, key=f'btn_voltar_nomes_{uuid.uuid4().hex}'):
+            if st.button('🔙 Voltar à tela de nomes', use_container_width=True, key='btn_voltar_nomes'):
                 st.session_state['_force_back_to_names'] = True
                 st.session_state['time_selecionado'] = None
                 st.session_state['consultor_logado'] = None
@@ -1699,9 +1837,9 @@ button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{
             st.divider(); st.markdown('### 🔑 LogMeIn'); st.caption('LogMeIn **não** é status: é apenas para visualizar quem está usando o programa.')
             c1, c2 = st.columns(2)
             with c1:
-                if st.button('Abrir', use_container_width=True, key=f'btn_open_logmein_side_{uuid.uuid4().hex}'): open_logmein_ui()
+                if st.button('Abrir', use_container_width=True, key='btn_open_logmein_side'): open_logmein_ui()
             with c2:
-                if st.button('Fechar', use_container_width=True, key=f'btn_close_logmein_side_{uuid.uuid4().hex}'): close_logmein_ui()
+                if st.button('Fechar', use_container_width=True, key='btn_close_logmein_side'): close_logmein_ui()
 
             if st.session_state.get('view_logmein_ui'):
                 with st.container(border=True):
@@ -1712,14 +1850,14 @@ button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{
                         st.error(f"🔴 EM USO POR: **{l_user}**")
                         meu_nome = st.session_state.get('consultor_selectbox')
                         if meu_nome == l_user or meu_nome in CONSULTORES:
-                            if st.button('🔓 LIBERAR AGORA', type='primary', use_container_width=True, key=f'btn_logmein_liberar_side_{uuid.uuid4().hex}'):
+                            if st.button('🔓 LIBERAR AGORA', type='primary', use_container_width=True, key='btn_logmein_liberar_side'):
                                 set_logmein_status(None, False); close_logmein_ui(); st.rerun()
                         else: st.info('Aguarde a liberação.')
                     else:
                         st.success('✅ LIVRE PARA USO')
                         meu_nome = st.session_state.get('consultor_selectbox')
                         if meu_nome and meu_nome != 'Selecione um nome':
-                            if st.button('🚀 ASSUMIR AGORA', use_container_width=True, key=f'btn_logmein_assumir_side_{uuid.uuid4().hex}'):
+                            if st.button('🚀 ASSUMIR AGORA', use_container_width=True, key='btn_logmein_assumir_side'):
                                 set_logmein_status(meu_nome, True); close_logmein_ui(); st.rerun()
                         else: st.warning('Selecione seu nome no topo para assumir.')
             st.divider()
