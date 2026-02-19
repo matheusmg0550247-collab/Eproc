@@ -10,6 +10,7 @@ except Exception:
 import requests
 import time
 import gc
+import os
 from datetime import datetime, timedelta, date, timezone
 
 try:
@@ -503,12 +504,52 @@ def post_n8n(url: str, payload: dict) -> bool:
 # ============================================
 
 @st.cache_resource(ttl=3600)
+def _get_supabase_client(url: str, key: str):
+    # Cache por processo (evita reconectar a cada rerun)
+    return create_client(url, key)
+
+def _get_supabase_config() -> tuple[str, str]:
+    """
+    Lê config do Supabase de forma resiliente:
+      1) st.secrets["supabase"] (service_role_key/anon_key/key + url)
+      2) variáveis de ambiente (SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY / SUPABASE_ANON_KEY / SUPABASE_KEY)
+      3) fallback de URL (neste app)
+    """
+    sb = {}
+    try:
+        sb = dict(st.secrets.get("supabase", {}))
+    except Exception:
+        sb = {}
+
+    url = (sb.get("url") or os.getenv("SUPABASE_URL") or "https://kxlcdywjxyhbxkvcmpxd.supabase.co").strip()
+
+    key = (
+        sb.get("service_role_key") or os.getenv("SUPABASE_SERVICE_ROLE_KEY") or
+        sb.get("anon_key") or os.getenv("SUPABASE_ANON_KEY") or
+        sb.get("key") or os.getenv("SUPABASE_KEY") or
+        ""
+    )
+    key = str(key).strip()
+
+    return url, key
+
 def get_supabase():
-    try: 
-        return create_client(st.secrets["supabase"]["url"], st.secrets["supabase"]["key"])
-    except Exception as e:
-        st.cache_resource.clear()
+    """
+    Retorna cliente Supabase ou None (se não configurado).
+    Não estoura erro para o usuário — só mostra aviso em pontos críticos.
+    """
+    try:
+        url, key = _get_supabase_config()
+        if not url or not key:
+            return None
+        return _get_supabase_client(url, key)
+    except Exception:
+        try:
+            st.cache_resource.clear()
+        except Exception:
+            pass
         return None
+
 
 def render_operational_summary():
     """Resumo Operacional: link externo (sem gráfico no app)."""
@@ -1539,6 +1580,7 @@ def watcher_de_atualizacoes():
 # PONTO DE ENTRADA
 # ============================================
 def render_dashboard(team_id: int, team_name: str, consultores_list: list, webhook_key: str, app_url: str, other_team_id: int, other_team_name: str, usuario_logado: str):
+    global APP_URL_CLOUD, CONSULTORES
     # 0) Contexto da equipe precisa existir ANTES do init_session_state (que lê do banco)
     prev_tid = st.session_state.get('team_id')
     if prev_tid != team_id:
@@ -1561,7 +1603,6 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
 
 
     # 1.2) Variáveis globais
-    global APP_URL_CLOUD, CONSULTORES
     APP_URL_CLOUD = app_url or APP_URL_CLOUD
     if consultores_list:
         CONSULTORES = list(consultores_list)
