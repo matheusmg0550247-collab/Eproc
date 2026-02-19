@@ -318,36 +318,53 @@ PUG2026_FILENAME = "Carnaval.gif"
 # ============================================
 RAMAIS_CESUPE = {
     # Chave normalizada (sem acento, minúscula). Priorize combinações específicas antes do primeiro nome.
+
+    # --- Específicos (evitam conflito de primeiro nome) ---
     'douglas paiva': '2663',
-    'alex': '2510',
-    'barbara': '2517',
+    'marcelo pena': '4208',
+    'marcelo pena guerra': '4208',
+    'marina amaral': '4211',
+    'marina torres do amaral': '4211',
+    'marina marques': '2607',
+    'marina silva marques': '2607',
+
+    # --- Primeiro nome / chaves gerais ---
+    'alex': '2650',
+    'barbara': '4201',
     'bruno': '2644',
-    'claudio': '2667',
-    'claudia': '2667',  # variação comum
+    'claudio': '2667',   # variação comum
+    'claudia': '2667',
     'dirceu': '2666',
-    'douglas': '2659',
+    'douglas': '4210',
     'fabio': '2665',
     'farley': '2651',
-    'gilberto': '2654',
-    'gleis': '2536',
-    'gleissiane': '2536',
+    'gilberto': '2645',
+    'gleis': '4212',
+    'gleissiane': '4212',  # variação comum
     'gleyce': '2647',
-    'glayce': '2647',  # variação comum
-    'hugo': '2650',
+    'glayce': '2647',    # variação comum
+    'hugo': '4207',
+    'igor': '4203',
+    'isabela': '4205',
+    'isac': '2517',
+    'ivana': '2653',
     'jerry': '2654',
     'jonatas': '2656',
+    'juliana': '4209',
+    'larissa': '2661',
     'leandro': '2652',
-    'leonardo': '2655',
-    'ivana': '2653',
+    'leonardo': '4204',
+    'luiz': '4202',
     'marcelo': '2655',
     'matheus': '2664',
-    'michael': '2638',
-    'pablo': '2643',
-    'ranier': '2669',
-    'ranyer': '2669',  # variação comum
-    'vanessa': '2607',
+    'michael': '2516',
+    'moroni': '4206',
+    'pablo': '2658',
+    'ranier': '2669',     # variação comum
+    'ranyer': '2669',
+    'sarah': '2643',
+    'vanessa': '2510',
     'victoria': '2660',
-    'victória': '2660',  # caso venha com acento
 }
 
 
