@@ -30,7 +30,7 @@ def main():
         team_id=TEAM_ID_EPROC,
         team_name="EPROC",
         consultores_list=EQUIPE_EPROC,
-        webhook_key=st.secrets.get("n8n", {}).get("bastao_giro", ""),
+        webhook_key=(st.secrets.get("n8n", {}).get("bastao_giro", "") or st.secrets.get("chat", {}).get("bastao_eq2", "")),
         app_url=st.secrets.get("app", {}).get("url_cloud", ""),
         other_team_id=None,          # não exibe outra equipe
         other_team_name="",
