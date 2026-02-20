@@ -10,8 +10,7 @@ except Exception:
 import requests
 import time
 import gc
-import os
-from datetime import datetime, timedelta, date, timezone
+from datetime import datetime, timedelta, date
 
 try:
     from zoneinfo import ZoneInfo
@@ -147,159 +146,13 @@ DB_APP_ID = 2        # ID da Fila desta equipe
 LOGMEIN_DB_ID = 1    # ID do LogMeIn (COMPARTILHADO - SEMPRE 1)
 GLOBAL_STATE_VERSION_ID = 9999  # Carimbo global (qualquer equipe) para disparar refresh
 
-CONSULTORES = [
-    "Barbara Mara Moreira Acacia Ribeiro Araujo",
-    "Bruno Glaicon de Souza Martins",
-    "Claudia Luiza Siqueira Jordão",
-    "Douglas Paiva Silva",
-    "Fábio Alves de Sousa",
-    "Glayce Torres Silva",
-    "Isabela Dias Homssi",
-    "Isac Candido Martins",
-    "Ivana Guimarães Bastos",
-    "Leonardo Damaceno de Lacerda",
-    "Marcelo Pena Guerra",
-    "Michael Douglas Moreira Freitas de Aguiar",
-    "Morôni Lei Oliveira Fagundes",
-    "Pablo Victor Lenti Mal",
-    "Ranyer Segal Pontes",
-    "Sarah Leal Araujo",
-    "Victoria Lisboa Orsi Guimarães",
-]
+CONSULTORES = sorted([
+    "Barbara Mara", "Bruno Glaicon", "Claudia Luiza", "Douglas Paiva", "Fábio Alves", "Glayce Torres", 
+    "Isabela Dias", "Isac Candido", "Ivana Guimarães", "Leonardo Damaceno", "Marcelo PenaGuerra", 
+    "Michael Douglas", "Morôni", "Pablo Mol", "Ranyer Segal", "Sarah Leal", "Victoria Lisboa"
+])
+
 # Listas de Opções
-
-# --- Normalização de nomes (Eproc) ---
-EQUIPE_EPROC_CANON = CONSULTORES
-
-EQUIPE_EPROC_ALIASES = {
-    "Barbara Mara": "Barbara Mara Moreira Acacia Ribeiro Araujo",
-    "Bruno Glaicon": "Bruno Glaicon de Souza Martins",
-    "Claudia Luiza": "Claudia Luiza Siqueira Jordão",
-    "Douglas Paiva": "Douglas Paiva Silva",
-    "Fábio Alves": "Fábio Alves de Sousa",
-    "Fabio Alves": "Fábio Alves de Sousa",
-    "Glayce Torres": "Glayce Torres Silva",
-    "Glayce Torres Silva": "Glayce Torres Silva",
-    "Isabela Dias": "Isabela Dias Homssi",
-    "Isac Candido": "Isac Candido Martins",
-    "Ivana Guimarães": "Ivana Guimarães Bastos",
-    "Ivana Guimaraes": "Ivana Guimarães Bastos",
-    "Leonardo Damaceno": "Leonardo Damaceno de Lacerda",
-    "Marcelo Guerra": "Marcelo Pena Guerra",
-    "Marcelo PenaGuerra": "Marcelo Pena Guerra",
-    "Marcelo Pena Guerra": "Marcelo Pena Guerra",
-    "Michael Douglas": "Michael Douglas Moreira Freitas de Aguiar",
-    "Morôni": "Morôni Lei Oliveira Fagundes",
-    "Moroni": "Morôni Lei Oliveira Fagundes",
-    "Pablo Mol": "Pablo Victor Lenti Mal",
-    "Pablo Victor": "Pablo Victor Lenti Mal",
-    "Ranyer Segal": "Ranyer Segal Pontes",
-    "Sarah Leal": "Sarah Leal Araujo",
-    "Victoria Lisboa": "Victoria Lisboa Orsi Guimarães",
-}
-
-def _slugify_nome(s: str) -> str:
-    if not s:
-        return ""
-    try:
-        s = unicodedata.normalize("NFKD", str(s))
-        s = "".join(ch for ch in s if not unicodedata.combining(ch))
-        s = s.lower()
-        s = re.sub(r"[^a-z0-9]+", " ", s).strip()
-        return re.sub(r"\s+", " ", s)
-    except Exception:
-        return str(s).strip().lower()
-
-def _build_alias_map(canon_list):
-    amap = {}
-    for full in canon_list or []:
-        full = str(full).strip()
-        if not full:
-            continue
-        amap[_slugify_nome(full)] = full
-        parts = full.split()
-        # 2 e 3 primeiros nomes (como aparecem no sistema antigo)
-        if len(parts) >= 2:
-            amap.setdefault(_slugify_nome(" ".join(parts[:2])), full)
-        if len(parts) >= 3:
-            amap.setdefault(_slugify_nome(" ".join(parts[:3])), full)
-
-    # aliases manuais (legado)
-    for k, v in EQUIPE_EPROC_ALIASES.items():
-        amap[_slugify_nome(k)] = v
-    return amap
-
-def normalize_consultor_nome(nome: str) -> str:
-    if not nome:
-        return nome
-    canon_list = st.session_state.get("consultores_list") or EQUIPE_EPROC_CANON
-    amap = st.session_state.get("_alias_map_eproc")
-    if not amap or st.session_state.get("_alias_map_eproc_len") != len(canon_list):
-        amap = _build_alias_map(canon_list)
-        st.session_state["_alias_map_eproc"] = amap
-        st.session_state["_alias_map_eproc_len"] = len(canon_list)
-    key = _slugify_nome(nome)
-    return amap.get(key, nome)
-
-def _parse_any_datetime_to_br_naive(val):
-    """Converte datetime/str(ISO)/epoch para datetime naive no fuso de Brasília.
-    Aceita strings com 'Z' no final."""
-    if val is None or val == "":
-        return None
-    try:
-        if isinstance(val, datetime):
-            dt = val
-        elif isinstance(val, (int, float)):
-            dt = datetime.fromtimestamp(val)
-        elif isinstance(val, str):
-            s = val.strip()
-            if s.endswith("Z"):
-                s = s[:-1] + "+00:00"
-            try:
-                dt = datetime.fromisoformat(s)
-            except Exception:
-                try:
-                    from dateutil import parser as _parser  # type: ignore
-                    dt = _parser.isoparse(val)
-                except Exception:
-                    return None
-        else:
-            return None
-
-        # normaliza timezone -> Brasília (naive)
-        if dt.tzinfo is not None:
-            dt = dt.astimezone(timezone(timedelta(hours=-3))).replace(tzinfo=None)
-        return dt
-    except Exception:
-        return None
-
-def _normalize_state_names_inplace(state: dict):
-    """Normaliza nomes em chaves comuns do app_state (fila, bastao_holder, etc.)."""
-    if not isinstance(state, dict):
-        return state
-
-    # bastão holder
-    if state.get("bastao_holder"):
-        state["bastao_holder"] = normalize_consultor_nome(state["bastao_holder"])
-
-    # fila principal
-    if isinstance(state.get("bastao_queue"), list):
-        state["bastao_queue"] = [normalize_consultor_nome(x) for x in state["bastao_queue"]]
-
-    if isinstance(state.get("priority_return_queue"), list):
-        state["priority_return_queue"] = [normalize_consultor_nome(x) for x in state["priority_return_queue"]]
-
-    # indicadores/contadores
-    for k in ("skip_flags", "bastao_counts", "previous_states", "quick_indicators", "status_texto"):
-        if isinstance(state.get(k), dict):
-            newd = {}
-            for n, v in state[k].items():
-                newd[normalize_consultor_nome(n)] = v
-            state[k] = newd
-
-    # current_status_starts (vem em sync_state_from_db)
-    return state
-
 REG_USUARIO_OPCOES = ["Cartório", "Gabinete", "Externo"]
 REG_SISTEMA_OPCOES = ["Conveniados", "Outros", "Eproc", "Themis", "JPE", "SIAP"]
 REG_CANAL_OPCOES = ["Presencial", "Telefone", "Email", "Whatsapp", "Outros"]
@@ -318,53 +171,36 @@ PUG2026_FILENAME = "Carnaval.gif"
 # ============================================
 RAMAIS_CESUPE = {
     # Chave normalizada (sem acento, minúscula). Priorize combinações específicas antes do primeiro nome.
-
-    # --- Específicos (evitam conflito de primeiro nome) ---
     'douglas paiva': '2663',
-    'marcelo pena': '4208',
-    'marcelo pena guerra': '4208',
-    'marina amaral': '4211',
-    'marina torres do amaral': '4211',
-    'marina marques': '2607',
-    'marina silva marques': '2607',
-
-    # --- Primeiro nome / chaves gerais ---
-    'alex': '2650',
-    'barbara': '4201',
+    'alex': '2510',
+    'barbara': '2517',
     'bruno': '2644',
-    'claudio': '2667',   # variação comum
-    'claudia': '2667',
+    'claudio': '2667',
+    'claudia': '2667',  # variação comum
     'dirceu': '2666',
-    'douglas': '4210',
+    'douglas': '2659',
     'fabio': '2665',
     'farley': '2651',
-    'gilberto': '2645',
-    'gleis': '4212',
-    'gleissiane': '4212',  # variação comum
+    'gilberto': '2654',
+    'gleis': '2536',
+    'gleissiane': '2536',
     'gleyce': '2647',
-    'glayce': '2647',    # variação comum
-    'hugo': '4207',
-    'igor': '4203',
-    'isabela': '4205',
-    'isac': '2517',
-    'ivana': '2653',
+    'glayce': '2647',  # variação comum
+    'hugo': '2650',
     'jerry': '2654',
     'jonatas': '2656',
-    'juliana': '4209',
-    'larissa': '2661',
     'leandro': '2652',
-    'leonardo': '4204',
-    'luiz': '4202',
+    'leonardo': '2655',
+    'ivana': '2653',
     'marcelo': '2655',
     'matheus': '2664',
-    'michael': '2516',
-    'moroni': '4206',
-    'pablo': '2658',
-    'ranier': '2669',     # variação comum
-    'ranyer': '2669',
-    'sarah': '2643',
-    'vanessa': '2510',
+    'michael': '2638',
+    'pablo': '2643',
+    'ranier': '2669',
+    'ranyer': '2669',  # variação comum
+    'vanessa': '2607',
     'victoria': '2660',
+    'victória': '2660',  # caso venha com acento
 }
 
 
@@ -521,52 +357,12 @@ def post_n8n(url: str, payload: dict) -> bool:
 # ============================================
 
 @st.cache_resource(ttl=3600)
-def _get_supabase_client(url: str, key: str):
-    # Cache por processo (evita reconectar a cada rerun)
-    return create_client(url, key)
-
-def _get_supabase_config() -> tuple[str, str]:
-    """
-    Lê config do Supabase de forma resiliente:
-      1) st.secrets["supabase"] (service_role_key/anon_key/key + url)
-      2) variáveis de ambiente (SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY / SUPABASE_ANON_KEY / SUPABASE_KEY)
-      3) fallback de URL (neste app)
-    """
-    sb = {}
-    try:
-        sb = dict(st.secrets.get("supabase", {}))
-    except Exception:
-        sb = {}
-
-    url = (sb.get("url") or os.getenv("SUPABASE_URL") or "https://kxlcdywjxyhbxkvcmpxd.supabase.co").strip()
-
-    key = (
-        sb.get("service_role_key") or os.getenv("SUPABASE_SERVICE_ROLE_KEY") or
-        sb.get("anon_key") or os.getenv("SUPABASE_ANON_KEY") or
-        sb.get("key") or os.getenv("SUPABASE_KEY") or
-        ""
-    )
-    key = str(key).strip()
-
-    return url, key
-
 def get_supabase():
-    """
-    Retorna cliente Supabase ou None (se não configurado).
-    Não estoura erro para o usuário — só mostra aviso em pontos críticos.
-    """
-    try:
-        url, key = _get_supabase_config()
-        if not url or not key:
-            return None
-        return _get_supabase_client(url, key)
-    except Exception:
-        try:
-            st.cache_resource.clear()
-        except Exception:
-            pass
+    try: 
+        return create_client(st.secrets["supabase"]["url"], st.secrets["supabase"]["key"])
+    except Exception as e:
+        st.cache_resource.clear()
         return None
-
 
 def render_operational_summary():
     """Resumo Operacional: link externo (sem gráfico no app)."""
@@ -1019,12 +815,6 @@ def sync_state_from_db():
         db_data = load_state_from_db(tid)
         if not db_data: return
 
-        # Normaliza nomes (compatibilidade com versões antigas)
-        try:
-            _normalize_state_names_inplace(db_data)
-        except Exception:
-            pass
-
         keys = ['status_texto', 'bastao_queue', 'skip_flags', 'bastao_counts', 'priority_return_queue', 'daily_logs', 'simon_ranking', 'previous_states', 'quick_indicators']
         for k in keys:
             if k in db_data: 
@@ -1032,24 +822,19 @@ def sync_state_from_db():
                     st.session_state[k] = db_data[k][-150:] 
                 else:
                     st.session_state[k] = db_data[k]
-        bst = _parse_any_datetime_to_br_naive(db_data.get('bastao_start_time'))
-        if bst:
-            st.session_state['bastao_start_time'] = bst
-        if 'current_status_starts' in db_data and isinstance(db_data.get('current_status_starts'), dict):
-            starts = db_data.get('current_status_starts') or {}
+                    
+        if 'bastao_start_time' in db_data and db_data['bastao_start_time']:
+            try:
+                if isinstance(db_data['bastao_start_time'], str): st.session_state['bastao_start_time'] = datetime.fromisoformat(db_data['bastao_start_time'])
+                else: st.session_state['bastao_start_time'] = db_data['bastao_start_time']
+            except: pass
+        if 'current_status_starts' in db_data:
+            starts = db_data['current_status_starts']
             for nome, val in starts.items():
-                nm = normalize_consultor_nome(nome)
-                dt = _parse_any_datetime_to_br_naive(val)
-                if dt:
-                    try:
-                        st.session_state.current_status_starts[nm] = dt
-                    except Exception:
-                        st.session_state['current_status_starts'][nm] = dt
-                else:
-                    try:
-                        st.session_state.current_status_starts[nm] = val
-                    except Exception:
-                        st.session_state['current_status_starts'][nm] = val
+                if isinstance(val, str):
+                    try: st.session_state.current_status_starts[nome] = datetime.fromisoformat(val)
+                    except: pass
+                else: st.session_state.current_status_starts[nome] = val
     except Exception as e: print(f"Erro sync: {e}")
 
 def log_status_change(consultor, old_status, new_status, duration):
@@ -1482,35 +1267,12 @@ def init_session_state():
         tid = st.session_state.get('team_id', 2)
         db = load_state_from_db(tid)
         if db:
-            try:
-                _normalize_state_names_inplace(db)
-            except Exception:
-                pass
             if 'report_last_run_date' in db and isinstance(db['report_last_run_date'], str):
                 try: 
                     db['report_last_run_date'] = datetime.fromisoformat(db['report_last_run_date'])
                 except: 
                     db['report_last_run_date'] = datetime.min
             st.session_state.update(db)
-            # Normaliza datetimes carregados do banco
-            try:
-                _bst = _parse_any_datetime_to_br_naive(st.session_state.get('bastao_start_time'))
-                if _bst:
-                    st.session_state['bastao_start_time'] = _bst
-            except Exception:
-                pass
-
-            try:
-                if isinstance(st.session_state.get('current_status_starts'), dict):
-                    _new = {}
-                    for _n, _v in st.session_state['current_status_starts'].items():
-                        _nn = normalize_consultor_nome(_n)
-                        _dt = _parse_any_datetime_to_br_naive(_v)
-                        _new[_nn] = _dt or _v
-                    st.session_state['current_status_starts'] = _new
-            except Exception:
-                pass
-
         st.session_state['db_loaded'] = True
     
     defaults = {
@@ -1597,12 +1359,15 @@ def watcher_de_atualizacoes():
 # PONTO DE ENTRADA
 # ============================================
 def render_dashboard(team_id: int, team_name: str, consultores_list: list, webhook_key: str, app_url: str, other_team_id: int, other_team_name: str, usuario_logado: str):
-    global APP_URL_CLOUD, CONSULTORES
-    # 0) Contexto da equipe precisa existir ANTES do init_session_state (que lê do banco)
-    prev_tid = st.session_state.get('team_id')
-    if prev_tid != team_id:
+    # 1. Inicializa estado PRIMEIRO para garantir que tudo existe
+    init_session_state()
+    memory_sweeper()
+    auto_manage_time()
+
+    # 1.1) Garante que o team_id/other_team_id ficam disponíveis ANTES de qualquer sync
+    if 'team_id' not in st.session_state or st.session_state.get('team_id') != team_id:
         st.session_state['team_id'] = team_id
-        # Se alternar equipe, limpa cache do loader para evitar misturar estado
+        # Força recarregar logo na primeira vez que trocar de equipe
         try:
             load_state_from_db.clear()
         except Exception:
@@ -1611,22 +1376,16 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
     st.session_state['team_name'] = team_name
     st.session_state['other_team_id'] = other_team_id
     st.session_state['other_team_name'] = other_team_name
-    st.session_state['consultores_list'] = consultores_list or CONSULTORES
-
-    # 1) Inicializa estado (agora com team_id correto)
-    init_session_state()
-    memory_sweeper()
-    auto_manage_time()
-
 
     # 1.2) Variáveis globais
+    global APP_URL_CLOUD, CONSULTORES
     APP_URL_CLOUD = app_url or APP_URL_CLOUD
     if consultores_list:
         CONSULTORES = list(consultores_list)
 
     # 2) Auto-refresh + contador (40s fixo)
     pulse = autorefresh_with_realtime_countdown(
-        interval_seconds=40,
+        interval_seconds=60,
         key_prefix=f"autorefresh_{team_id}",
         show_box=True,
     )
@@ -1814,7 +1573,8 @@ button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{filter: brightness(1.04)
         c_topo_esq, c_topo_dir = st.columns([2, 1], vertical_alignment="bottom")
         with c_topo_esq:
             img = get_img_as_base64_cached(PUG2026_FILENAME); src = f"data:image/png;base64,{img}" if img else GIF_BASTAO_HOLDER
-            st.markdown(f"""<div style="display: flex; align-items: center; gap: 15px;"><h1 style="margin: 0; padding: 0; font-size: 2.2rem; color: #FF8C00; text-shadow: 1px 1px 2px #FF4500;">Controle Bastão Cesupe 2026 {BASTAO_EMOJI}</h1><img src="{src}" style="width: 150px; height: 150px; border-radius: 10px; border: 4px solid #FF8C00; object-fit: cover;"></div>""", unsafe_allow_html=True)
+            title = f"Controle Bastão {st.session_state.get('team_name') or team_name} 2026 {BASTAO_EMOJI}"
+            st.markdown(f"""<div style="display: flex; align-items: center; gap: 15px;"><h1 style="margin: 0; padding: 0; font-size: 2.2rem; color: #FF8C00; text-shadow: 1px 1px 2px #FF4500;">{title}</h1><img src="{src}" style="width: 150px; height: 150px; border-radius: 10px; border: 4px solid #FF8C00; object-fit: cover;"></div>""", unsafe_allow_html=True)
         with c_topo_dir:
             c_sub1, c_sub2 = st.columns([2, 1], vertical_alignment="bottom")
             with c_sub1: novo_responsavel = st.selectbox("Assumir Bastão (Rápido)", options=["Selecione"] + CONSULTORES, label_visibility="collapsed", key="quick_enter")
@@ -1835,10 +1595,7 @@ button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{filter: brightness(1.04)
         st.header("Responsável pelo Bastão")
         if responsavel:
             st.markdown(f"""<div style="background: linear-gradient(135deg, #FFF3E0 0%, #FFFFFF 100%); border: 3px solid #FF8C00; padding: 25px; border-radius: 15px; display: flex; align-items: center; box-shadow: 0 4px 15px rgba(255, 140, 0, 0.3); margin-bottom: 20px;"><div style="flex-shrink: 0; margin-right: 25px;"><img src="{GIF_BASTAO_HOLDER}" style="width: 90px; height: 90px; border-radius: 50%; object-fit: cover; border: 2px solid #FF8C00;"></div><div><span style="font-size: 14px; color: #555; font-weight: bold; text-transform: uppercase; letter-spacing: 1.5px;">Atualmente com:</span><br><span style="font-size: 42px; font-weight: 800; color: #FF4500; line-height: 1.1;">{responsavel}</span></div></div>""", unsafe_allow_html=True)
-            _bst = _parse_any_datetime_to_br_naive(st.session_state.get('bastao_start_time'))
-            if _bst:
-                st.session_state['bastao_start_time'] = _bst
-            dur = get_brazil_time() - (_bst or get_brazil_time())
+            dur = get_brazil_time() - (st.session_state.bastao_start_time or get_brazil_time())
             st.caption(f"⏱️ Tempo com o bastão: **{format_time_duration(dur)}**")
         else: st.markdown('<h2>(Ninguém com o bastão)</h2>', unsafe_allow_html=True)
     
@@ -1864,110 +1621,48 @@ button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{filter: brightness(1.04)
     # --- SIDEBAR FRAGMENT ---
     # @st.fragment  # DESATIVADO (autorefresh full-run)
     def render_right_sidebar():
-        other_id = st.session_state.get('other_team_id')
-        other_name = st.session_state.get('other_team_name', 'Outra Equipe')
-        team_name = st.session_state.get('team_name', '')
+        """Painel lateral (direita): apenas LogMeIn."""
+        st.markdown("### 🔑 LogMeIn")
+        st.caption("LogMeIn **não** é status: é apenas para visualizar quem está usando o programa.")
 
-        # Botão grande para voltar ao menu (tela de login)
-        st.markdown(
-            """
-<style>
-button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]{
-  background: #ef4444 !important;
-  color: white !important;
-  border: 1px solid #ef4444 !important;
-  font-weight: 800 !important;
-  height: 52px !important;
-  border-radius: 14px !important;
-  width: 100% !important;
-}
-button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{
-  background: #dc2626 !important;
-  border-color: #dc2626 !important;
-}
-</style>
-""",
-            unsafe_allow_html=True
-        )
-        if st.button("⬅️ SAIR / VOLTAR AO MENU", use_container_width=True, key="btn_back_menu_top"):
-            st.session_state['_force_back_to_names'] = True
-            st.session_state['time_selecionado'] = None
-            st.session_state['consultor_logado'] = None
-            st.session_state['consultor_selectbox'] = 'Selecione um nome'
-            st.rerun()
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("Abrir", use_container_width=True, key=f"btn_open_logmein_side_{uuid.uuid4().hex}"):
+                open_logmein_ui()
+        with c2:
+            if st.button("Fechar", use_container_width=True, key=f"btn_close_logmein_side_{uuid.uuid4().hex}"):
+                close_logmein_ui()
 
-        with st.expander('🧭 Painel (outra equipe / LogMeIn / trocar consultor)', expanded=False):
-            if st.button('🔙 Voltar à tela de nomes', use_container_width=True, key='btn_voltar_nomes'):
-                st.session_state['_force_back_to_names'] = True
-                st.session_state['time_selecionado'] = None
-                st.session_state['consultor_logado'] = None
-                st.session_state['consultor_selectbox'] = 'Selecione um nome'
-                st.rerun()
+        if st.session_state.get("view_logmein_ui"):
+            with st.container(border=True):
+                st.markdown("#### 💻 Acesso LogMeIn")
+                l_user, l_in_use = get_logmein_status()
+                st.image(GIF_LOGMEIN_TARGET, width=180)
 
-            if other_id:
-                try: other_state = load_state_from_db(other_id) or {}
-                except: other_state = {}
-                other_queue = other_state.get('bastao_queue', []) or []
-                other_skips = other_state.get('skip_flags', {}) or {}
-                other_status = other_state.get('status_texto', {}) or {}
-                other_quick = other_state.get('quick_indicators', {}) or {}
-                other_responsavel = None
-                for c, s in (other_status or {}).items():
-                    if isinstance(s, str) and 'Bastão' in s: other_responsavel = c; break
-                proximo_outro = None
-                if other_queue:
-                    if other_responsavel in other_queue:
-                        idx = other_queue.index(other_responsavel)
-                        nxt = find_next_holder_index(idx, other_queue, other_skips)
-                        proximo_outro = other_queue[nxt] if nxt != -1 else None
-                    if not proximo_outro:
-                        nxt = find_next_holder_index(-1, other_queue, other_skips)
-                        proximo_outro = other_queue[nxt] if nxt != -1 else None
-                def _fmt_other(nome):
-                    rb = _badge_ramal_html(get_ramal_nome(nome))
-                    ic = _icons_telefone_cafe(other_quick.get(nome, {}))
-                    return f"{nome}{rb}{ic}"
-                st.markdown(f"### 👥 Fila {other_name}")
-                if other_responsavel: st.markdown(f"**Com o Bastão agora:** {_fmt_other(other_responsavel)}", unsafe_allow_html=True)
-                else: st.markdown("**Com o Bastão agora:** _Ninguém_", unsafe_allow_html=True)
-                if proximo_outro: st.markdown(f"**Próximo Bastão:** {_fmt_other(proximo_outro)}", unsafe_allow_html=True)
-                else: st.markdown("**Próximo Bastão:** _Ninguém na fila_", unsafe_allow_html=True)
-                if other_queue:
-                    demais = [n for n in other_queue if n != other_responsavel and n != proximo_outro]
-                    if demais:
-                        st.markdown("**Demais na fila:**", unsafe_allow_html=True)
-                        for n in demais: st.markdown(f"- {_fmt_other(n)}", unsafe_allow_html=True)
-                    else: st.markdown("_Sem demais na fila._")
-            else: st.markdown('_Sem outra equipe configurada._')
+                meu_nome = st.session_state.get("consultor_selectbox")
 
-            st.divider(); st.markdown('### 🔑 LogMeIn'); st.caption('LogMeIn **não** é status: é apenas para visualizar quem está usando o programa.')
-            c1, c2 = st.columns(2)
-            with c1:
-                if st.button('Abrir', use_container_width=True, key='btn_open_logmein_side'): open_logmein_ui()
-            with c2:
-                if st.button('Fechar', use_container_width=True, key='btn_close_logmein_side'): close_logmein_ui()
-
-            if st.session_state.get('view_logmein_ui'):
-                with st.container(border=True):
-                    st.markdown('#### 💻 Acesso LogMeIn')
-                    l_user, l_in_use = get_logmein_status()
-                    st.image(GIF_LOGMEIN_TARGET, width=180)
-                    if l_in_use:
-                        st.error(f"🔴 EM USO POR: **{l_user}**")
-                        meu_nome = st.session_state.get('consultor_selectbox')
-                        if meu_nome == l_user or meu_nome in CONSULTORES:
-                            if st.button('🔓 LIBERAR AGORA', type='primary', use_container_width=True, key='btn_logmein_liberar_side'):
-                                set_logmein_status(None, False); close_logmein_ui(); st.rerun()
-                        else: st.info('Aguarde a liberação.')
+                if l_in_use:
+                    st.error(f"🔴 EM USO POR: **{l_user}**")
+                    # Liberação: permitido para o próprio usuário ou para alguém com nome selecionado (admin/suporte)
+                    if meu_nome == l_user or (meu_nome and meu_nome != "Selecione um nome"):
+                        if st.button("🔓 LIBERAR AGORA", type="primary", use_container_width=True,
+                                     key=f"btn_logmein_liberar_side_{uuid.uuid4().hex}"):
+                            set_logmein_status(None, False)
+                            close_logmein_ui()
+                            st.rerun()
                     else:
-                        st.success('✅ LIVRE PARA USO')
-                        meu_nome = st.session_state.get('consultor_selectbox')
-                        if meu_nome and meu_nome != 'Selecione um nome':
-                            if st.button('🚀 ASSUMIR AGORA', use_container_width=True, key='btn_logmein_assumir_side'):
-                                set_logmein_status(meu_nome, True); close_logmein_ui(); st.rerun()
-                        else: st.warning('Selecione seu nome no topo para assumir.')
-            st.divider()
-            if isinstance(team_name, str) and 'eproc' in team_name.lower(): render_agenda_eproc_sidebar()
+                        st.info("Aguarde a liberação.")
+                else:
+                    st.success("✅ LIVRE PARA USO")
+                    if meu_nome and meu_nome != "Selecione um nome":
+                        if st.button("🚀 ASSUMIR AGORA", use_container_width=True, key=f"btn_logmein_assumir_side_{uuid.uuid4().hex}"):
+                            set_logmein_status(meu_nome, True)
+                            close_logmein_ui()
+                            st.rerun()
+                    else:
+                        st.warning("Selecione seu nome no topo para assumir.")
+
+        st.divider()
 
     def render_status_list():
         sync_state_from_db()
