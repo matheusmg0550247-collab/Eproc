@@ -871,7 +871,11 @@ def send_daily_report_to_webhook():
 
 def check_and_assume_baton(forced_successor=None, immune_consultant=None):
     queue, skips = st.session_state.bastao_queue, st.session_state.skip_flags
-    current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
+    # Se o último sair da fila, não pode ficar bastão “preso” em alguém.
+    # Também evita forced_successor inválido (ex.: quando a fila tinha só 1 pessoa).
+    if forced_successor and (forced_successor not in (queue or [])):
+        forced_successor = None
+    current_holder = get_bastao_holder_atual()
     is_valid = (current_holder and current_holder in queue)
     target = forced_successor if forced_successor else (current_holder if is_valid else None)
     
@@ -882,7 +886,7 @@ def check_and_assume_baton(forced_successor=None, immune_consultant=None):
         
     changed = False; now = get_brazil_time()
     
-    for c in CONSULTORES:
+    for c in list((st.session_state.get('status_texto') or {}).keys()):
         if c != immune_consultant: 
             if c != target and 'Bastão' in st.session_state.status_texto.get(c, ''):
                 log_status_change(c, 'Bastão', 'Indisponível', now - st.session_state.current_status_starts.get(c, now))
@@ -914,7 +918,7 @@ def update_status(novo_status: str, marcar_indisponivel: bool = False, manter_fi
     now_br = get_brazil_time()
     current = st.session_state.status_texto.get(selected, '')
     forced_successor = None
-    current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in (s or '')), None)
+    current_holder = get_bastao_holder_atual()
     
     if novo_status == 'Almoço':
         st.session_state.previous_states[selected] = {
@@ -1005,7 +1009,7 @@ def notify_bastao_giro(reason='update', actor=None):
         holder = get_bastao_holder_atual()
         if not holder and st.session_state.bastao_queue:
             holder = st.session_state.bastao_queue[0]
-            
+        holder_txt = holder if holder else 'Ninguém'
         lista_proximos = get_proximos_bastao(holder, n=2)
         txt_proximos = ", ".join(lista_proximos) if lista_proximos else "Ninguém"
         
@@ -1013,7 +1017,7 @@ def notify_bastao_giro(reason='update', actor=None):
 
         msg_final = (
             f"🔄 *Troca de Bastão - {nome_equipe}*\n\n"
-            f"👤 *Agora:* {holder}\n"
+            f"👤 *Agora:* {holder_txt}\n"
             f"🔜 *Próximos:* {txt_proximos}"
         )
 
@@ -1024,7 +1028,7 @@ def notify_bastao_giro(reason='update', actor=None):
             'team_id': st.session_state.get('team_id'),
             'team_name': nome_equipe,
             'actor': actor,
-            'com_bastao_agora': holder,
+            'com_bastao_agora': holder_txt,
             'proximos': lista_proximos,
             'tamanho_fila': len(st.session_state.bastao_queue),
             'message': msg_final  
@@ -1057,7 +1061,7 @@ def notify_registro_ferramenta(tipo: str, actor: str, dados: dict = None, mensag
 def toggle_queue(consultor):
     ensure_daily_reset(); st.session_state.gif_warning = False; now_br = get_brazil_time()
     if consultor in st.session_state.bastao_queue:
-        current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
+        current_holder = get_bastao_holder_atual()
         forced_successor = None
         if consultor == current_holder:
             idx = st.session_state.bastao_queue.index(consultor)
@@ -1080,7 +1084,7 @@ def rotate_bastao():
     if not selected or selected == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
     
     queue = st.session_state.bastao_queue; skips = st.session_state.skip_flags
-    current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
+    current_holder = get_bastao_holder_atual()
     
     if selected != current_holder:
         st.error(f"⚠️ Apenas quem está com o bastão ({current_holder}) pode passá-lo!")
@@ -1587,7 +1591,7 @@ button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{filter: brightness(1.04)
         st.markdown("<hr style='border: 1px solid #FF8C00; margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
         queue = st.session_state.bastao_queue
         skips = st.session_state.skip_flags
-        responsavel = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
+        responsavel = get_bastao_holder_atual()
         curr_idx = queue.index(responsavel) if responsavel in queue else -1
         prox_idx = find_next_holder_index(curr_idx, queue, skips)
         proximo = queue[prox_idx] if prox_idx != -1 else None
@@ -1668,7 +1672,7 @@ button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{filter: brightness(1.04)
         sync_state_from_db()
         queue = st.session_state.bastao_queue
         skips = st.session_state.skip_flags
-        responsavel = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
+        responsavel = get_bastao_holder_atual()
 
         st.header('Status dos(as) Consultores(as)')
         # --- Filtros (apenas visual) ---
