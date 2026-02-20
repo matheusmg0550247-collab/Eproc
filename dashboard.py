@@ -428,7 +428,7 @@ def clean_data_for_db(obj):
     else:
         return obj
 
-@st.cache_data(ttl=5, show_spinner=False)
+@st.cache_data(ttl=15, show_spinner=False)
 def load_state_from_db(app_id):
     sb = get_supabase()
     if not sb: return {}
@@ -441,7 +441,7 @@ def load_state_from_db(app_id):
         return {}
 
 
-@st.cache_data(ttl=2, show_spinner=False)
+@st.cache_data(ttl=10, show_spinner=False)
 def load_global_state_version():
     """Lê o carimbo de versão global (qualquer equipe)."""
     sb = get_supabase()
@@ -1603,7 +1603,7 @@ button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{filter: brightness(1.04)
     # --- HEADER FRAGMENT ---
     # @st.fragment  # DESATIVADO (autorefresh full-run)
     def render_header_info_left():
-        sync_state_from_db()
+        # sync já feito no topo de render_dashboard — removido aqui para evitar chamada duplicada ao Supabase
         c_topo_esq, c_topo_dir = st.columns([2, 1], vertical_alignment="bottom")
         with c_topo_esq:
             img = get_img_as_base64_cached(PUG2026_FILENAME); src = f"data:image/png;base64,{img}" if img else GIF_BASTAO_HOLDER
@@ -1760,7 +1760,7 @@ button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{
             if isinstance(team_name, str) and 'eproc' in team_name.lower(): render_agenda_eproc_sidebar()
 
     def render_status_list():
-        sync_state_from_db()
+        # sync já feito no topo de render_dashboard — removido aqui para evitar chamada duplicada ao Supabase
         queue = st.session_state.bastao_queue
         skips = st.session_state.skip_flags
         responsavel = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
