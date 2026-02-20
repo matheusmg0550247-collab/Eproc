@@ -331,35 +331,45 @@ APP_URL_CLOUD = 'https://controle-bastao-cesupe.streamlit.app'
 # Compatibilidade: caso não exista [n8n], usamos as chaves antigas em [chat]
 # - chat.bastao_eq1 / chat.bastao_eq2 (giro do bastão)
 # - chat.registro (demais registros/ferramentas)
-def resolve_webhook_bastao_giro(team_id: int | None = None, explicit_url: str | None = None) -> str:
-    """
-    Resolve o webhook de GIRO do bastão de forma determinística por equipe.
-    Prioridade:
-      1) explicit_url (passado pelo app.py)
-      2) [n8n].bastao_giro (único, se você usa um webhook por app)
-      3) [chat].bastao_eq1 ou [chat].bastao_eq2 conforme team_id
-      4) fallback: qualquer um disponível (para não quebrar)
-    """
-    if explicit_url:
-        return str(explicit_url).strip()
-    url_n8n = get_secret("n8n", "bastao_giro")
-    if url_n8n:
-        return str(url_n8n).strip()
-
-    tid = team_id if team_id is not None else st.session_state.get("team_id")
-    if tid == 1:
-        return str(get_secret("chat", "bastao_eq1") or "").strip()
-    if tid == 2:
-        return str(get_secret("chat", "bastao_eq2") or "").strip()
-
-    # fallback (ordem não importa aqui)
-    return str(get_secret("chat", "bastao_eq1") or get_secret("chat", "bastao_eq2") or "").strip()
-
-# Webhooks
-N8N_WEBHOOK_BASTAO_GIRO = ""  # resolvido em tempo de execução via resolve_webhook_bastao_giro(...)
-N8N_WEBHOOK_REGISTROS   = str(get_secret("n8n", "registros") or get_secret("chat", "registro") or "").strip()
+N8N_WEBHOOK_BASTAO_GIRO = get_secret("n8n", "bastao_giro") or get_secret("chat", "bastao_eq1") or get_secret("chat", "bastao_eq2")
+N8N_WEBHOOK_REGISTROS   = get_secret("n8n", "registros")   or get_secret("chat", "registro")
 
 WEBHOOK_STATE_DUMP = get_secret("webhook", "test_state")
+
+def get_bastao_webhook_url() -> str:
+    """Resolve a URL do webhook de GIRO DO BASTÃO de forma correta por equipe.
+    Prioridade:
+      1) parâmetro recebido do app (st.session_state['webhook_key'])
+      2) secrets novos: [n8n].bastao_giro
+      3) compatibilidade: [chat].bastao_eq1 / [chat].bastao_eq2 (seleciona pelo team_id)
+    """
+    try:
+        ss_key = st.session_state.get("webhook_key")
+    except Exception:
+        ss_key = None
+    if ss_key:
+        return ss_key
+
+    url = get_secret("n8n", "bastao_giro")
+    if url:
+        return url
+
+    try:
+        tid = st.session_state.get("team_id")
+    except Exception:
+        tid = None
+
+    if tid == 1:
+        return get_secret("chat", "bastao_eq1") or get_secret("chat", "bastao_eq2") or ""
+    if tid == 2:
+        return get_secret("chat", "bastao_eq2") or get_secret("chat", "bastao_eq1") or ""
+
+    return get_secret("chat", "bastao_eq1") or get_secret("chat", "bastao_eq2") or ""
+
+
+def get_registros_webhook_url() -> str:
+    """Resolve a URL do webhook de REGISTROS/FERRAMENTAS."""
+    return get_secret("n8n", "registros") or get_secret("chat", "registro") or ""
 
 def post_n8n(url: str, payload: dict) -> bool:
     """Envia evento para n8n (silencioso). Retorna True/False."""
@@ -472,18 +482,7 @@ def save_state_to_db(app_id, state_data):
         return
     try:
         sanitized_data = clean_data_for_db(state_data)
-        res = sb.table("app_state").upsert({"id": app_id, "data": sanitized_data}).execute()
-
-        # Alguns clientes Supabase NÃO levantam exceção; checa retorno.
-        _err = None
-        try:
-            _err = getattr(res, "error", None)
-        except Exception:
-            _err = None
-        if _err is None and isinstance(res, dict):
-            _err = res.get("error")
-        if _err:
-            raise Exception(_err)
+        sb.table("app_state").upsert({"id": app_id, "data": sanitized_data}).execute()
         # Dispara refresh global para todos os clientes (qualquer equipe)
         bump_global_state_version(sb)
 
@@ -498,7 +497,6 @@ def save_state_to_db(app_id, state_data):
     except Exception as e:
         st.error(f"🔥 ERRO DE ESCRITA NO BANCO: {e}")
 
-# --- LOGMEIN DB ---
 def get_logmein_status():
     sb = get_supabase()
     if not sb: return None, False
@@ -756,7 +754,7 @@ def send_chat_notification_internal(consultor, status):
         'com_bastao_agora': consultor,
         'proximos': lista_proximos, # <--- AGORA VAI PREENCHIDO
     }
-    return post_n8n(resolve_webhook_bastao_giro(explicit_url=st.session_state.get('webhook_key')), payload)
+    return post_n8n(get_bastao_webhook_url(), payload)
 
 
 def send_state_dump_webhook(state_data):
@@ -907,11 +905,7 @@ def send_daily_report_to_webhook():
 
 def check_and_assume_baton(forced_successor=None, immune_consultant=None):
     queue, skips = st.session_state.bastao_queue, st.session_state.skip_flags
-    # Se o último sair da fila, não pode ficar bastão “preso” em alguém.
-    # Também evita forced_successor inválido (ex.: quando a fila tinha só 1 pessoa).
-    if forced_successor and (forced_successor not in (queue or [])):
-        forced_successor = None
-    current_holder = get_bastao_holder_atual()
+    current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
     is_valid = (current_holder and current_holder in queue)
     target = forced_successor if forced_successor else (current_holder if is_valid else None)
     
@@ -922,7 +916,7 @@ def check_and_assume_baton(forced_successor=None, immune_consultant=None):
         
     changed = False; now = get_brazil_time()
     
-    for c in list((st.session_state.get('status_texto') or {}).keys()):
+    for c in CONSULTORES:
         if c != immune_consultant: 
             if c != target and 'Bastão' in st.session_state.status_texto.get(c, ''):
                 log_status_change(c, 'Bastão', 'Indisponível', now - st.session_state.current_status_starts.get(c, now))
@@ -954,7 +948,7 @@ def update_status(novo_status: str, marcar_indisponivel: bool = False, manter_fi
     now_br = get_brazil_time()
     current = st.session_state.status_texto.get(selected, '')
     forced_successor = None
-    current_holder = get_bastao_holder_atual()
+    current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in (s or '')), None)
     
     if novo_status == 'Almoço':
         st.session_state.previous_states[selected] = {
@@ -1045,7 +1039,7 @@ def notify_bastao_giro(reason='update', actor=None):
         holder = get_bastao_holder_atual()
         if not holder and st.session_state.bastao_queue:
             holder = st.session_state.bastao_queue[0]
-        holder_txt = holder if holder else 'Ninguém'
+            
         lista_proximos = get_proximos_bastao(holder, n=2)
         txt_proximos = ", ".join(lista_proximos) if lista_proximos else "Ninguém"
         
@@ -1053,7 +1047,7 @@ def notify_bastao_giro(reason='update', actor=None):
 
         msg_final = (
             f"🔄 *Troca de Bastão - {nome_equipe}*\n\n"
-            f"👤 *Agora:* {holder_txt}\n"
+            f"👤 *Agora:* {holder}\n"
             f"🔜 *Próximos:* {txt_proximos}"
         )
 
@@ -1064,13 +1058,13 @@ def notify_bastao_giro(reason='update', actor=None):
             'team_id': st.session_state.get('team_id'),
             'team_name': nome_equipe,
             'actor': actor,
-            'com_bastao_agora': holder_txt,
+            'com_bastao_agora': holder,
             'proximos': lista_proximos,
             'tamanho_fila': len(st.session_state.bastao_queue),
             'message': msg_final  
         }
         
-        post_n8n(resolve_webhook_bastao_giro(explicit_url=st.session_state.get('webhook_key')), payload)
+        post_n8n(get_bastao_webhook_url(), payload)
         return True
     except Exception:
         return False
@@ -1091,13 +1085,13 @@ def notify_registro_ferramenta(tipo: str, actor: str, dados: dict = None, mensag
         'dados': dados or {},
         'message': mensagem, 
     }
-    return post_n8n(N8N_WEBHOOK_REGISTROS, payload)
+    return post_n8n(get_registros_webhook_url(), payload)
 
 
 def toggle_queue(consultor):
     ensure_daily_reset(); st.session_state.gif_warning = False; now_br = get_brazil_time()
     if consultor in st.session_state.bastao_queue:
-        current_holder = get_bastao_holder_atual()
+        current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
         forced_successor = None
         if consultor == current_holder:
             idx = st.session_state.bastao_queue.index(consultor)
@@ -1120,7 +1114,7 @@ def rotate_bastao():
     if not selected or selected == 'Selecione um nome': st.warning('Selecione um(a) consultor(a).'); return
     
     queue = st.session_state.bastao_queue; skips = st.session_state.skip_flags
-    current_holder = get_bastao_holder_atual()
+    current_holder = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
     
     if selected != current_holder:
         st.error(f"⚠️ Apenas quem está com o bastão ({current_holder}) pode passá-lo!")
@@ -1399,21 +1393,19 @@ def watcher_de_atualizacoes():
 # PONTO DE ENTRADA
 # ============================================
 def render_dashboard(team_id: int, team_name: str, consultores_list: list, webhook_key: str, app_url: str, other_team_id: int, other_team_name: str, usuario_logado: str):
-    # 0) Garante que o team_id está definido ANTES de carregar do banco (evita ler/salvar no ID errado)
-    prev_tid = st.session_state.get('team_id')
-    if prev_tid != team_id:
+    # 1. Inicializa estado PRIMEIRO para garantir que tudo existe
+    init_session_state()
+    memory_sweeper()
+    auto_manage_time()
+
+    # 1.1) Garante que o team_id/other_team_id ficam disponíveis ANTES de qualquer sync
+    if 'team_id' not in st.session_state or st.session_state.get('team_id') != team_id:
         st.session_state['team_id'] = team_id
-        # força recarregar estado do banco ao trocar de equipe
-        st.session_state.pop('db_loaded', None)
+        # Força recarregar logo na primeira vez que trocar de equipe
         try:
             load_state_from_db.clear()
         except Exception:
             pass
-
-    # 1) Inicializa estado (agora já com team_id correto)
-    init_session_state()
-    memory_sweeper()
-    auto_manage_time()
 
     st.session_state['team_name'] = team_name
     st.session_state['other_team_id'] = other_team_id
@@ -1464,48 +1456,6 @@ def render_dashboard(team_id: int, team_name: str, consultores_list: list, webho
         _now_top = get_brazil_time().strftime('%d/%m/%Y %H:%M:%S')
         st.markdown(f"<div class='sticky-topbar'><div style='display:flex; justify-content:space-between; align-items:center; gap:12px;'><div><b>👤 Logado como:</b> {_user_top} &nbsp; <span class='muted'>|</span> &nbsp; <b>👥 Equipe:</b> {_team_top}</div><div class='muted'>🕒 {_now_top}</div></div></div>", unsafe_allow_html=True)
     except: pass
-
-    # ------------------------------
-    # Diagnóstico rápido (útil p/ conferir se o app está gravando no ID certo)
-    # ------------------------------
-    with st.expander("🔧 Diagnóstico (Supabase)", expanded=False):
-        st.write(f"team_id (app_state.id) em uso: **{team_id}**")
-        try:
-            sb_dbg = get_supabase()
-            if sb_dbg:
-                st.success("Supabase: conectado ✅")
-            else:
-                st.error("Supabase: SEM CONEXÃO ❌ (confira .streamlit/secrets.toml deste app/porta)")
-        except Exception as e:
-            st.error(f"Supabase erro: {e}")
-
-        if st.button("Testar escrita no app_state.id", key=f"btn_test_write_{team_id}"):
-            try:
-                sb_dbg = get_supabase()
-                if not sb_dbg:
-                    st.error("Sem conexão Supabase.")
-                else:
-                    ping = {"__ping": get_brazil_time().isoformat(), "__team_id": team_id}
-                    resw = sb_dbg.table("app_state").upsert({"id": team_id, "data": ping}).execute()
-                    _errw = None
-                    try:
-                        _errw = getattr(resw, "error", None)
-                    except Exception:
-                        _errw = None
-                    if _errw is None and isinstance(resw, dict):
-                        _errw = resw.get("error")
-                    if _errw:
-                        st.error(f"Erro de escrita: {_errw}")
-                    else:
-                        try:
-                            rs = sb_dbg.table("app_state").select("data").eq("id", team_id).execute()
-                            _data = getattr(rs, "data", None) if hasattr(rs, "data") else (rs.get("data") if isinstance(rs, dict) else None)
-                            st.write("Leitura após escrita:", _data)
-                        except Exception as _e2:
-                            st.warning(f"Escreveu, mas falhou ao ler para confirmar: {_e2}")
-                        st.success("Teste concluído ✅")
-            except Exception as e:
-                st.error(f"Erro no teste: {e}")
 
     st.session_state['team_id'] = team_id
     st.session_state['team_name'] = team_name
@@ -1657,8 +1607,7 @@ button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{filter: brightness(1.04)
         c_topo_esq, c_topo_dir = st.columns([2, 1], vertical_alignment="bottom")
         with c_topo_esq:
             img = get_img_as_base64_cached(PUG2026_FILENAME); src = f"data:image/png;base64,{img}" if img else GIF_BASTAO_HOLDER
-            title = f"Controle Bastão {st.session_state.get('team_name') or team_name} 2026 {BASTAO_EMOJI}"
-            st.markdown(f"""<div style="display: flex; align-items: center; gap: 15px;"><h1 style="margin: 0; padding: 0; font-size: 2.2rem; color: #FF8C00; text-shadow: 1px 1px 2px #FF4500;">{title}</h1><img src="{src}" style="width: 150px; height: 150px; border-radius: 10px; border: 4px solid #FF8C00; object-fit: cover;"></div>""", unsafe_allow_html=True)
+            st.markdown(f"""<div style="display: flex; align-items: center; gap: 15px;"><h1 style="margin: 0; padding: 0; font-size: 2.2rem; color: #FF8C00; text-shadow: 1px 1px 2px #FF4500;">Controle Bastão Cesupe 2026 {BASTAO_EMOJI}</h1><img src="{src}" style="width: 150px; height: 150px; border-radius: 10px; border: 4px solid #FF8C00; object-fit: cover;"></div>""", unsafe_allow_html=True)
         with c_topo_dir:
             c_sub1, c_sub2 = st.columns([2, 1], vertical_alignment="bottom")
             with c_sub1: novo_responsavel = st.selectbox("Assumir Bastão (Rápido)", options=["Selecione"] + CONSULTORES, label_visibility="collapsed", key="quick_enter")
@@ -1671,7 +1620,7 @@ button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{filter: brightness(1.04)
         st.markdown("<hr style='border: 1px solid #FF8C00; margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
         queue = st.session_state.bastao_queue
         skips = st.session_state.skip_flags
-        responsavel = get_bastao_holder_atual()
+        responsavel = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
         curr_idx = queue.index(responsavel) if responsavel in queue else -1
         prox_idx = find_next_holder_index(curr_idx, queue, skips)
         proximo = queue[prox_idx] if prox_idx != -1 else None
@@ -1705,54 +1654,116 @@ button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{filter: brightness(1.04)
     # --- SIDEBAR FRAGMENT ---
     # @st.fragment  # DESATIVADO (autorefresh full-run)
     def render_right_sidebar():
-        """Painel lateral (direita): apenas LogMeIn."""
-        st.markdown("### 🔑 LogMeIn")
-        st.caption("LogMeIn **não** é status: é apenas para visualizar quem está usando o programa.")
+        other_id = st.session_state.get('other_team_id')
+        other_name = st.session_state.get('other_team_name', 'Outra Equipe')
+        team_name = st.session_state.get('team_name', '')
 
-        c1, c2 = st.columns(2)
-        with c1:
-            if st.button("Abrir", use_container_width=True, key=f"btn_open_logmein_side_{uuid.uuid4().hex}"):
-                open_logmein_ui()
-        with c2:
-            if st.button("Fechar", use_container_width=True, key=f"btn_close_logmein_side_{uuid.uuid4().hex}"):
-                close_logmein_ui()
+        # Botão grande para voltar ao menu (tela de login)
+        st.markdown(
+            """
+<style>
+button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]{
+  background: #ef4444 !important;
+  color: white !important;
+  border: 1px solid #ef4444 !important;
+  font-weight: 800 !important;
+  height: 52px !important;
+  border-radius: 14px !important;
+  width: 100% !important;
+}
+button[aria-label="⬅️ SAIR / VOLTAR AO MENU"]:hover{
+  background: #dc2626 !important;
+  border-color: #dc2626 !important;
+}
+</style>
+""",
+            unsafe_allow_html=True
+        )
+        if st.button("⬅️ SAIR / VOLTAR AO MENU", use_container_width=True, key="btn_back_menu_top"):
+            st.session_state['_force_back_to_names'] = True
+            st.session_state['time_selecionado'] = None
+            st.session_state['consultor_logado'] = None
+            st.session_state['consultor_selectbox'] = 'Selecione um nome'
+            st.rerun()
 
-        if st.session_state.get("view_logmein_ui"):
-            with st.container(border=True):
-                st.markdown("#### 💻 Acesso LogMeIn")
-                l_user, l_in_use = get_logmein_status()
-                st.image(GIF_LOGMEIN_TARGET, width=180)
+        with st.expander('🧭 Painel (outra equipe / LogMeIn / trocar consultor)', expanded=False):
+            if st.button('🔙 Voltar à tela de nomes', use_container_width=True, key=f'btn_voltar_nomes_{uuid.uuid4().hex}'):
+                st.session_state['_force_back_to_names'] = True
+                st.session_state['time_selecionado'] = None
+                st.session_state['consultor_logado'] = None
+                st.session_state['consultor_selectbox'] = 'Selecione um nome'
+                st.rerun()
 
-                meu_nome = st.session_state.get("consultor_selectbox")
+            if other_id:
+                try: other_state = load_state_from_db(other_id) or {}
+                except: other_state = {}
+                other_queue = other_state.get('bastao_queue', []) or []
+                other_skips = other_state.get('skip_flags', {}) or {}
+                other_status = other_state.get('status_texto', {}) or {}
+                other_quick = other_state.get('quick_indicators', {}) or {}
+                other_responsavel = None
+                for c, s in (other_status or {}).items():
+                    if isinstance(s, str) and 'Bastão' in s: other_responsavel = c; break
+                proximo_outro = None
+                if other_queue:
+                    if other_responsavel in other_queue:
+                        idx = other_queue.index(other_responsavel)
+                        nxt = find_next_holder_index(idx, other_queue, other_skips)
+                        proximo_outro = other_queue[nxt] if nxt != -1 else None
+                    if not proximo_outro:
+                        nxt = find_next_holder_index(-1, other_queue, other_skips)
+                        proximo_outro = other_queue[nxt] if nxt != -1 else None
+                def _fmt_other(nome):
+                    rb = _badge_ramal_html(get_ramal_nome(nome))
+                    ic = _icons_telefone_cafe(other_quick.get(nome, {}))
+                    return f"{nome}{rb}{ic}"
+                st.markdown(f"### 👥 Fila {other_name}")
+                if other_responsavel: st.markdown(f"**Com o Bastão agora:** {_fmt_other(other_responsavel)}", unsafe_allow_html=True)
+                else: st.markdown("**Com o Bastão agora:** _Ninguém_", unsafe_allow_html=True)
+                if proximo_outro: st.markdown(f"**Próximo Bastão:** {_fmt_other(proximo_outro)}", unsafe_allow_html=True)
+                else: st.markdown("**Próximo Bastão:** _Ninguém na fila_", unsafe_allow_html=True)
+                if other_queue:
+                    demais = [n for n in other_queue if n != other_responsavel and n != proximo_outro]
+                    if demais:
+                        st.markdown("**Demais na fila:**", unsafe_allow_html=True)
+                        for n in demais: st.markdown(f"- {_fmt_other(n)}", unsafe_allow_html=True)
+                    else: st.markdown("_Sem demais na fila._")
+            else: st.markdown('_Sem outra equipe configurada._')
 
-                if l_in_use:
-                    st.error(f"🔴 EM USO POR: **{l_user}**")
-                    # Liberação: permitido para o próprio usuário ou para alguém com nome selecionado (admin/suporte)
-                    if meu_nome == l_user or (meu_nome and meu_nome != "Selecione um nome"):
-                        if st.button("🔓 LIBERAR AGORA", type="primary", use_container_width=True,
-                                     key=f"btn_logmein_liberar_side_{uuid.uuid4().hex}"):
-                            set_logmein_status(None, False)
-                            close_logmein_ui()
-                            st.rerun()
+            st.divider(); st.markdown('### 🔑 LogMeIn'); st.caption('LogMeIn **não** é status: é apenas para visualizar quem está usando o programa.')
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button('Abrir', use_container_width=True, key=f'btn_open_logmein_side_{uuid.uuid4().hex}'): open_logmein_ui()
+            with c2:
+                if st.button('Fechar', use_container_width=True, key=f'btn_close_logmein_side_{uuid.uuid4().hex}'): close_logmein_ui()
+
+            if st.session_state.get('view_logmein_ui'):
+                with st.container(border=True):
+                    st.markdown('#### 💻 Acesso LogMeIn')
+                    l_user, l_in_use = get_logmein_status()
+                    st.image(GIF_LOGMEIN_TARGET, width=180)
+                    if l_in_use:
+                        st.error(f"🔴 EM USO POR: **{l_user}**")
+                        meu_nome = st.session_state.get('consultor_selectbox')
+                        if meu_nome == l_user or meu_nome in CONSULTORES:
+                            if st.button('🔓 LIBERAR AGORA', type='primary', use_container_width=True, key=f'btn_logmein_liberar_side_{uuid.uuid4().hex}'):
+                                set_logmein_status(None, False); close_logmein_ui(); st.rerun()
+                        else: st.info('Aguarde a liberação.')
                     else:
-                        st.info("Aguarde a liberação.")
-                else:
-                    st.success("✅ LIVRE PARA USO")
-                    if meu_nome and meu_nome != "Selecione um nome":
-                        if st.button("🚀 ASSUMIR AGORA", use_container_width=True, key=f"btn_logmein_assumir_side_{uuid.uuid4().hex}"):
-                            set_logmein_status(meu_nome, True)
-                            close_logmein_ui()
-                            st.rerun()
-                    else:
-                        st.warning("Selecione seu nome no topo para assumir.")
-
-        st.divider()
+                        st.success('✅ LIVRE PARA USO')
+                        meu_nome = st.session_state.get('consultor_selectbox')
+                        if meu_nome and meu_nome != 'Selecione um nome':
+                            if st.button('🚀 ASSUMIR AGORA', use_container_width=True, key=f'btn_logmein_assumir_side_{uuid.uuid4().hex}'):
+                                set_logmein_status(meu_nome, True); close_logmein_ui(); st.rerun()
+                        else: st.warning('Selecione seu nome no topo para assumir.')
+            st.divider()
+            if isinstance(team_name, str) and 'eproc' in team_name.lower(): render_agenda_eproc_sidebar()
 
     def render_status_list():
         sync_state_from_db()
         queue = st.session_state.bastao_queue
         skips = st.session_state.skip_flags
-        responsavel = get_bastao_holder_atual()
+        responsavel = next((c for c, s in st.session_state.status_texto.items() if 'Bastão' in s), None)
 
         st.header('Status dos(as) Consultores(as)')
         # --- Filtros (apenas visual) ---
