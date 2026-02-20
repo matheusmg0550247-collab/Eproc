@@ -125,16 +125,13 @@ import uuid
 import unicodedata
 import base64
 import io
-from supabase import create_client
-from docx import Document
-from docx.shared import Pt, Cm
-from docx.enum.text import WD_ALIGN_PARAGRAPH
 
-# Importação condicional
-try:
-    from streamlit_javascript import st_javascript
-except ImportError:
-    st_javascript = None
+# --- IMPORTS PESADOS REMOVIDOS DO TOPO (LAZY IMPORT) ---
+# from supabase import create_client        → movido para get_supabase()
+# from docx import Document                 → movido para gerar_docx_certidao_internal()
+# from docx.shared import Pt, Cm            → movido para gerar_docx_certidao_internal()
+# from docx.enum.text import WD_ALIGN_...   → movido para gerar_docx_certidao_internal()
+# from streamlit_javascript import ...       → movido para get_browser_id()
 
 # Importações de utilitários
 from utils import (get_brazil_time, get_secret, send_to_chat)
@@ -393,7 +390,8 @@ def post_n8n(url: str, payload: dict) -> bool:
 
 @st.cache_resource(ttl=3600)
 def get_supabase():
-    try: 
+    try:
+        from supabase import create_client
         return create_client(st.secrets["supabase"]["url"], st.secrets["supabase"]["key"])
     except Exception as e:
         st.cache_resource.clear()
@@ -523,7 +521,10 @@ def set_logmein_status(consultor, em_uso):
 # 4. FUNÇÕES DE UTILIDADE E IP
 # ============================================
 def get_browser_id():
-    if st_javascript is None: return "no_js_lib"
+    try:
+        from streamlit_javascript import st_javascript
+    except ImportError:
+        return "no_js_lib"
     js_code = """(function() {
         let id = localStorage.getItem("device_id");
         if (!id) {
@@ -668,6 +669,9 @@ def salvar_certidao_db(dados):
 
 def gerar_docx_certidao_internal(tipo, numero, data, consultor, motivo, chamado="", hora="", nome_parte=""):
     try:
+        from docx import Document
+        from docx.shared import Pt, Cm
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
         doc = Document()
         section = doc.sections[0]
         section.top_margin = Cm(2.5); section.bottom_margin = Cm(2.0)
